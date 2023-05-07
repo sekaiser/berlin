@@ -1,0 +1,4 @@
+[site]
+url = "http://localhost:8081"
+title = "My Test Blog"
+description = "A generated blog for testing purposes."

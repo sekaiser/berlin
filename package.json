@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "dev": "unocss bln/target/**/*.html --out-file bln/target/static/css/uno.css --watch"
+  },
+  "devDependencies": {
+    "unocss": "latest"
+  }
+}

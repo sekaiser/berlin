@@ -1,0 +1,21 @@
+[package]
+name = "berlin_core"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "A runtime for Berlin"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+anyhow.workspace = true
+parking_lot.workspace = true
+petgraph = "0.6.3"
+regex.workspace = true
+serde.workspace = true
+toml.workspace = true
+url.workspace = true

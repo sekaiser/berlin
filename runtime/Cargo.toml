@@ -1,0 +1,30 @@
+[package]
+name = "berlin_runtime"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Provides the berlin runtime library"
+
+[lib]
+name = "berlin_runtime"
+path = "lib.rs"
+
+[dependencies]
+atty.workspace = true
+berlin_core.workspace = true
+csv.workspace = true
+comrak = "0.16"
+futures = { version = "0.3.16" }
+lazy_static = "1"
+lightningcss.workspace = true
+once_cell.workspace = true
+pandoc = "0.8.10"
+regex.workspace = true
+rusqlite.workspace = true
+tokio.workspace = true
+slug = "0.1.4"
+serde_yaml.workspace = true
+termcolor = "1.2.0"
+warp = "0.3.3"

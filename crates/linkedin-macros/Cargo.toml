@@ -1,0 +1,12 @@
+[package]
+name = "linkedin-macros"
+version = "0.0.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+description = "Macros for Linkedin Web Api"
+
+[dev-dependencies]
+serde_json.workspace = true

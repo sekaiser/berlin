@@ -1,0 +1,7 @@
+[site]
+url = "http://localhost:8080"
+title = "Hello Berlin"
+description = "Berlin is poor but sexy :-)"
+
+# theme = "bln_gh" # (if none specified a skeleton will be created)
+# theme_location = "" # can be a dir or url

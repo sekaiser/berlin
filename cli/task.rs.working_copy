@@ -1,0 +1,1650 @@
+use crate::args::ConfigFile;
+use crate::cache::BerlinDir;
+use crate::proc_state::ProcState;
+use crate::util::fs::consume_files;
+use crate::util::fs::load_files;
+use crate::util::path::specifier_to_file_path;
+use berlin_core::anyhow::Context;
+use berlin_core::anyhow::Error;
+use berlin_core::resolve_path;
+use berlin_core::resolve_url_or_path;
+use berlin_core::MediaType;
+use berlin_core::ModuleSpecifier;
+use berlin_core::ParsedSource;
+use berlin_runtime::parser::CapturingParser;
+use berlin_runtime::parser::Parser;
+use lightningcss::printer;
+
+use std::collections::HashMap;
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::exit;
+use std::sync::Arc;
+
+use self::built_ins::bln_input_aggregate_all;
+use self::built_ins::bln_input_aggregate_by_category;
+use self::built_ins::bln_input_feed_aggregate_all;
+use self::built_ins::bln_parse_csv_aggregate_by_category;
+use self::built_ins::collect_articles;
+use self::built_ins::extract_front_matter;
+use self::built_ins::extract_tags;
+use self::built_ins::extract_tags_from_feed;
+use self::built_ins::inject_photo_data;
+use self::built_ins::parse_feed;
+
+pub type AggregatedSources = HashMap<String, Vec<ParsedSource>>;
+
+pub type SortFn = Box<dyn Fn(&ParsedSource, &ParsedSource) -> std::cmp::Ordering>;
+
+pub type InputAggregate<'a> =
+    &'a dyn Fn(&str, &[ParsedSource], Option<SortFn>) -> AggregatedSources;
+
+pub type TemplateVarsAggregate<'a> = &'a dyn Fn(&Vec<ParsedSource>) -> tera::Context;
+
+pub type RenderedFile = (PathBuf, String);
+pub type RenderedFiles = Vec<RenderedFile>;
+
+#[derive(Clone)]
+pub enum Input<'a> {
+    Files(Vec<PathBuf>),
+    Pattern(&'a str),
+    PatternWithAggregate(&'a str, InputAggregate<'a>),
+}
+
+pub struct InputMode(HashMap<String, Vec<ParsedSource>>, tera::Context);
+
+impl InputMode {
+    fn to_flat<'a>(
+        &self,
+        processors: &'a [ApplyToEachFileInCategory<'a>],
+    ) -> Vec<(String, ParsedSource, tera::Context)> {
+        let mut vec = Vec::new();
+        for p in processors.into_iter() {
+            let key: &str = p.0.as_ref();
+            if let Some(sources) = self.0.get(key) {
+                for src in sources {
+                    let v = p.1(src);
+                    let mut ctx = self.1.clone();
+                    ctx.extend(v.2);
+                    vec.push((v.0, v.1, ctx));
+                }
+            }
+        }
+        vec
+    }
+
+    fn to_grouped(
+        &self,
+        processor: &dyn Fn(&HashMap<String, Vec<ParsedSource>>) -> Vec<(String, tera::Context)>,
+    ) -> Vec<(String, tera::Context)> {
+        processor(&self.0)
+            .iter()
+            .map(|v| {
+                let mut ctx = self.1.clone();
+                ctx.extend(v.1.to_owned());
+                (v.0.to_owned(), ctx)
+            })
+            .collect::<Vec<(String, tera::Context)>>()
+    }
+
+    fn to_aggregated(&mut self, processors: &InputProcessors) -> RenderMode {
+        let mut context = self.1.clone();
+        for processor in processors.into_iter() {
+            match processor {
+                Aggregate::Category(ref key, process) => {
+                    let k: &str = key.as_ref();
+                    if let Some(input) = self.0.get(k) {
+                        context.extend(process(input));
+                    }
+                }
+                // Aggregate::Merge(new_key, processors) => {
+                //     let mut vec: Vec<Value> = Vec::new();
+                //     for p in processors.into_iter() {
+                //         if let Some(input) = self.0.get(p.1 .0.as_str()) {
+                //             if let Some(value) = p.1 .1(input).get(&p.0) {
+                //                 if value.is_array() {
+                //                     let mut value = value.to_owned();
+                //                     let v = value.as_array_mut().expect("Not an array of Value!");
+                //                     vec.append(v);
+                //                 }
+                //             }
+                //         }
+                //     }
+                //     context.insert(new_key.to_string(), &vec);
+                // }
+                Aggregate::Categories(new_key, processors) => {
+                    // TODO Use BTreeSet instead of Vec to remove duplicates
+                    let mut values = Vec::new();
+                    for p in processors.into_iter() {
+                        let key: &str = p.0.as_ref();
+                        if let Some(input) = self.0.get(key) {
+                            values.append(&mut p.1(input));
+                        }
+                    }
+                    context.insert(new_key.to_string(), &values);
+                }
+            }
+        }
+        RenderMode::SingleFile(context)
+    }
+}
+
+pub type ApplyToEachFileInCategory<'a> = (
+    &'a str,
+    &'a dyn Fn(&ParsedSource) -> (String, ParsedSource, tera::Context),
+);
+
+pub type ApplyToCategory<'a> = (&'a str, &'a dyn Fn(&Vec<ParsedSource>) -> Vec<tera::Value>);
+
+pub enum Aggregate<'a> {
+    Category(&'a str, TemplateVarsAggregate<'a>),
+    // Merge(&'a str, &'a [(&'a str, NamedTemplateVarsAggregate<'a>)]),
+    Categories(&'a str, &'a [ApplyToCategory<'a>]),
+}
+
+pub enum Aggregator<'a> {
+    // Create a context per input source
+    None(&'a [ApplyToEachFileInCategory<'a>]),
+    Merge(&'a [Aggregate<'a>]),
+    Reduce(&'a dyn Fn(&HashMap<String, Vec<ParsedSource>>) -> Vec<(String, tera::Context)>),
+}
+
+type InputProcessors<'a> = &'a [Aggregate<'a>];
+
+pub enum RenderMode {
+    SingleFile(tera::Context),
+    OneFilePerCategory(Vec<(String, tera::Context)>),
+    Flat(Vec<(String, ParsedSource, tera::Context)>),
+}
+
+impl From<Vec<(String, tera::Context)>> for RenderMode {
+    fn from(source: Vec<(String, tera::Context)>) -> Self {
+        RenderMode::OneFilePerCategory(source)
+    }
+}
+
+pub struct Renderer<'g, 'a>(RenderMode, RenderContext<'g, 'a>);
+
+// fn get_slug(source: &ParsedSource) -> String {
+//     let maybe_title = source
+//         .front_matter()
+//         .map(|fm| fm.title.as_ref().expect("Title not set in front_matter"));
+
+//     let value = match maybe_title {
+//         Some(title) => title.to_owned(),
+//         None => PathBuf::from(source.specifier().to_owned())
+//             .file_stem()
+//             .map(|n| n.to_string_lossy())
+//             .map(|n| n.to_string())
+//             .unwrap(),
+//     };
+
+//     slugify!(&value)
+// }
+
+impl<'g, 'a> Renderer<'g, 'a> {
+    fn render(&mut self) -> RenderedFiles {
+        let TaskContext { ps, bln_dir, .. } = self.1.context;
+        let RenderContext {
+            ref template,
+            ref output,
+            ..
+        } = self.1;
+
+        let rendered_files = match &self.0 {
+            RenderMode::SingleFile(context) => {
+                let output = bln_dir.target_file_path().join(output);
+                let html = ps.render_with_context(&template, &context);
+                vec![(output, html)]
+            }
+            RenderMode::Flat(files) => {
+                let mut v = Vec::new();
+                for file in files {
+                    let output = bln_dir
+                        .target_file_path()
+                        .join(output.replace("[slug]", &file.0));
+
+                    let html = ps.render_parsed_source_with_context(&template, &file.1, &file.2);
+                    v.push((output, html));
+                }
+                v
+            }
+            RenderMode::OneFilePerCategory(files) => {
+                let mut v = Vec::new();
+                for file in files {
+                    let output = bln_dir
+                        .target_file_path()
+                        .join(output.replace("[slug]", &file.0));
+                    let html = ps.render_with_context(&template, &file.1);
+                    v.push((output, html));
+                }
+                v
+            }
+        };
+
+        rendered_files
+    }
+}
+
+impl<'a, 'b> Input<'a> {
+    pub fn load(
+        &self,
+        name: &str,
+        base_path: &PathBuf,
+        context: &TaskContext,
+    ) -> Result<AggregatedSources, Error> {
+        match self {
+            Input::Files(vec) => {
+                let sources = self.parse(vec, context)?;
+                Ok(resolve_input_aggregate(None)(&name, &sources, None))
+            }
+            Input::Pattern(ref input_pattern) => {
+                let sources = self.parse(&load_files(base_path, input_pattern), context)?;
+                Ok(resolve_input_aggregate(None)(&name, &sources, None))
+            }
+            Input::PatternWithAggregate(ref input_pattern, aggregate_fn) => {
+                let sources = self.parse(&load_files(base_path, input_pattern), context)?;
+                Ok(aggregate_fn(&name, &sources, None))
+            }
+        }
+    }
+
+    fn parse(
+        &self,
+        paths: &Vec<PathBuf>,
+        context: &TaskContext,
+    ) -> Result<Vec<ParsedSource>, Error> {
+        let mut sources = Vec::new();
+
+        for path in paths {
+            let specifier = ModuleSpecifier::from_file_path(path).expect("Invalid path.");
+            let content = std::fs::read_to_string(specifier.path())
+                .context(format!("Unable to read file {:?}", &specifier))?;
+            let media_type = MediaType::from(Path::new(specifier.path()));
+            sources.push(
+                context
+                    .parser
+                    .parse(&specifier, Arc::from(content), media_type)?,
+            );
+        }
+
+        Ok(sources)
+    }
+}
+
+impl<'a> From<Input<'a>> for Inputs<'a> {
+    fn from(value: Input<'a>) -> Self {
+        vec![value]
+    }
+}
+
+pub type Inputs<'a> = Vec<Input<'a>>;
+
+pub mod built_ins {
+
+    pub mod models {
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Serialize, Deserialize, Hash, Eq, PartialEq, Debug, PartialOrd, Ord, Clone)]
+        pub struct Tag {
+            pub name: String,
+            pub target: String,
+        }
+
+        impl Tag {
+            pub fn new<S: Into<String>>(name: S) -> Self {
+                let n = name.into();
+                Self {
+                    target: format!("/tags/{}", &n),
+                    name: n,
+                }
+            }
+        }
+
+        #[derive(Hash, Eq, PartialEq, Debug, Serialize, Deserialize, PartialOrd, Ord, Clone)]
+        pub struct Feed {
+            pub title: String,
+            pub date_added: String,
+            pub url: String,
+            pub host: String,
+            pub tags: Vec<Tag>,
+        }
+    }
+
+    use berlin_core::{resolve_path, url::Url, FrontMatter, MediaType, ParsedSource};
+    use serde::{Deserialize, Deserializer, Serialize};
+    use slugify::slugify;
+    use std::{
+        collections::{BTreeSet, HashMap},
+        ops::DerefMut,
+    };
+
+    use crate::task::built_ins::models::Tag;
+
+    use self::models::Feed;
+
+    use super::SortFn;
+
+    pub fn bln_input_aggregate_all(
+        name: &str,
+        sources: &[ParsedSource],
+        sort_fn: Option<SortFn>,
+    ) -> HashMap<String, Vec<ParsedSource>> {
+        let mut v = sources.to_vec();
+        sort_fn.map(|f| v.deref_mut().sort_by(f));
+
+        let mut map = HashMap::new();
+        map.insert(name.into(), v);
+
+        map
+    }
+
+    pub fn bln_input_feed_aggregate_all(
+        _name: &str,
+        sources: &[ParsedSource],
+        sort_fn: Option<SortFn>,
+    ) -> HashMap<String, Vec<ParsedSource>> {
+        let mut v = sources.to_vec();
+        sort_fn.map(|f| v.deref_mut().sort_by(f));
+
+        let mut map = HashMap::new();
+        map.insert("feed".into(), v);
+
+        map
+    }
+
+    pub fn extract_tags_from_feed(sources: &Vec<ParsedSource>) -> Vec<tera::Value> {
+        let uncategorized = "uncategorized";
+
+        let mut hs: BTreeSet<Tag> = BTreeSet::new();
+
+        for src in sources {
+            let feed = parse_csv(Some(src));
+
+            for f in feed {
+                if f.tags.is_empty() {
+                    hs.insert(Tag::new(uncategorized));
+                } else {
+                    for t in f.tags {
+                        hs.insert(t);
+                    }
+                }
+            }
+        }
+
+        Vec::from_iter(hs)
+            .iter()
+            .map(|v| serde_json::to_value(v).expect("Cannot deserialize tag"))
+            .collect()
+    }
+
+    pub fn extract_tags(sources: &Vec<ParsedSource>) -> Vec<tera::Value> {
+        let uncategorized = "uncategorized";
+
+        let mut hs: BTreeSet<Tag> = BTreeSet::new();
+
+        for s in sources {
+            if let Some(fm) = s.front_matter() {
+                match fm.tags.as_ref() {
+                    Some(tags) => {
+                        for t in tags {
+                            hs.insert(Tag::new(t));
+                        }
+                    }
+                    None => {
+                        hs.insert(Tag::new(uncategorized));
+                    }
+                }
+            }
+        }
+
+        Vec::from_iter(hs)
+            .iter()
+            .map(|v| serde_json::to_value(v).expect("Cannot deserialize tag"))
+            .collect()
+    }
+
+    pub fn bln_input_aggregate_by_category(
+        _name: &str,
+        sources: &[ParsedSource],
+        maybe_sort_fn: Option<SortFn>,
+    ) -> HashMap<String, Vec<ParsedSource>> {
+        let uncategorized = "uncategorized";
+
+        let mut map: HashMap<String, Vec<ParsedSource>> = HashMap::new();
+
+        for s in sources {
+            if let Some(fm) = s.front_matter() {
+                match fm.tags.as_ref() {
+                    Some(tags) => {
+                        for t in tags {
+                            if !map.contains_key(t.as_str()) {
+                                map.insert(t.clone(), Vec::new());
+                            }
+                            map.get_mut(t.as_str()).map(|v| v.push(s.clone()));
+                        }
+                    }
+                    None => {
+                        let key = uncategorized.to_string();
+                        if !map.contains_key(&key) {
+                            map.insert(key.clone(), Vec::new());
+                        }
+
+                        map.get_mut(&key).map(|v| v.push(s.clone()));
+                    }
+                }
+            }
+        }
+
+        if let Some(f) = maybe_sort_fn.as_ref() {
+            let _ = map.values_mut().map(|v| {
+                v.sort_by(f.clone());
+            });
+        }
+
+        map
+    }
+
+    pub fn bln_parse_csv_aggregate_by_category(
+        _name: &str,
+        srcs: &[ParsedSource],
+        _maybe_sort_fn: Option<SortFn>,
+    ) -> HashMap<String, Vec<ParsedSource>> {
+        let uncategorized = "uncategorized";
+        let mut map: HashMap<String, Vec<ParsedSource>> = HashMap::new();
+
+        for src in srcs {
+            let feed = parse_csv(Some(src));
+
+            for f in feed {
+                if f.tags.is_empty() {
+                    let key = String::from(uncategorized);
+                    if !map.contains_key(&key) {
+                        map.insert(key.clone(), Vec::new());
+                    }
+
+                    map.get_mut(&key).map(|v| {
+                        v.push(ParsedSource::new(
+                            src.specifier().to_string(),
+                            src.media_type(),
+                            Some(serde_json::to_string(&f).expect("Could not serialize feed item")),
+                            None,
+                        ))
+                    });
+                } else {
+                    let tags = f.tags.clone();
+                    for t in tags.into_iter() {
+                        if !map.contains_key(&t.name) {
+                            map.insert(t.name.clone(), Vec::new());
+                        }
+                        map.get_mut(&t.name).map(|v| {
+                            v.push(ParsedSource::new(
+                                src.specifier().to_string(),
+                                src.media_type(),
+                                Some(
+                                    serde_json::to_string(&f.clone())
+                                        .expect("Could not serialize feed item"),
+                                ),
+                                None,
+                            ))
+                        });
+                    }
+                }
+            }
+        }
+
+        map
+    }
+
+    pub fn extract_front_matter(source: &ParsedSource) -> (String, ParsedSource, tera::Context) {
+        let mut context = tera::Context::new();
+        if let Some(front_matter) = source.front_matter() {
+            for x in front_matter.get_fields().into_iter() {
+                if let (k, Some(val)) = x {
+                    let key = format!("page_{k}");
+                    match k {
+                        "tags" => context.insert(key, &val.downcast_ref::<Vec<String>>()),
+                        _ => context.insert(key, &val.downcast_ref::<String>()),
+                    }
+                }
+            }
+        }
+
+        let path = resolve_path(source.specifier()).expect("Path is invalid!");
+        (
+            path.to_file_path()
+                .expect("Path is invalid!")
+                .file_stem()
+                .expect("Not a file!")
+                .to_string_lossy()
+                .to_string(),
+            source.to_owned(),
+            context,
+        )
+    }
+
+    pub fn parse_feed(sources: &Vec<ParsedSource>) -> tera::Context {
+        let mut context = tera::Context::new();
+        let mut feed = Vec::new();
+        for source in sources {
+            for f in parse_csv(Some(&source)) {
+                feed.push(f);
+            }
+        }
+        context.insert("feed", &feed);
+        context
+    }
+
+    pub fn parse_csv(maybe_source: Option<&ParsedSource>) -> Vec<Feed> {
+        #[derive(Deserialize)]
+        #[allow(dead_code)]
+        pub struct Record {
+            #[serde(rename = "Key")]
+            pub key: String,
+            #[serde(rename = "Author")]
+            author: String,
+            #[serde(rename = "Title")]
+            pub title: String,
+            #[serde(rename = "Url")]
+            pub url: String,
+            #[serde(rename = "Date")]
+            date: String,
+            #[serde(rename = "Date Added")]
+            pub date_added: String,
+            #[serde(rename = "Manual Tags")]
+            #[serde(deserialize_with = "deserialize_tags")]
+            tags: Vec<Tag>,
+        }
+
+        fn deserialize_tags<'de, D>(deserializer: D) -> Result<Vec<Tag>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let mut tags = Vec::new();
+            let buf = String::deserialize(deserializer)?;
+            for tag in buf.split("; ") {
+                tags.push(Tag::new(tag.to_string()));
+            }
+
+            Ok(tags)
+        }
+
+        impl From<Record> for Feed {
+            fn from(r: Record) -> Self {
+                let Record {
+                    title,
+                    date_added,
+                    url,
+                    tags,
+                    ..
+                } = r;
+                let host = Url::parse(&url)
+                    .expect("Invalid URL!")
+                    .host()
+                    .expect("Host missing!")
+                    .to_string();
+
+                Self {
+                    title,
+                    date_added,
+                    url,
+                    host,
+                    tags,
+                }
+            }
+        }
+
+        let mut feed: Vec<Feed> = Vec::new();
+        if let Some(source) = maybe_source {
+            if source.media_type() == MediaType::Csv {
+                let mut rdr = csv::ReaderBuilder::new()
+                    .has_headers(true)
+                    .delimiter(b',')
+                    .double_quote(true)
+                    .from_reader(source.data().as_bytes());
+
+                for result in rdr.deserialize::<Record>() {
+                    if let Ok(record) = result {
+                        feed.push(record.into());
+                    }
+                }
+            }
+        }
+
+        feed
+    }
+
+    pub fn inject_photo_data() -> tera::Context {
+        #[derive(Serialize)]
+        struct Picture<'a> {
+            title: &'a str,
+            src: &'a str,
+            srcset: &'a str,
+            target: &'a str,
+        }
+
+        let mut context = tera::Context::new();
+        context.insert("photos", &vec![Picture {
+                title: "Gazelli Art House at Art Dubai 2023: Persian Dreams",
+                src: "https://d7hftxdivxxvm.cloudfront.net?height=490&amp;quality=80&amp;resize_to=fill&amp;src=https%3A%2F%2Fd32dm0rphc51dk.cloudfront.net%2FM12Gc-3Et8RdEa1E8MFIXQ%2Fnormalized.jpg&amp;width=490",
+                srcset: "https://d7hftxdivxxvm.cloudfront.net?height=490&amp;quality=80&amp;resize_to=fill&amp;src=https%3A%2F%2Fd32dm0rphc51dk.cloudfront.net%2FM12Gc-3Et8RAdEa1E8MFIXQ%2Fnormalized.jpg&amp;width=490 1x, https://d7hftxdivxxvm.cloudfront.net?height=980&amp;quality=80&amp;resize_to=fill&amp;src=https%3A%2F%2Fd32dm0rphc51dk.cloudfront.net%2FM12Gc-3Et8RdEa1E8MFIXQ%2Fnormalized.jpg&amp;width=980 2x",
+                target: "https://news.artnet.com/art-world/fake-instagram-photography-ai-generated-joe-avery-2260674",
+            }]);
+
+        context
+    }
+
+    pub fn collect_articles(srcs: &Vec<ParsedSource>) -> tera::Context {
+        #[derive(Serialize)]
+        pub struct Tag {
+            name: String,
+            target: String,
+        }
+
+        #[derive(Serialize)]
+        pub struct Article {
+            title: String,
+            description: String,
+            author: String,
+            date: String,
+            target: String,
+            tags: Vec<Tag>,
+        }
+
+        let mut context = tera::Context::new();
+        let mut articles: Vec<Article> = Vec::new();
+
+        let err_msg = |f: &str| format!("Field {} is not set!", f);
+
+        for src in srcs {
+            if let Some(front_matter) = src.front_matter() {
+                let FrontMatter {
+                    author,
+                    tags,
+                    title,
+                    description,
+                    published,
+                } = front_matter;
+
+                let mut parsed_tags: Vec<Tag> = Vec::new();
+                for tag in tags.as_ref().unwrap() {
+                    parsed_tags.push(Tag {
+                        name: tag.clone(),
+                        target: format!("/tags/{}.html", &tag),
+                    });
+                }
+
+                let author = author
+                    .as_ref()
+                    .map(|v| v.join(", "))
+                    .expect(&err_msg("author"));
+                let title = title.as_ref().expect(&err_msg("title")).clone();
+                let description = description.as_ref().expect(&err_msg("description")).clone();
+                let date = published.as_ref().expect(&err_msg("date")).clone();
+                let target = format!("/notes/{}.html", slugify!(&title));
+                articles.push(Article {
+                    title,
+                    description,
+                    author,
+                    date,
+                    tags: parsed_tags,
+                    target,
+                });
+            }
+        }
+
+        let n = articles.len();
+        context.insert(
+            "articles",
+            &articles[..match n {
+                1 | 2 | 3 | 4 | 5 | 6 => n,
+                _ => 6,
+            }],
+        );
+
+        context
+    }
+}
+
+pub struct Render<'a> {
+    pub name: String,
+    pub inputs: Inputs<'a>,
+    pub template: String,
+    pub input_processor_mode: Option<Aggregator<'a>>,
+    // pub inject_to_context: Vec<InjectToContext>,
+    pub inject_to_context: Vec<&'a dyn Fn() -> tera::Context>,
+    pub output: String,
+}
+
+impl<'a> Render<'a> {
+    #[allow(dead_code)]
+    pub fn builder() -> RenderBuilder<'a> {
+        RenderBuilder::default()
+    }
+}
+
+impl<'a> PartialEq for Render<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        if self.name != other.name {
+            return false;
+        }
+        if self.template != other.template {
+            return false;
+        }
+        if self.output != other.output {
+            return false;
+        }
+
+        true
+    }
+}
+
+#[derive(Default)]
+pub struct RenderBuilder<'a> {
+    name: String,
+    inputs: &'a [Input<'a>],
+    template: String,
+    input_processor_mode: Option<Aggregator<'a>>,
+    inject_to_context: Vec<&'a dyn Fn() -> tera::Context>,
+    output: String,
+}
+
+fn resolve_input_aggregate(maybe_input_aggregate: Option<InputAggregate>) -> InputAggregate {
+    match maybe_input_aggregate {
+        Some(input_aggregate) => input_aggregate,
+        None => &bln_input_aggregate_all,
+    }
+}
+
+#[allow(dead_code)]
+impl<'a> RenderBuilder<'a> {
+    pub fn new<S: Into<String>, T: Into<String>, U: Into<String>>(
+        name: S,
+        template: T,
+        output: U,
+    ) -> RenderBuilder<'a> {
+        RenderBuilder {
+            name: name.into(),
+            inputs: &[],
+            template: template.into(),
+            input_processor_mode: None,
+            inject_to_context: Vec::new(),
+            output: output.into(),
+        }
+    }
+
+    pub fn new_template_only<S: Into<String>>(name: S) -> Self {
+        let template_name = &name.into();
+        RenderBuilder::new(
+            template_name,
+            format!("{template_name}.tera"),
+            format!("{template_name}.html"),
+        )
+    }
+
+    pub fn input(mut self, inputs: &'a [Input<'a>]) -> Self {
+        self.inputs = inputs;
+        self
+    }
+
+    pub fn template_vars(mut self, inputs: Aggregator<'a>) -> Self {
+        self.input_processor_mode = Some(inputs);
+        self
+    }
+
+    pub fn add_to_context<I: Fn() -> tera::Context>(mut self, input: &'a I) -> Self {
+        self.inject_to_context.push(input);
+        self
+    }
+
+    pub fn build(self) -> Render<'a> {
+        Render {
+            name: self.name,
+            inputs: self.inputs.to_vec(),
+            template: self.template,
+            input_processor_mode: self.input_processor_mode,
+            inject_to_context: self.inject_to_context,
+            output: self.output,
+        }
+    }
+}
+
+pub struct Css {
+    pub input_pattern: String,
+    pub output: String,
+}
+
+pub struct CopyStatic {
+    pub output: String,
+}
+
+pub enum Tasks<'a> {
+    CopyStatic(CopyStatic),
+    Css(Css),
+    Render(Render<'a>),
+}
+
+impl<'a> From<Render<'a>> for Tasks<'a> {
+    fn from(value: Render<'a>) -> Self {
+        Tasks::Render(value)
+    }
+}
+
+impl<'a> From<Css> for Tasks<'a> {
+    fn from(value: Css) -> Self {
+        Tasks::Css(value)
+    }
+}
+
+impl<'a> From<CopyStatic> for Tasks<'a> {
+    fn from(value: CopyStatic) -> Self {
+        Tasks::CopyStatic(value)
+    }
+}
+
+trait Task {
+    fn run(self, inner: &TaskContext) -> Result<i32, Error>;
+}
+
+// trait Watch {
+//     fn on_change(self, inner: &TaskContext, specifier: &ModuleSpecifier) -> Result<i32, Error>;
+// }
+
+// pub struct Resolve;
+
+// impl Resolve {
+//     pub fn load(self, base_path: &PathBuf, input: &Input, context: &TaskContext) -> Vec<PathBuf> {
+//         match input {
+//             Input::Pattern(input_pattern) => load_files(base_path, input_pattern),
+//             Input::PatternWithAggregation(input_pattern, input_aggregate) => {
+//                 load_files(base_path, input_pattern)
+//             }
+//         }
+//     }
+
+//     fn parse(self, paths: Vec<PathBuf>, context: &TaskContext) -> Result<Vec<ParsedSource>, Error> {
+//         let mut sources = Vec::new();
+
+//         for path in paths {
+//             let specifier = ModuleSpecifier::from_file_path(path).expect("Invalid path.");
+//             let content = std::fs::read_to_string(specifier.path())
+//                 .context(format!("Unable to read file {:?}", &specifier))?;
+//             let media_type = MediaType::from(Path::new(specifier.path()));
+//             sources.push(
+//                 context
+//                     .parser
+//                     .parse(&specifier, Arc::from(content), media_type)?,
+//             );
+//         }
+
+//         Ok(sources)
+//     }
+// }
+
+// pub struct Provided(Vec<PathBuf>);
+
+// impl Provided {
+//     pub fn load(&self) -> Vec<PathBuf> {
+//         let mut vec = Vec::with_capacity(self.0.len());
+//         for v in self.0.iter() {
+//             vec.push(v.clone());
+//         }
+//         vec
+//     }
+// }
+
+// pub enum Strategy {
+//     Resolve(Resolve),
+//     Provided(Provided),
+// }
+
+// TODO use enum with pattern matching to distinguish between single file and loading all files
+pub struct FilesProvider<'a> {
+    name: &'a str,
+    base_path: &'a PathBuf,
+    inputs: &'a Inputs<'a>,
+    context: &'a TaskContext<'a>,
+}
+
+impl<'a> FilesProvider<'a> {
+    fn load_files(&self) -> Result<AggregatedSources, Error> {
+        let mut aggregate: AggregatedSources = HashMap::new();
+
+        let inputs: &Inputs = self.inputs;
+
+        for input in inputs.into_iter() {
+            let map = input.load(self.name, self.base_path, self.context)?;
+
+            for mut e in map {
+                if !aggregate.contains_key(&e.0) {
+                    aggregate.insert(e.0.clone(), Vec::new());
+                }
+                aggregate.get_mut(&e.0).map(|v| v.append(&mut e.1));
+            }
+        }
+
+        Ok(aggregate)
+    }
+}
+
+fn initialize_context(
+    maybe_module_specifier: Option<ModuleSpecifier>,
+) -> Result<tera::Context, Error> {
+    let mut context = tera::Context::new();
+    if let Some(config_specifier) = maybe_module_specifier {
+        if let Ok(config_file) = ConfigFile::read(config_specifier.path()) {
+            let site_config = config_file.to_site_config()?;
+            context.insert("title", &site_config.title);
+            context.insert("author", &site_config.author);
+            context.insert("description", &site_config.description);
+            context.insert("config_site_url", &site_config.url);
+
+            let profiles_config = config_file.to_profiles_config()?;
+            context.insert("linkedin", &profiles_config.linkedin);
+            context.insert("github", &profiles_config.github);
+            context.insert("twitter", &profiles_config.twitter);
+        }
+    }
+    Ok(context)
+}
+
+struct TaskRunner<'a, T>(&'a T);
+
+struct RenderContext<'g, 'a> {
+    pub template: &'g str,
+    pub inject_to_context: &'g Vec<&'a dyn Fn() -> tera::Context>,
+    pub input_processor_mode: &'g Option<Aggregator<'a>>,
+    pub output: &'g str,
+    pub context: &'g TaskContext<'g>,
+    pub files_provider: FilesProvider<'g>,
+}
+
+fn run_internal<'g, 'a>(ctx: RenderContext<'g, 'a>) -> Result<i32, Error> {
+    let TaskContext { ps, .. } = ctx.context;
+    let RenderContext {
+        ref files_provider,
+        inject_to_context,
+        input_processor_mode,
+        ..
+    } = ctx;
+
+    let mut context = initialize_context(ps.options.maybe_config_file_specifier())?;
+
+    for enricher in inject_to_context {
+        context.extend(enricher());
+    }
+
+    let render_mode = if files_provider.inputs.is_empty() {
+        // no sources, generate template
+
+        //let output = bln_dir.target_file_path().join(output);
+        // ProcessedInput::NoInput(output, context);
+        RenderMode::SingleFile(context)
+    } else {
+        let input_aggregate = files_provider.load_files()?; // HashMap<String, Vec<ParsedSource>>
+
+        if input_aggregate.is_empty() {
+            eprintln!("Error! No input found");
+            exit(1);
+        } else {
+            let mut input_mode = InputMode(input_aggregate, context);
+            if let Some(input_processor_mode) = input_processor_mode {
+                match input_processor_mode {
+                    Aggregator::None(processors) => {
+                        RenderMode::Flat(input_mode.to_flat(processors))
+                    }
+                    Aggregator::Merge(processors) => input_mode.to_aggregated(processors),
+                    Aggregator::Reduce(processor) => {
+                        // input map contains of multiple keys. Each key will be rendered into a file.
+                        // Hence, we need a context object per key
+                        // ==> Vec<(String, Context)>
+                        RenderMode::OneFilePerCategory(input_mode.to_grouped(processor))
+                    }
+                }
+            } else {
+                eprintln!("Input found, but it is not clear what to do with it!");
+                eprintln!("Make sure you use RenderBuilder.template_vars(...)!");
+                exit(1);
+            }
+        }
+    };
+
+    let mut renderer = Renderer(render_mode, ctx);
+
+    let files = renderer.render();
+    for f in files {
+        std::fs::create_dir_all(&f.0.parent().unwrap())?;
+        std::fs::write(&f.0, &f.1)?;
+    }
+
+    //println!("{:?}", renderer.render());
+
+    //writer.write(renderer.render());
+    // // let input = parse_all_sources(parser, source)?;
+    // // let input_aggregate = match self.0.input_aggregate.as_ref() {
+    // //     Some(input_aggregate) => input_aggregate(&self.0.name, &input, None),
+    // //     None => resolve_input_aggregate(None)(&self.0.name, &input, None),
+    // // };
+
+    // if output.contains("[slug]") {
+    //     println!("write multiple files");
+    // } else {
+    //     println!("write single file");
+    //     for agg in input_aggregate {
+    //         if let Some(ctx) = agg.1 {
+    //             for vals in ctx.values() {
+    //                 context.extend(*vals);
+    //             }
+    //         }
+    //     }
+
+    //     // the goal of render_fn is to convert a list of (List of files, List of contexts) into
+    //     // a list of (filename, html)
+
+    //     if let Some(template_vars) = template_vars {
+    //         for agg in input_aggregate {
+    //             let sources_map = agg.0;
+    //             for e in sources_map {
+    //                 for file in e.1 {
+    //                     let ctx = context.clone();
+    //                     ctx.extend(template_vars(Some(&file)));
+    //                 }
+
+    //                 let files = match render {
+    //                     Some(render) => {
+    //                         render(&e.0, &e.1, &context, &template, &output, ps, bln_dir)
+    //                     }
+    //                     None => resolve_render(None)(
+    //                         &e.0, &e.1, &context, &template, &output, ps, bln_dir,
+    //                     ),
+    //                 };
+
+    //                 for f in files {
+    //                     std::fs::create_dir_all(&f.0.parent().unwrap())?;
+    //                     std::fs::write(&f.0, &f.1)?;
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
+
+    // for agg in input_aggregate {}
+    // if input_aggregate.keys().len() == 1 {
+    //     // match sources;; template only has no sources
+    //     let mut aggregated_sources = &Vec::new();
+    //     if let Some(sources) = input_aggregate.get(&name) {
+    //         aggregated_sources = sources;
+    //     }
+
+    //     if let Some(template_vars_aggregate) = template_vars_aggregate {
+    //         context.extend(template_vars_aggregate(aggregated_sources));
+    //     }
+
+    //     if let Some(template_vars) = template_vars {
+    //         for source in aggregated_sources {
+    //             context.extend(template_vars(Some(&source)));
+    //         }
+    //     }
+
+    //     // due to self.0.render is behind a reference this match construct is needed
+    //     let files = match render {
+    //         Some(render) => render(
+    //             &name,
+    //             aggregated_sources,
+    //             &context,
+    //             &template,
+    //             &output,
+    //             ps,
+    //             bln_dir,
+    //         ),
+    //         None => resolve_render(None)(
+    //             &name,
+    //             aggregated_sources,
+    //             &context,
+    //             &template,
+    //             &output,
+    //             ps,
+    //             bln_dir,
+    //         ),
+    //     };
+
+    //     for f in files {
+    //         std::fs::create_dir_all(&f.0.parent().unwrap())?;
+    //         std::fs::write(&f.0, &f.1)?;
+    //     }
+    // }
+
+    // for k in input_aggregate.keys() {
+    //     let mut aggregated_sources = &Vec::new();
+    //     if let Some(sources) = input_aggregate.get(k.as_str()) {
+    //         aggregated_sources = sources;
+    //     };
+
+    //     if let Some(template_vars_aggregate) = self.0.template_vars_aggregate.as_ref() {
+    //         context.extend(template_vars_aggregate(aggregated_sources));
+    //     }
+
+    //     if let Some(template_vars) = self.0.template_vars.as_ref() {
+    //         if aggregated_sources.is_empty() {
+    //             context.extend(template_vars(None));
+    //         } else {
+    //             for source in aggregated_sources {
+    //                 context.extend(template_vars(Some(&source)));
+    //             }
+    //         }
+    //     }
+
+    //     let files = match self.0.render.as_ref() {
+    //         Some(render) => render(
+    //             k.as_ref(),
+    //             &aggregated_sources,
+    //             &context,
+    //             &self.0.template,
+    //             &self.0.output,
+    //             &ps,
+    //             &bln_dir,
+    //         ),
+    //         None => resolve_render(None)(
+    //             k.as_ref(),
+    //             &aggregated_sources,
+    //             &context,
+    //             &self.0.template,
+    //             &self.0.output,
+    //             &ps,
+    //             &bln_dir,
+    //         ),
+    //     };
+
+    //     for f in files {
+    //         std::fs::create_dir_all(&f.0.parent().unwrap())?;
+    //         std::fs::write(&f.0, &f.1)?;
+    //     }
+    // }
+
+    Ok(0)
+}
+
+impl<'g, 'a> Task for TaskRunner<'g, Render<'a>> {
+    fn run(self, context: &TaskContext) -> Result<i32, Error> {
+        let Render {
+            inputs,
+            name,
+            template,
+            input_processor_mode,
+            inject_to_context,
+            output,
+            ..
+        } = self.0;
+
+        let render_context = RenderContext {
+            template,
+            input_processor_mode,
+            inject_to_context,
+            output,
+            context,
+            files_provider: FilesProvider {
+                name,
+                base_path: &context.bln_dir.root_file_path(),
+                inputs,
+                context,
+            },
+        };
+        run_internal(render_context)
+    }
+}
+
+// impl<'g> TaskRunner<'g, Css> {
+//     fn run_internal(
+//         &self,
+//         inner: &TaskContext,
+//         files_provider: FilesProvider,
+//     ) -> Result<i32, Error> {
+//         if let Some(input) = files_provider.load_files()?.get(files_provider.name) {
+//             for parsed_source in input.iter() {
+//                 let specifier = resolve_url_or_path(parsed_source.specifier())?;
+//                 let path_buf = specifier_to_file_path(&specifier)?;
+//                 let output = inner.bln_dir.target_file_path().join("css").join(
+//                     self.0
+//                         .output
+//                         .replace("{file}", path_buf.file_name().unwrap().to_str().unwrap()),
+//                 );
+//                 std::fs::create_dir_all(&output.parent().unwrap())?;
+//                 std::fs::write(output, parsed_source.data())?;
+//             }
+//         }
+
+//         Ok(0)
+//     }
+// }
+
+// impl<'g> TaskRunner<'g, CopyStatic> {}
+
+// impl<'g> Task for TaskRunner<'g, Css> {
+//     fn run(self, context: &TaskContext) -> Result<i32, Error> {
+//         self.run_internal(
+//             context,
+//             FilesProvider {
+//                 name: "css",
+//                 base_path: &context.ps.dir.css_file_path(),
+//                 inputs: &Input::Pattern(String::from(&self.0.input_pattern)).into(),
+//                 context: &context,
+//                 // strategy: Strategy::Resolve(Resolve {}),
+//             },
+//         )
+//     }
+// }
+
+// impl<'g> Task for TaskRunner<'g, CopyStatic> {
+//     fn run(self, context: &TaskContext) -> Result<i32, Error> {
+//         let TaskContext { ps, .. } = context;
+//         consume_files(ps.dir.static_file_path(), "**/*.*", |specifiers| {
+//             let static_file_path = context.ps.dir.static_file_path();
+//             let target_file_path = context.ps.dir.target_file_path();
+//             let prefix = static_file_path.to_string_lossy();
+//             for specifier in specifiers {
+//                 let relative_path = specifier
+//                     .path()
+//                     .strip_prefix(&format!("{}/", prefix))
+//                     .unwrap();
+
+//                 let output = target_file_path.join(self.0.output.replace("{file}", relative_path));
+//                 std::fs::create_dir_all(&output.parent().unwrap()).unwrap();
+//                 std::fs::copy(&specifier.path(), &output).unwrap();
+//             }
+//         });
+
+//         Ok(0)
+//     }
+// }
+
+// impl<'g> Watch for TaskRunner<'g, Render> {
+//     fn on_change(&self, context: &TaskContext, specifier: &ModuleSpecifier) -> Result<i32, Error> {
+//         let prefix = format!("{}/", context.bln_dir.root_file_path().to_string_lossy());
+//         if let Some(changed_file) = specifier.path().strip_prefix(&prefix) {
+//             if let Some(input_pattern) = self.0.input_pattern.clone() {
+//                 let re = fnmatch_regex::glob_to_regex(&input_pattern)?;
+//                 if re.is_match(&changed_file) {
+//                     if let Ok(file_path) = specifier.to_file_path() {
+//                         return self.run_internal(context, FilesProvider(vec![file_path]));
+//                     }
+//                 }
+//             }
+//         }
+
+//         let prefix = format!(
+//             "{}/",
+//             context.bln_dir.templates_file_path().to_string_lossy()
+//         );
+//         if let Some(changed_file) = specifier.path().strip_prefix(&prefix) {
+//             let expr = self.0.template.clone();
+//             let re = fnmatch_regex::glob_to_regex(&expr)?;
+
+//             context.ps.hera.lock().full_reload()?;
+//             if re.is_match(&changed_file) {
+//                 specifier.to_file_path().ok();
+//                 let files_provider = if let Some(pattern) = &self.0.input_pattern {
+//                     FilesProvider::from_input_pattern(&context.bln_dir.root_file_path(), &pattern)
+//                 } else {
+//                     Default::default()
+//                 };
+//                 for f in files_provider.0.clone() {
+//                     let specifier = resolve_url_or_path(&f.to_string_lossy().to_string())?;
+//                     println!("{}", specifier);
+//                     context.ps.parsed_source_cache.free(&specifier);
+//                 }
+
+//                 self.run_internal(context, files_provider)?;
+//             }
+//         }
+//         Ok(0)
+//     }
+// }
+
+// // TODO items are not cached!!!
+// impl<'g> Watch for TaskRunner<'g, Render> {
+//     fn on_change(self, context: &TaskContext, specifier: &ModuleSpecifier) -> Result<i32, Error> {
+//         let Render {
+//             inputs,
+//             name,
+//             template,
+//             template_vars,
+//             template_vars_aggregate,
+//             output,
+//             render,
+//         } = self.0;
+
+//         let prefix = format!("{}/", context.bln_dir.root_file_path().to_string_lossy());
+//         if let Some(changed_file) = specifier.path().strip_prefix(&prefix) {
+//             for input in inputs.iter() {
+//                 match input {
+//                     Input::Pattern(ref input_pattern)
+//                     | Input::PatternWithAggregation(ref input_pattern, _) => {
+//                         let re = fnmatch_regex::glob_to_regex(input_pattern)?;
+//                         if re.is_match(&changed_file) {
+//                             if let Ok(file_path) = specifier.to_file_path() {
+//                                 context
+//                                     .ps
+//                                     .parsed_source_cache
+//                                     .free(&resolve_path(&file_path.to_string_lossy())?);
+
+//                                 let render_context = RenderContext {
+//                                     name,
+//                                     template,
+//                                     template_vars,
+//                                     template_vars_aggregate,
+//                                     output,
+//                                     render,
+//                                     context,
+//                                     files_provider: FilesProvider {
+//                                         name: &self.0.name,
+//                                         base_path: &context.bln_dir.root_file_path(),
+//                                         inputs: &Input::Files(vec![file_path]).into(),
+//                                         context: &context,
+//                                     },
+//                                 };
+
+//                                 return run_internal(render_context);
+//                             }
+//                         }
+//                     }
+//                     Input::Files(paths) => {
+//                         for p in paths {
+//                             if p.to_string_lossy() == changed_file {
+//                                 if let Ok(file_path) = specifier.to_file_path() {
+//                                     context
+//                                         .ps
+//                                         .parsed_source_cache
+//                                         .free(&resolve_path(&file_path.to_string_lossy())?);
+
+//                                     let render_context = RenderContext {
+//                                         name,
+//                                         template,
+//                                         template_vars,
+//                                         template_vars_aggregate,
+//                                         output,
+//                                         render,
+//                                         context,
+//                                         files_provider: FilesProvider {
+//                                             name: &self.0.name,
+//                                             base_path: &context.bln_dir.root_file_path(),
+//                                             inputs: &Input::Files(vec![file_path]).into(),
+//                                             context: &context,
+//                                         },
+//                                     };
+
+//                                     return run_internal(render_context);
+//                                 }
+//                             }
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+
+//         let prefix = format!(
+//             "{}/",
+//             context.bln_dir.templates_file_path().to_string_lossy()
+//         );
+//         if let Some(changed_file) = specifier.path().strip_prefix(&prefix) {
+//             let expr = self.0.template.clone();
+//             let re = fnmatch_regex::glob_to_regex(&expr)?;
+
+//             context.ps.hera.lock().full_reload()?;
+//             if re.is_match(&changed_file) {
+//                 let path = specifier.to_file_path().ok().expect("Invalid path");
+//                 context
+//                     .ps
+//                     .parsed_source_cache
+//                     .free(&resolve_path(&path.to_string_lossy())?);
+
+//                 let inputs: Inputs = match self.0.inputs.as_slice() {
+//                     [] => Input::Files(vec![path]).into(),
+//                     _ => Input::Files(Vec::new()).into(),
+//                 };
+
+//                 // TODO need to free resources
+//                 // for f in files_provider.0.clone() {
+//                 //     let specifier = resolve_url_or_path(&f.to_string_lossy().to_string())?;
+//                 //     context.ps.parsed_source_cache.free(&specifier);
+//                 // }
+
+//                 let render_context = RenderContext {
+//                     name,
+//                     template,
+//                     template_vars,
+//                     template_vars_aggregate,
+//                     output,
+//                     render,
+//                     context,
+//                     files_provider: FilesProvider {
+//                         name: &self.0.name,
+//                         base_path: &context.bln_dir.root_file_path(),
+//                         inputs: &inputs,
+//                         context: &context,
+//                     },
+//                 };
+
+//                 return run_internal(render_context);
+//             }
+//         }
+//         Ok(0)
+//     }
+// }
+
+// impl<'g> Watch for TaskRunner<'g, Css> {
+//     fn on_change(self, context: &TaskContext, specifier: &ModuleSpecifier) -> Result<i32, Error> {
+//         let prefix = format!("{}/", context.bln_dir.css_file_path().to_string_lossy());
+//         if let Some(changed_file) = specifier.path().strip_prefix(&prefix) {
+//             let re = fnmatch_regex::glob_to_regex(&self.0.input_pattern)?;
+
+//             if re.is_match(&changed_file) {
+//                 let paths = if let Some(files) = &context.ps.maybe_css_resolutions {
+//                     files.get_root(PathBuf::from(specifier.path()))
+//                 } else {
+//                     Vec::new()
+//                 };
+
+//                 for p in paths.iter() {
+//                     context
+//                         .ps
+//                         .parsed_source_cache
+//                         .free(&resolve_path(&p.to_string_lossy())?);
+//                 }
+
+//                 let files_provider = FilesProvider {
+//                     name: "css",
+//                     base_path: &context.bln_dir.css_file_path(),
+//                     inputs: &Input::Files(paths).into(),
+//                     // inputs: &Vec::new(),
+//                     context: &context,
+//                     // strategy: Strategy::Provided(Provided(paths)),
+//                 };
+
+//                 self.run_internal(context, files_provider)?;
+//             }
+//         }
+
+//         Ok(0)
+//     }
+// }
+
+// impl<'g> Watch for TaskRunner<'g, CopyStatic> {
+//     fn on_change(self, context: &TaskContext, specifier: &ModuleSpecifier) -> Result<i32, Error> {
+//         let static_file_path = context.ps.dir.static_file_path();
+//         let target_file_path = context.ps.dir.target_file_path();
+//         let prefix = static_file_path.to_string_lossy();
+//         if specifier.path().starts_with(prefix.as_ref()) {
+//             let relative_path = specifier
+//                 .path()
+//                 .strip_prefix(&format!("{}/", prefix))
+//                 .unwrap();
+
+//             let output = target_file_path.join(self.0.output.replace("{file}", relative_path));
+//             std::fs::create_dir_all(&output.parent().unwrap()).unwrap();
+//             std::fs::copy(&specifier.path(), &output).unwrap();
+//         }
+
+//         Ok(0)
+//     }
+// }
+
+pub struct TaskContext<'a> {
+    ps: &'a ProcState,
+    parser: CapturingParser<'a>,
+    bln_dir: &'a BerlinDir,
+}
+
+impl<'a> From<&'a ProcState> for TaskContext<'a> {
+    fn from(ps: &'a ProcState) -> Self {
+        Self {
+            ps,
+            parser: ps.parsed_source_cache.as_capturing_parser(),
+            bln_dir: &ps.dir,
+        }
+    }
+}
+
+pub struct BlnTasks<'a>(Vec<Tasks<'a>>);
+
+impl<'a> BlnTasks<'a> {
+    pub fn run_all<'g>(&self, task_context: &'g TaskContext) -> Result<i32, Error> {
+        for task in self.0.iter() {
+            let res = match task {
+                Tasks::Render(render) => TaskRunner::<Render>(render).run(task_context),
+                Tasks::Css(css) => Ok(0), //TaskRunner::<Css>(css).run(task_context),
+                Tasks::CopyStatic(copy_static) => {
+                    Ok(0) //TaskRunner::<CopyStatic>(copy_static).run(task_context)
+                }
+            };
+
+            if let Err(e) = res {
+                eprintln!("Error while running task: {e}");
+            }
+        }
+        Ok(0)
+    }
+
+    // pub fn on_change<'g>(
+    //     &self,
+    //     task_context: &'g TaskContext,
+    //     specifier: &'g ModuleSpecifier,
+    // ) -> Result<i32, Error> {
+    //     // task_context.ps.parsed_source_cache.free(&specifier);
+
+    //     for task in self.0.iter() {
+    //         let res = match task {
+    //             Tasks::Render(render) => {
+    //                 TaskRunner::<Render>(render).on_change(task_context, specifier)
+    //             }
+    //             Tasks::Css(css) => TaskRunner::<Css>(css).on_change(task_context, specifier),
+    //             Tasks::CopyStatic(copy_static) => {
+    //                 TaskRunner::<CopyStatic>(copy_static).on_change(task_context, specifier)
+    //             }
+    //         };
+
+    //         if let Err(e) = res {
+    //             eprintln!("Error while running task: {e}");
+    //         }
+    //     }
+    //     Ok(0)
+    // }
+}
+
+impl<'a> Default for BlnTasks<'a> {
+    fn default() -> BlnTasks<'a> {
+        let tasks = vec![
+            RenderBuilder::new("index", "index.tera", "index.html")
+                .input(&[
+                    Input::Pattern("content/notes/*.md"),
+                    Input::PatternWithAggregate("data/feed.csv", &bln_input_feed_aggregate_all),
+                ])
+                .template_vars(Aggregator::Merge(&[
+                    Aggregate::Category("index", &collect_articles),
+                    Aggregate::Category("feed", &parse_feed),
+                    Aggregate::Categories(
+                        "tags",
+                        &[("index", &extract_tags), ("feed", &extract_tags_from_feed)],
+                    ),
+                ]))
+                .add_to_context(&inject_photo_data)
+                .build()
+                .into(),
+            RenderBuilder::new("tags", "tags/base.tera", "tags/[slug].html")
+                .input(&[
+                    Input::PatternWithAggregate(
+                        "content/notes/*.md",
+                        &bln_input_aggregate_by_category,
+                    ),
+                    Input::PatternWithAggregate(
+                        "data/feed.csv",
+                        &bln_parse_csv_aggregate_by_category,
+                    ),
+                ])
+                .template_vars(Aggregator::Reduce(&|srcs| {
+                    let mut vec = Vec::new();
+
+                    for src in srcs {
+                        vec.push((src.0.to_string(), tera::Context::new()));
+                    }
+
+                    vec
+                }))
+                .build()
+                .into(),
+            RenderBuilder::new("notes", "notes/[slug].tera", "notes/[slug].html")
+                .input(&[Input::Pattern("content/notes/*.md")])
+                .template_vars(Aggregator::None(&[("notes", &extract_front_matter)]))
+                .build()
+                .into(),
+            RenderBuilder::new("notes_index", "notes.tera", "notes.html")
+                .input(&[Input::Pattern("content/notes/*.md")])
+                .template_vars(Aggregator::Merge(&[Aggregate::Category(
+                    "notes_index",
+                    &collect_articles,
+                )]))
+                .build()
+                .into(),
+            RenderBuilder::new_template_only("about").build().into(),
+            RenderBuilder::new_template_only("garage").build().into(),
+            RenderBuilder::new("feed", "feed.tera", "feed.html")
+                .input(&[Input::Pattern("data/feed.csv")])
+                .template_vars(Aggregator::Merge(&[Aggregate::Category(
+                    "feed",
+                    &parse_feed,
+                )]))
+                .build()
+                .into(),
+            RenderBuilder::new_template_only("photostream")
+                .add_to_context(&inject_photo_data)
+                .build()
+                .into(),
+            // Css {
+            //     input_pattern: "styles.css".into(),
+            //     output: "styles.css".into(),
+            // }
+            // .into(),
+            // CopyStatic {
+            //     output: "static/{file}".into(),
+            // }
+            // .into(),
+        ];
+
+        BlnTasks::<'a>(tasks)
+    }
+}
+
+// #[test]
+// fn builder_test() {
+//     let render = Render {
+//         name: "test".into(),
+//         inputs: Vec::new(),
+//         template: "template.tera".into(),
+//         template_vars_aggregate: None,
+//         template_vars: None,
+//         output: "out.html".into(),
+//         render: None,
+//     };
+
+//     let render_from_builder = RenderBuilder::new("test", "template.tera", "out.html").build();
+//     assert!(render == render_from_builder);
+// }

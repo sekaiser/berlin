@@ -1,0 +1,48 @@
+[package]
+name = "linkedin-http"
+version = "0.0.0"
+
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+description = "Http compatability layer for LinkedIn"
+
+
+[dependencies]
+async-trait = { version = "0.1.68", optional = true }
+log.workspace = true
+maybe-async = "0.2.7"
+thiserror = "1.0.40"
+serde_json.workspace = true
+
+# Supported clients
+reqwest = { version = "0.11.16", default-features = false, features = ["json", "socks"], optional = true }
+ureq = { version = "2.6.2", default-features = false, features = ["json", "cookies"], optional = true }
+
+
+[dev-dependencies]
+tokio.workspace = true
+linkedin-model.workspace = true
+
+[features]
+default = ["client-reqwest", "reqwest-default-tls"]
+
+# Available clients. By default they don't include a TLS so that it can be
+# configured.
+client-ureq = ["ureq", "__sync"]
+client-reqwest = ["reqwest", "__async"]
+
+# Passing the TLS features to reqwest.
+reqwest-default-tls = ["reqwest/default-tls"]
+reqwest-rustls-tls = ["reqwest/rustls-tls"]
+reqwest-native-tls = ["reqwest/native-tls"]
+reqwest-native-tls-vendored = ["reqwest/native-tls-vendored"]
+# Same for ureq.
+ureq-rustls-tls = ["ureq/tls"]
+ureq-rustls-tls-native-certs = ["ureq/tls", "ureq/native-certs"]
+
+# Internal features for checking async or sync compilation
+__async = ["async-trait"]
+__sync = ["maybe-async/is_sync"]
