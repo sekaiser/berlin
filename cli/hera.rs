@@ -1,6 +1,7 @@
 use berlin_core::anyhow::Error;
 use berlin_core::error::generic_error;
 use berlin_core::ParsedSource;
+use std::ops::Range;
 use std::path::PathBuf;
 use tera::Tera;
 
@@ -67,10 +68,26 @@ impl tera::Function for Content {
         &self,
         _args: &std::collections::HashMap<String, tera::Value>,
     ) -> tera::Result<tera::Value> {
-        Ok(tera::Value::String(self.0.clone()))
+        let mut content = self.0.clone();
+
+        Ok(tera::Value::String(content))
     }
 
     fn is_safe(&self) -> bool {
         true
     }
 }
+
+// #[cfg(test)]
+// mod tests {
+
+//     use super::*;
+//     #[test]
+//     fn test_something() {
+//         let content = r#"{{< figure src="/pics/athletics_db_excerpt.png" caption="<span class=\"figure-number\">Figure 1: </span>This is the caption for the next figure link (or table)" >}}"#;
+//         if let Ok((name, shortcodes)) = parse_for_shortcodes(content) {
+//             println!("shortcode_name={name}");
+//             println!("shortcodes={shortcodes:?}");
+//         }
+//     }
+// }

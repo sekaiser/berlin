@@ -1,0 +1,54 @@
+// Partly taken from Tera
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+/// LITERALS
+int   = @{ "-" ? ~ ("0" | '1'..'9' ~ '0'..'9' * ) }
+float = @{
+    "-" ? ~
+    (
+        "0" ~ "." ~ '0'..'9' + |
+        '1'..'9' ~ '0'..'9' * ~ "." ~ '0'..'9' +
+    )
+}
+// matches anything between 2 double quotes
+double_quoted_string  = @{ "\"" ~ (!("\"") ~ inner_chr)* ~ "\""}
+// matches anything between 2 single quotes
+single_quoted_string  = @{ "\'" ~ (!("\'") ~ inner_chr)* ~ "\'"}
+// matches anything between 2 backquotes\backticks
+backquoted_quoted_string  = @{ "`" ~ (!("`") ~ inner_chr)* ~ "`"}
+/// An escape sequence.
+escape = @{ "\\" ~ ("\"" | "\\" | "r" | "n" | "t" | "0" | "'") }
+/// An escaped or any character.
+inner_chr = @{ escape | ANY }
+
+string = @{
+    double_quoted_string |
+    single_quoted_string |
+    backquoted_quoted_string
+}
+
+boolean = { "true" | "false" }
+
+literal = { boolean | string | float | int | array }
+array = { "[" ~ (literal  ~ ",")* ~ literal? ~ "]"}
+
+/// Idents
+
+all_chars = _{'a'..'z' | 'A'..'Z' | "_" | '0'..'9'}
+ident = @{
+    ('a'..'z' | 'A'..'Z' | "_") ~
+    all_chars*
+}
+
+/// Now specific to Berlin
+kwarg   = { ident ~ "=" ~ literal }
+kwargs  = _{ kwarg ~ (" " ~ kwarg )* }
+sc_def  = _{ ident ~ kwargs* }
+inline_shortcode         = !{ "{{<" ~ sc_def ~ ">}}" }
+
+content = _{
+    inline_shortcode | ANY
+}
+
+
+page = ${ SOI ~ content* ~ EOI }

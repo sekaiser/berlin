@@ -170,7 +170,14 @@ pub fn extract_front_matter(source: &ParsedSource) -> (String, ParsedSource, ter
             if let (k, Some(val)) = x {
                 let key = format!("page_{k}");
                 match k {
-                    "tags" => context.insert(key, &val.downcast_ref::<Vec<String>>()),
+                    "tags" => {
+                        if let Some(tags) = val.downcast_ref::<Vec<String>>() {
+                            context.insert(
+                                key,
+                                &tags.iter().map(|t| Tag::new(t)).collect::<Vec<Tag>>(),
+                            );
+                        }
+                    }
                     _ => context.insert(key, &val.downcast_ref::<String>()),
                 }
             }
