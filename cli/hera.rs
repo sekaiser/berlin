@@ -1,7 +1,6 @@
 use berlin_core::anyhow::Error;
 use berlin_core::error::generic_error;
 use berlin_core::ParsedSource;
-use std::ops::Range;
 use std::path::PathBuf;
 use tera::Tera;
 

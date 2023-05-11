@@ -182,6 +182,14 @@ pub fn extract_front_matter(source: &ParsedSource) -> (String, ParsedSource, ter
                 }
             }
         }
+        context.insert(
+            "description",
+            &front_matter.tags.as_ref().unwrap_or(&vec![]).join(","),
+        );
+        context.insert(
+            "title",
+            &front_matter.title.as_ref().unwrap_or(&"".to_string()),
+        );
     }
 
     let path = resolve_path(source.specifier()).expect("Path is invalid!");

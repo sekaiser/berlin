@@ -31,3 +31,4 @@ serde_yaml.workspace = true
 tera.workspace = true
 termcolor = "1.2.0"
 warp = "0.3.3"
+markdown.workspace = true
