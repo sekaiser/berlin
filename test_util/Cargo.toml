@@ -7,9 +7,7 @@ license.workspace = true
 publish = false
 repository.workspace = true
 
+[lib]
+doctest = false
 
 [dependencies]
-anyhow.workspace = true
-once_cell.workspace = true
-serde.workspace = true
-toml.workspace = true

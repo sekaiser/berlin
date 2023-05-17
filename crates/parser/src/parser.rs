@@ -1,10 +1,6 @@
 use berlin_core::anyhow::Error;
 use berlin_core::error::generic_error;
 use berlin_core::{MediaType, ModuleSpecifier, ParsedSource};
-use lightningcss::bundler::{Bundler, FileProvider};
-use lightningcss::css_modules::{Config, Pattern};
-use lightningcss::stylesheet::{MinifyOptions, ParserOptions, PrinterOptions};
-use pandoc::{InputFormat, InputKind, OutputFormat, OutputKind, PandocOption, PandocOutput};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
@@ -141,28 +137,14 @@ impl Parser for DefaultOrgParser {
         source: Arc<str>,
         media_type: MediaType,
     ) -> Result<ParsedSource, Error> {
-        let mut pandoc = pandoc::new();
-        pandoc.set_input(InputKind::Pipe(source.as_ref().to_owned()));
-        pandoc.add_option(PandocOption::Standalone);
-        let filter = std::env::current_dir()?
-            .parent()
-            .unwrap()
-            .join("filters")
-            .join("test.lua");
-        pandoc.add_option(PandocOption::LuaFilter(filter));
-        pandoc.set_input_format(InputFormat::Org, vec![]);
-        pandoc.set_output_format(OutputFormat::Other("gfm".to_string()), vec![]);
-        pandoc.set_output(OutputKind::Pipe);
-
-        if let PandocOutput::ToBuffer(data) = pandoc.execute()? {
-            let parser = DefaultMarkdownParser {};
-            return parser.parse(specifier, Arc::from(data), media_type);
-        } else {
-            return Err(generic_error(format!(
-                "Cannot convert file {} to {}",
+        match org::parse(source) {
+            Ok(data) => DefaultMarkdownParser {}.parse(specifier, Arc::from(data), media_type),
+            Err(e) => Err(generic_error(format!(
+                "Cannot convert file {} to {}\nReason: {}",
                 specifier,
-                MediaType::Markdown
-            )));
+                MediaType::Markdown,
+                e.to_string()
+            ))),
         }
     }
 }
@@ -176,7 +158,6 @@ impl Parser for DefaultMarkdownParser {
     ) -> Result<ParsedSource, Error> {
         let (maybe_frontmatter, data) =
             markdown::markdown_to_html(source, markdown::MarkdownOptions::default());
-
         markdown::to_parsed_source(specifier, MediaType::Html, maybe_frontmatter, data)
     }
 }
@@ -205,26 +186,12 @@ impl Parser for DefaultCssParser {
         _source: Arc<str>,
         _media_type: MediaType,
     ) -> Result<ParsedSource, Error> {
-        let fs = FileProvider::new();
-        let parser_options = ParserOptions {
-            css_modules: Some(Config {
-                pattern: Pattern::parse("[local]")?,
-                dashed_idents: true,
-            }),
-            ..ParserOptions::default()
-        };
-        let mut bundler = Bundler::new(&fs, None, parser_options);
-        let mut stylesheet = bundler
-            .bundle(&Path::new(&specifier.path().to_string()))
-            .unwrap();
-        stylesheet.minify(MinifyOptions::default())?;
-        let res = stylesheet.to_css(PrinterOptions {
-            minify: true,
-            ..PrinterOptions::default()
-        })?;
-
+        let specifier_string = specifier.to_string();
+        let specifier_path_string = specifier.path().to_string();
+        let path = Path::new(&specifier_path_string);
+        let res = css::to_css(path)?;
         let parsed_source =
-            ParsedSource::new(specifier.to_string(), MediaType::Css, Some(res.code), None);
+            ParsedSource::new(specifier_string, MediaType::Css, Some(res.code), None);
         Ok(parsed_source)
     }
 }

@@ -1,0 +1,18 @@
+[package]
+name = "parser"
+version = "0.0.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+description = "Parser package"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+berlin_core.workspace = true
+css.workspace = true
+markdown.workspace = true
+org.workspace = true

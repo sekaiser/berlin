@@ -104,35 +104,40 @@ pub fn parse_for_shortcodes(content: &str) -> Result<(String, Vec<Shortcode>), E
     };
 
     for p in pairs.next().unwrap().into_inner() {
-        if let Rule::inline_shortcode = p.as_rule() {
-            let span = p.as_span();
-            let (name, args) = parse_shortcode_call(p);
-            output.push_str(&name);
-            let mut args_copy = args.clone();
-            let mut src = args_copy
-                .get_mut("src")
-                .unwrap()
-                .as_str()
-                .unwrap()
-                .to_string();
-            let mut caption = args_copy
-                .get_mut("caption")
-                .unwrap()
-                .as_str()
-                .unwrap()
-                .to_string();
+        match p.as_rule() {
+            Rule::inline_shortcode | Rule::ignored_inline_shortcode => {
+                let span = p.as_span();
+                let (name, args) = parse_shortcode_call(p);
+                output.push_str(&name);
+                let mut args_copy = args.clone();
+                let src = args_copy
+                    .get_mut("src")
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+                    .replace("\"", "");
 
-            src = src.replace("\"", "");
-            caption = caption.replace("\"", "");
+                let template = if let Some(caption) = args_copy.get_mut("caption") {
+                    let caption = caption.as_str().unwrap().to_string().replace("\"", "");
 
-            shortcodes.push(Shortcode {
-                name,
-                args,
-                span: span.start()..span.end(),
-                body: Some(format!(
-                    r#"<figure><img style="max-width:100%;" src="/static{src}""><figcaption>{caption}<figcaption></figure>"#
-                )),
-            });
+                    format!(
+                        r#"<figure><img style="max-width:100%;" src="/static{src}"><figcaption>{caption}</figcaption></figure>"#,
+                    )
+                } else {
+                    format!(
+                        r#"<img style="width:456px;margin-top:5px;margin-bottom:5px;" src="{src}">"#
+                    )
+                };
+
+                shortcodes.push(Shortcode {
+                    name,
+                    args,
+                    span: span.start()..span.end(),
+                    body: Some(template.to_string()),
+                });
+            }
+            _ => {}
         }
     }
 

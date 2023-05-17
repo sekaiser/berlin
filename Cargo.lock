@@ -127,11 +127,12 @@ dependencies = [
  "fnmatch-regex",
  "futures",
  "glob",
- "lazy_static",
  "lightningcss",
  "log",
+ "markdown",
  "notify",
  "once_cell",
+ "parser",
  "percent-encoding",
  "regex",
  "serde",
@@ -145,7 +146,7 @@ dependencies = [
 
 [[package]]
 name = "berlin_core"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "anyhow",
  "parking_lot",
@@ -162,16 +163,14 @@ version = "0.1.0"
 dependencies = [
  "atty",
  "berlin_core",
- "comrak",
+ "css",
  "csv",
  "futures",
  "lazy_static",
- "lightningcss",
  "markdown",
  "once_cell",
+ "org",
  "pandoc",
- "pest",
- "pest_derive",
  "regex",
  "rusqlite",
  "serde_yaml",
@@ -547,6 +546,14 @@ checksum = "1bfb12502f3fc46cca1bb51ac28df9d618d813cdc3d2f25b9fe775a34af26bb3"
 dependencies = [
  "generic-array",
  "typenum",
+]
+
+[[package]]
+name = "css"
+version = "0.0.0"
+dependencies = [
+ "berlin_core",
+ "lightningcss",
 ]
 
 [[package]]
@@ -1874,6 +1881,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "org"
+version = "0.0.0"
+dependencies = [
+ "berlin_core",
+ "pandoc",
+]
+
+[[package]]
 name = "os_str_bytes"
 version = "6.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1954,6 +1969,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c705f256449c60da65e11ff6626e0c16a0a0b96aaa348de61376b249bc340f41"
 dependencies = [
  "regex",
+]
+
+[[package]]
+name = "parser"
+version = "0.0.0"
+dependencies = [
+ "berlin_core",
+ "css",
+ "markdown",
+ "org",
 ]
 
 [[package]]
@@ -3014,12 +3039,6 @@ dependencies = [
 [[package]]
 name = "test_util"
 version = "0.1.0"
-dependencies = [
- "anyhow",
- "once_cell",
- "serde",
- "toml",
-]
 
 [[package]]
 name = "thiserror"

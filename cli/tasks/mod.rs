@@ -20,8 +20,8 @@ use berlin_core::anyhow::Context;
 use berlin_core::MediaType;
 use berlin_core::ParsedSource;
 use berlin_core::{anyhow::Error, ModuleSpecifier};
-use berlin_runtime::parser::CapturingParser;
-use berlin_runtime::parser::Parser;
+use parser::CapturingParser;
+use parser::Parser;
 
 use crate::proc_state::ProcState;
 

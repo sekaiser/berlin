@@ -15,12 +15,13 @@ doc = false
 
 [dependencies]
 atty.workspace = true
+markdown.workspace = true
+parser.workspace = true
 berlin_core.workspace = true
 berlin_runtime.workspace = true
 csv.workspace = true
 fnmatch-regex = "0.2.0"
 futures = { version = "0.3.16" }
-lazy_static = "1.4"
 lightningcss.workspace = true
 log = { workspace = true, features = ["serde"] }
 notify.workspace = true

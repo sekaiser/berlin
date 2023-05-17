@@ -190,6 +190,12 @@ pub fn extract_front_matter(source: &ParsedSource) -> (String, ParsedSource, ter
             "title",
             &front_matter.title.as_ref().unwrap_or(&"".to_string()),
         );
+        if let Some(id) = front_matter.id.as_ref() {
+            context.insert(
+                "og_image_path",
+                &format!("/static/pics/notes/{id}/article_image.png"),
+            );
+        }
     }
 
     let path = resolve_path(source.specifier()).expect("Path is invalid!");
@@ -320,6 +326,7 @@ impl FromParsedSource<Article> for Article {
                 title,
                 description,
                 published,
+                ..
             } = front_matter;
 
             let mut parsed_tags: Vec<Tag> = Vec::new();
@@ -335,6 +342,8 @@ impl FromParsedSource<Article> for Article {
                 .expect(&err_msg("author"));
             let title = title.as_ref().expect(&err_msg("title")).clone();
             let description = description.as_ref().expect(&err_msg("description")).clone();
+            let description =
+                markdown::string_to_html(&description, &markdown::MarkdownOptions::default());
             let date = published.as_ref().expect(&err_msg("date")).clone();
             let target = format!("/notes/{}.html", slugify!(&title));
             return Ok(Article {

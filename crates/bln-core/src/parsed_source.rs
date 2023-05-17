@@ -19,6 +19,7 @@ pub struct FrontMatter {
     pub author: Option<Vec<String>>,
     pub description: Option<String>,
     pub tags: Option<Vec<String>>,
+    pub id: Option<String>,
 }
 
 impl FrontMatter {
@@ -55,6 +56,13 @@ impl FrontMatter {
             (
                 "author",
                 self.author
+                    .clone()
+                    .map(|v| Box::new(v) as Box<dyn Any>)
+                    .or(None),
+            ),
+            (
+                "id",
+                self.id
                     .clone()
                     .map(|v| Box::new(v) as Box<dyn Any>)
                     .or(None),

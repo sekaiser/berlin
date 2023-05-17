@@ -45,9 +45,10 @@ kwarg   = { ident ~ "=" ~ literal }
 kwargs  = _{ kwarg ~ (" " ~ kwarg )* }
 sc_def  = _{ ident ~ kwargs* }
 inline_shortcode         = !{ "{{<" ~ sc_def ~ ">}}" }
+ignored_inline_shortcode        = !{ "{{</*" ~ sc_def ~ "*/>}}" }
 
 content = _{
-    inline_shortcode | ANY
+    inline_shortcode | ignored_inline_shortcode | ANY
 }
 
 

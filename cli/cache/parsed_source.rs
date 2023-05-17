@@ -2,7 +2,7 @@ use berlin_core::parking_lot::Mutex;
 use berlin_core::ModuleSpecifier;
 use berlin_core::ParsedSource;
 
-use berlin_runtime::parser::{CapturingParser, ParsedSourceStore};
+use parser::{CapturingParser, ParsedSourceStore};
 
 use std::collections::HashMap;
 use std::path::PathBuf;

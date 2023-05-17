@@ -52,6 +52,8 @@ fn initialize_context(
             context.insert("linkedin", &profiles_config.linkedin);
             context.insert("github", &profiles_config.github);
             context.insert("twitter", &profiles_config.twitter);
+            context.insert("og_image_path", "");
+            context.insert("me", &profiles_config.linkedin);
         }
     }
     Ok(context)

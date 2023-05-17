@@ -1,6 +1,5 @@
 use crate::shortcode::parse_for_shortcodes;
 use berlin_core::anyhow::Error;
-use berlin_core::error::generic_error;
 use berlin_core::{FrontMatter, MediaType, ModuleSpecifier, ParsedSource};
 use comrak::nodes::{AstNode, NodeValue};
 use comrak::plugins::syntect::SyntectAdapter;
@@ -35,7 +34,18 @@ impl MarkdownOptions {
 }
 
 pub fn handle_shortcodes(content: &mut String) {
-    if let Ok((name, shortcodes)) = parse_for_shortcodes(&content) {
+    if let Ok((_name, mut shortcodes)) = parse_for_shortcodes(&content) {
+        // the ranges of the shortcodes are computed based on the original file
+        // and differences in ranges after a rendering step of a short code
+        // are not considered.
+        // So applying the shortcodes sequentially without taking the
+        // change of ranges into considerations leads to malformed output.
+        // We could add logic to update the ranges by an offset that gets updated
+        // after the application of each shortcode
+        // OR
+        // we simply reverse the array and update the file bottom-up instead of
+        // top-down.
+        shortcodes.reverse();
         for sc in shortcodes {
             if let Some(ref body) = sc.body {
                 content.replace_range(sc.span, body);
@@ -69,6 +79,18 @@ fn extract_front_matter(markdown: &str) -> Option<FrontMatter> {
     } else {
         Some(serde_yaml::from_str::<FrontMatter>(&front_matter).unwrap())
     }
+}
+
+pub fn string_to_html(source: &String, options: &ComrakOptions) -> String {
+    let mut content = source.to_string();
+    handle_shortcodes(&mut content);
+
+    let arena = Arena::new();
+    let mut html = Vec::new();
+    let plugins = ComrakPlugins::default();
+    let root = parse_document(&arena, &content, &options);
+    format_html_with_plugins(root, &options, &mut html, &plugins).unwrap();
+    String::from_utf8(html).unwrap()
 }
 
 pub fn markdown_to_html(

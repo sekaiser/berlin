@@ -1,0 +1,17 @@
+[package]
+name = "org"
+version = "0.0.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+description = "Org package"
+
+[lib]
+path = "src/lib.rs"
+
+
+[dependencies]
+berlin_core.workspace = true
+pandoc = "0.8.10"
