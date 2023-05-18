@@ -28,6 +28,7 @@ use crate::proc_state::ProcState;
 use self::copy_static::CopyStatic;
 use self::css::Css;
 use self::functions::bln_input_aggregate_all;
+use self::functions::bln_input_sort_by_date_published;
 use self::functions::collect_by_tag;
 
 pub mod copy_static;
@@ -218,7 +219,10 @@ impl DefaultTask {
         let tasks: &[&dyn WatchableTask] = &[
             &RenderBuilder::new("index", "index.tera", "index.html")
                 .input(&[
-                    Input::Pattern("content/notes/*.md"),
+                    Input::PatternWithAggregate(
+                        "content/notes/*.md",
+                        &bln_input_sort_by_date_published,
+                    ),
                     Input::PatternWithAggregate("data/feed.csv", &bln_input_feed_aggregate_all),
                 ])
                 .template_vars(Aggregator::Merge(&[
@@ -255,7 +259,10 @@ impl DefaultTask {
                 .template_vars(Aggregator::None(&[("notes", &extract_front_matter)]))
                 .build(),
             &RenderBuilder::new("notes_index", "notes.tera", "notes.html")
-                .input(&[Input::Pattern("content/notes/*.md")])
+                .input(&[Input::PatternWithAggregate(
+                    "content/notes/*.md",
+                    &bln_input_sort_by_date_published,
+                )])
                 .template_vars(Aggregator::Merge(&[Aggregate::Category(
                     "notes_index",
                     &collect_articles,

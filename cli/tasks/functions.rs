@@ -10,8 +10,29 @@ use slugify::slugify;
 
 use super::{
     model::{Article, Feed, Picture, Record, Tag},
-    AggregatedSources, SortFn,
+    AggregatedSources, InputAggregate, SortFn,
 };
+
+pub fn bln_input_sort_by_date_published(
+    name: &str,
+    sources: &[ParsedSource],
+    _sort_fn: Option<SortFn>,
+) -> AggregatedSources {
+    let sort_fn: SortFn = Box::new(|a, b| {
+        let published_a = a
+            .front_matter()
+            .map(|f| f.published.as_ref().unwrap())
+            .unwrap();
+        let published_b = b
+            .front_matter()
+            .map(|f| f.published.as_ref().unwrap())
+            .unwrap();
+
+        published_b.cmp(&published_a)
+    });
+
+    bln_input_aggregate_all(name, sources, Some(sort_fn))
+}
 
 pub fn bln_input_aggregate_all(
     name: &str,

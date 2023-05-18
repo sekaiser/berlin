@@ -1,5 +1,6 @@
 use crate::shortcode::parse_for_shortcodes;
 use berlin_core::anyhow::Error;
+use berlin_core::serde::Deserialize;
 use berlin_core::{FrontMatter, MediaType, ModuleSpecifier, ParsedSource};
 use comrak::nodes::{AstNode, NodeValue};
 use comrak::plugins::syntect::SyntectAdapter;
@@ -54,33 +55,6 @@ pub fn handle_shortcodes(content: &mut String) {
     }
 }
 
-fn extract_front_matter(markdown: &str) -> Option<FrontMatter> {
-    let mut front_matter = String::default();
-    let mut sentinel = false;
-    let lines = markdown.lines();
-    for line in lines.clone() {
-        if line.trim() == "---" {
-            if sentinel {
-                break;
-            }
-
-            sentinel = true;
-            continue;
-        }
-
-        if sentinel {
-            front_matter.push_str(line);
-            front_matter.push('\n');
-        }
-    }
-
-    if front_matter.is_empty() {
-        None
-    } else {
-        Some(serde_yaml::from_str::<FrontMatter>(&front_matter).unwrap())
-    }
-}
-
 pub fn string_to_html(source: &String, options: &ComrakOptions) -> String {
     let mut content = source.to_string();
     handle_shortcodes(&mut content);
@@ -104,21 +78,29 @@ pub fn markdown_to_html(
         format!("[{}](/notes/{}.html)", &caps["label"], &caps["name"])
     });
 
-    let maybe_front_matter = extract_front_matter(&preprocessed_source);
+    let mut maybe_front_matter = None;
     let arena = Arena::new();
     let root = parse_document(&arena, &preprocessed_source, &options);
 
-    fn iter_nodes<'a, F>(node: &'a AstNode<'a>, f: &F)
+    fn iter_nodes<'a, F>(node: &'a AstNode<'a>, f: &mut F)
     where
-        F: Fn(&'a AstNode<'a>),
+        F: FnMut(&'a AstNode<'a>),
     {
         f(node);
-        for c in node.children() {
+        for ref mut c in node.children() {
             iter_nodes(c, f);
         }
     }
 
-    iter_nodes(root, &|node| {
+    iter_nodes(root, &mut |node| {
+        if let NodeValue::FrontMatter(ref mut text) = node.data.borrow_mut().value {
+            let mut documents = serde_yaml::Deserializer::from_slice(text);
+            let document = documents.nth(1).unwrap();
+            maybe_front_matter = match FrontMatter::deserialize(document) {
+                Ok(fm) => Some(fm),
+                Err(_) => None,
+            }
+        }
         if let NodeValue::Text(ref mut text) = node.data.borrow_mut().value {
             if let Some(parent) = node.parent().borrow_mut() {
                 // ox-hugo generates anchor links of the form `# Header {#header},

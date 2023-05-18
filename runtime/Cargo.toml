@@ -14,11 +14,9 @@ path = "lib.rs"
 [dependencies]
 atty.workspace = true
 berlin_core.workspace = true
-csv.workspace = true
 futures = { version = "0.3.16" }
 lazy_static = "1"
 once_cell.workspace = true
-pandoc = "0.8.10"
 regex.workspace = true
 rusqlite.workspace = true
 tokio.workspace = true
@@ -27,6 +25,3 @@ serde_yaml.workspace = true
 tera.workspace = true
 termcolor = "1.2.0"
 warp = "0.3.3"
-css.workspace = true
-markdown.workspace = true
-org.workspace = true
