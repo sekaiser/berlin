@@ -11,7 +11,8 @@ use crate::tasks::WatchableTask;
 use std::fmt;
 use std::{path::PathBuf, process::exit};
 
-use berlin_core::{anyhow::Error, resolve_path, ModuleSpecifier, ParsedSource};
+use berlin_core::{resolve_path, ModuleSpecifier, ParsedSource};
+use errors::anyhow::Error;
 
 use crate::{args::ConfigFile, proc_state::ProcState};
 

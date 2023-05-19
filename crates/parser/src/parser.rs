@@ -1,6 +1,6 @@
-use berlin_core::anyhow::Error;
-use berlin_core::error::generic_error;
 use berlin_core::{MediaType, ModuleSpecifier, ParsedSource, ParsedSourceBuilder};
+use errors::anyhow::Error;
+use errors::error::generic_error;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;

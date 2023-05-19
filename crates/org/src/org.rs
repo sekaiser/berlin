@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use berlin_core::{anyhow::Error, error::generic_error};
+use errors::anyhow::Error;
+use errors::error::generic_error;
 use pandoc::{InputFormat, InputKind, OutputFormat, OutputKind, PandocOption, PandocOutput};
 
 pub fn parse(source: Arc<str>) -> Result<String, Error> {

@@ -1,6 +1,6 @@
-use berlin_core::anyhow::Error;
-use berlin_core::error::generic_error;
 use berlin_core::ParsedSource;
+use errors::anyhow::Error;
+use errors::error::generic_error;
 use std::path::PathBuf;
 use tera::Tera;
 

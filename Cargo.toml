@@ -14,6 +14,7 @@ repository = "https://github.com/mttrbit/berlin"
 
 [workspace.dependencies]
 berlin_core = { path = "./crates/bln-core", version = "0.0.0" }
+errors = { path = "./crates/errors", version = "0.0.0" }
 css = { path = "./crates/css", version = "0.0.0" }
 markdown = { path = "./crates/markdown", version = "0.0.0" }
 org = { path = "./crates/org", version = "0.0.0" }

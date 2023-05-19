@@ -124,6 +124,7 @@ dependencies = [
  "clap",
  "csv",
  "env_logger",
+ "errors",
  "fnmatch-regex",
  "futures",
  "glob",
@@ -148,7 +149,7 @@ dependencies = [
 name = "berlin_core"
 version = "0.0.0"
 dependencies = [
- "anyhow",
+ "errors",
  "parking_lot",
  "petgraph",
  "regex",
@@ -547,7 +548,7 @@ dependencies = [
 name = "css"
 version = "0.0.0"
 dependencies = [
- "berlin_core",
+ "errors",
  "lightningcss",
 ]
 
@@ -793,6 +794,13 @@ checksum = "aa68f1b12764fab894d2755d2518754e71b4fd80ecfb822714a1206c2aab39bf"
 dependencies = [
  "cc",
  "libc",
+]
+
+[[package]]
+name = "errors"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
 ]
 
 [[package]]
@@ -1609,6 +1617,7 @@ version = "0.0.0"
 dependencies = [
  "berlin_core",
  "comrak",
+ "errors",
  "lazy_static",
  "pest",
  "pest_derive",
@@ -1879,7 +1888,7 @@ dependencies = [
 name = "org"
 version = "0.0.0"
 dependencies = [
- "berlin_core",
+ "errors",
  "pandoc",
 ]
 
@@ -1972,6 +1981,7 @@ version = "0.0.0"
 dependencies = [
  "berlin_core",
  "css",
+ "errors",
  "markdown",
  "org",
 ]

@@ -3,10 +3,9 @@ use std::{
     ops::DerefMut,
 };
 
-use berlin_core::{
-    anyhow::Error, error::generic_error, resolve_path, FrontMatter, MediaType, ParsedSource,
-    ParsedSourceBuilder,
-};
+use berlin_core::{resolve_path, FrontMatter, MediaType, ParsedSource, ParsedSourceBuilder};
+use errors::anyhow::Error;
+use errors::error::generic_error;
 use slugify::slugify;
 
 use super::{
@@ -175,10 +174,8 @@ fn feed_item_to_parsed_source(
     specifier: &str,
     media_type: &MediaType,
 ) -> ParsedSource {
-    let maybe_json = feed.to_json_string().ok();
-
     ParsedSourceBuilder::new(specifier.to_string(), media_type.to_owned())
-        .maybe_content(maybe_json)
+        .maybe_content(feed.to_json_string().ok())
         .build()
 }
 
@@ -325,12 +322,7 @@ pub trait FromParsedSource<T>: Sized {
 
 impl ToFeed for Vec<ParsedSource> {
     fn to_feed_vec(&self) -> Result<Vec<Feed>, Error> {
-        let mut feed: Vec<Feed> = Vec::new();
-        for src in self {
-            let feed_item: Feed = serde_json::from_str(src.data())?;
-            feed.push(feed_item);
-        }
-        Ok(feed)
+        Ok(self.iter().map(Feed::from).collect::<Vec<Feed>>())
     }
 }
 

@@ -18,6 +18,7 @@ comrak = "0.16"
 pest = "2.6.0"
 pest_derive = "2.6.0"
 berlin_core.workspace = true
+errors.workspace = true
 serde_yaml.workspace = true
 tera.workspace = true
 regex.workspace = true

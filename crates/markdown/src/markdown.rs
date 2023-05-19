@@ -1,7 +1,6 @@
 use crate::shortcode::parse_for_shortcodes;
-use berlin_core::anyhow::Error;
 use berlin_core::serde::Deserialize;
-use berlin_core::{FrontMatter, MediaType, ModuleSpecifier, ParsedSource};
+use berlin_core::FrontMatter;
 use comrak::nodes::{AstNode, NodeValue};
 use comrak::plugins::syntect::SyntectAdapter;
 use comrak::{format_html_with_plugins, parse_document, Arena, ComrakOptions, ComrakPlugins};

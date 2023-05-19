@@ -1,6 +1,6 @@
+use berlin_core::ModuleSpecifier;
+use errors::anyhow::Error;
 use std::fmt;
-
-use berlin_core::{anyhow::Error, ModuleSpecifier};
 
 use crate::{proc_state::ProcState, util::fs::consume_files};
 

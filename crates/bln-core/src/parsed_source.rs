@@ -117,10 +117,6 @@ pub struct ParsedSourceBuilder {
     metadata: Option<Metadata>,
 }
 
-// pub enum ParsedSource {
-//     Markdown
-// }
-
 impl ParsedSourceBuilder {
     pub fn new(specifier: String, media_type: MediaType) -> Self {
         ParsedSourceBuilder {

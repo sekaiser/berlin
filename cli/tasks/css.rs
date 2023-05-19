@@ -1,6 +1,6 @@
+use berlin_core::{resolve_path, resolve_url_or_path, ModuleSpecifier};
+use errors::anyhow::Error;
 use std::{fmt, path::PathBuf};
-
-use berlin_core::{anyhow::Error, resolve_path, resolve_url_or_path, ModuleSpecifier};
 
 use crate::{proc_state::ProcState, util::path::specifier_to_file_path};
 

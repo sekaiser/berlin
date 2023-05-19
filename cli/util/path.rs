@@ -1,6 +1,6 @@
-use berlin_core::anyhow::Error;
-use berlin_core::error::uri_error;
 use berlin_core::ModuleSpecifier;
+use errors::anyhow::Error;
+use errors::error::uri_error;
 use std::path::PathBuf;
 
 // Attempts to convert a specifier to a file path. By default, uses the Url

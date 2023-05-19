@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use berlin_core::anyhow::Error;
-use berlin_core::error::generic_error;
+use errors::anyhow::Error;
+use errors::error::generic_error;
 
 use lightningcss::{
     bundler::{Bundler, FileProvider},

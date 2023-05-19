@@ -20,6 +20,7 @@ parser.workspace = true
 berlin_core.workspace = true
 berlin_runtime.workspace = true
 csv.workspace = true
+errors.workspace = true
 fnmatch-regex = "0.2.0"
 futures = { version = "0.3.16" }
 lightningcss.workspace = true

@@ -12,9 +12,9 @@ use crate::args::flags_from_vec;
 use crate::args::BerlinSubcommand;
 use crate::args::Flags;
 
-use berlin_core::anyhow::Error;
 use berlin_runtime::colors;
 use berlin_runtime::tokio_util::run_local;
+use errors::anyhow::Error;
 use std::env;
 
 async fn run_subcommand(flags: Flags) -> Result<i32, Error> {

@@ -1,4 +1,7 @@
-use berlin_core::{anyhow::Error, error::generic_error, url::Url};
+use errors::anyhow::Error;
+use errors::error::generic_error;
+
+use berlin_core::{url::Url, ParsedSource};
 use serde::{Deserialize, Deserializer, Serialize};
 
 #[derive(Serialize, Deserialize, Hash, Eq, PartialEq, Debug, PartialOrd, Ord, Clone)]
@@ -34,6 +37,12 @@ impl Feed {
                 e.to_string()
             ))
         })
+    }
+}
+
+impl From<&ParsedSource> for Feed {
+    fn from(value: &ParsedSource) -> Self {
+        serde_json::from_str(value.data()).unwrap()
     }
 }
 

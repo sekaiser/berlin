@@ -13,6 +13,7 @@ path = "src/lib.rs"
 
 [dependencies]
 berlin_core.workspace = true
+errors.workspace = true
 css.workspace = true
 markdown.workspace = true
 org.workspace = true

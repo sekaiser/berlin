@@ -1,4 +1,3 @@
-pub mod error;
 mod graph;
 mod media_type;
 mod module_specifier;
@@ -6,7 +5,6 @@ mod normalize_path;
 mod parsed_source;
 
 // Re-exports
-pub use anyhow;
 pub use parking_lot;
 pub use serde;
 pub use toml;

@@ -1,7 +1,6 @@
 use crate::args::InitFlags;
 use crate::colors;
-use berlin_core::anyhow::Context;
-use berlin_core::anyhow::Error;
+use errors::anyhow::{Context, Error};
 use log::info;
 use std::io::Write;
 use std::path::Path;
