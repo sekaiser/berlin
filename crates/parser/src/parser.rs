@@ -1,6 +1,6 @@
 use berlin_core::anyhow::Error;
 use berlin_core::error::generic_error;
-use berlin_core::{MediaType, ModuleSpecifier, ParsedSource};
+use berlin_core::{MediaType, ModuleSpecifier, ParsedSource, ParsedSourceBuilder};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
@@ -84,12 +84,9 @@ impl<'a> Parser for CapturingParser<'a> {
                     let parser = DefaultMarkdownParser::default();
                     parser.parse(specifier, source, media_type)?
                 }
-                MediaType::Tera => ParsedSource::new(
-                    specifier.to_string(),
-                    media_type,
-                    Some(source.as_ref().to_string()),
-                    None,
-                ),
+                MediaType::Tera => ParsedSourceBuilder::new(specifier.to_string(), media_type)
+                    .content(source.as_ref().to_string())
+                    .build(),
                 MediaType::Csv => {
                     let parser = DefaultCsvParser::default();
                     parser.parse(specifier, source, media_type)?
@@ -156,9 +153,16 @@ impl Parser for DefaultMarkdownParser {
         source: Arc<str>,
         _media_type: MediaType,
     ) -> Result<ParsedSource, Error> {
-        let (maybe_frontmatter, data) =
+        let (maybe_front_matter, data) =
             markdown::markdown_to_html(source, markdown::MarkdownOptions::default());
-        markdown::to_parsed_source(specifier, MediaType::Html, maybe_frontmatter, data)
+        let metadata = std::fs::metadata(Path::new(specifier.path()))?;
+        let parsed_source = ParsedSourceBuilder::new(specifier.to_string(), MediaType::Html)
+            .content(String::from_utf8(data).unwrap())
+            .maybe_front_matter(maybe_front_matter)
+            .metadata(metadata)
+            .build();
+
+        Ok(parsed_source)
     }
 }
 
@@ -169,12 +173,10 @@ impl Parser for DefaultCsvParser {
         source: Arc<str>,
         _media_type: MediaType,
     ) -> Result<ParsedSource, Error> {
-        let parsed_source = ParsedSource::new(
-            specifier.to_string(),
-            MediaType::Csv,
-            Some(source.to_string()),
-            None,
-        );
+        let parsed_source = ParsedSourceBuilder::new(specifier.to_string(), MediaType::Csv)
+            .content(source.to_string())
+            .build();
+
         Ok(parsed_source)
     }
 }
@@ -190,8 +192,10 @@ impl Parser for DefaultCssParser {
         let specifier_path_string = specifier.path().to_string();
         let path = Path::new(&specifier_path_string);
         let res = css::to_css(path)?;
-        let parsed_source =
-            ParsedSource::new(specifier_string, MediaType::Css, Some(res.code), None);
+        let parsed_source = ParsedSourceBuilder::new(specifier_string, MediaType::Css)
+            .content(res.code)
+            .build();
+
         Ok(parsed_source)
     }
 }

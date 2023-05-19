@@ -25,6 +25,7 @@ pub use media_type::MediaType;
 
 pub use parsed_source::FrontMatter;
 pub use parsed_source::ParsedSource;
+pub use parsed_source::ParsedSourceBuilder;
 
 pub use graph::Resolutions;
 pub use graph::ResolutionsBuilder;

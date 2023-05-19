@@ -5,12 +5,13 @@ use std::{
 
 use berlin_core::{
     anyhow::Error, error::generic_error, resolve_path, FrontMatter, MediaType, ParsedSource,
+    ParsedSourceBuilder,
 };
 use slugify::slugify;
 
 use super::{
     model::{Article, Feed, Picture, Record, Tag},
-    AggregatedSources, InputAggregate, SortFn,
+    AggregatedSources, SortFn,
 };
 
 pub fn bln_input_sort_by_date_published(
@@ -176,12 +177,9 @@ fn feed_item_to_parsed_source(
 ) -> ParsedSource {
     let maybe_json = feed.to_json_string().ok();
 
-    ParsedSource::new(
-        specifier.to_string(),
-        media_type.to_owned(),
-        maybe_json,
-        None,
-    )
+    ParsedSourceBuilder::new(specifier.to_string(), media_type.to_owned())
+        .maybe_content(maybe_json)
+        .build()
 }
 
 pub fn extract_front_matter(source: &ParsedSource) -> (String, ParsedSource, tera::Context) {

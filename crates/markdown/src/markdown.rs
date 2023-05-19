@@ -130,17 +130,3 @@ pub fn markdown_to_html(
 
     (maybe_front_matter, html)
 }
-
-pub fn to_parsed_source(
-    specifier: &ModuleSpecifier,
-    media_type: MediaType,
-    maybe_front_matter: Option<FrontMatter>,
-    data: Vec<u8>,
-) -> Result<ParsedSource, Error> {
-    Ok(ParsedSource::new(
-        specifier.to_string(),
-        media_type,
-        Some(String::from_utf8(data).unwrap()),
-        maybe_front_matter,
-    ))
-}
