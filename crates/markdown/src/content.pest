@@ -41,7 +41,7 @@ ident = @{
 }
 
 /// Now specific to Berlin
-kwarg   = { ident ~ "=" ~ literal }
+kwarg   = { ident ~ "=" ~ literal | string }
 kwargs  = _{ kwarg ~ (" " ~ kwarg )* }
 sc_def  = _{ ident ~ kwargs* }
 inline_shortcode         = !{ "{{<" ~ sc_def ~ ">}}" }

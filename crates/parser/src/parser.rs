@@ -1,6 +1,7 @@
 use berlin_core::{MediaType, ModuleSpecifier, ParsedSource, ParsedSourceBuilder};
 use errors::anyhow::Error;
 use errors::error::generic_error;
+use markdown::handle_shortcodes;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
@@ -77,23 +78,19 @@ impl<'a> Parser for CapturingParser<'a> {
         } else {
             let parsed_source = match media_type {
                 MediaType::Org => {
-                    let parser = DefaultOrgParser::default();
-                    parser.parse(specifier, source, media_type)?
+                    DefaultOrgParser::default().parse(specifier, source, media_type)?
                 }
                 MediaType::Markdown => {
-                    let parser = DefaultMarkdownParser::default();
-                    parser.parse(specifier, source, media_type)?
+                    DefaultMarkdownParser::default().parse(specifier, source, media_type)?
                 }
                 MediaType::Tera => ParsedSourceBuilder::new(specifier.to_string(), media_type)
                     .content(source.as_ref().to_string())
                     .build(),
                 MediaType::Csv => {
-                    let parser = DefaultCsvParser::default();
-                    parser.parse(specifier, source, media_type)?
+                    DefaultCsvParser::default().parse(specifier, source, media_type)?
                 }
                 MediaType::Css => {
-                    let parser = DefaultCssParser::default();
-                    parser.parse(specifier, source, media_type)?
+                    DefaultCssParser::default().parse(specifier, source, media_type)?
                 }
                 _ => unreachable!("Type not supported."),
             };
@@ -153,15 +150,19 @@ impl Parser for DefaultMarkdownParser {
         source: Arc<str>,
         _media_type: MediaType,
     ) -> Result<ParsedSource, Error> {
+        // preprocess source
+        let mut content = source.to_string();
+        handle_shortcodes(&specifier, &mut content);
+
+        // process source
         let (maybe_front_matter, data) =
-            markdown::markdown_to_html(source, markdown::MarkdownOptions::default());
+            markdown::markdown_to_html(Arc::from(content), markdown::MarkdownOptions::default());
         let metadata = std::fs::metadata(Path::new(specifier.path()))?;
         let parsed_source = ParsedSourceBuilder::new(specifier.to_string(), MediaType::Html)
             .content(String::from_utf8(data).unwrap())
             .maybe_front_matter(maybe_front_matter)
             .metadata(metadata)
             .build();
-
         Ok(parsed_source)
     }
 }

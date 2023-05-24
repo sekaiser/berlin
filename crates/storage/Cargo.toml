@@ -1,0 +1,17 @@
+[package]
+name = "storage"
+version = "0.0.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Storage for Berlin"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+berlin_core.workspace = true
+cozo = "0.7"
+lazy_static = "1.4.0"

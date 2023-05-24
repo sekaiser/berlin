@@ -1,6 +1,6 @@
 use crate::shortcode::parse_for_shortcodes;
 use berlin_core::serde::Deserialize;
-use berlin_core::FrontMatter;
+use berlin_core::{FrontMatter, ModuleSpecifier};
 use comrak::nodes::{AstNode, NodeValue};
 use comrak::plugins::syntect::SyntectAdapter;
 use comrak::{format_html_with_plugins, parse_document, Arena, ComrakOptions, ComrakPlugins};
@@ -33,8 +33,8 @@ impl MarkdownOptions {
     }
 }
 
-pub fn handle_shortcodes(content: &mut String) {
-    if let Ok((_name, mut shortcodes)) = parse_for_shortcodes(&content) {
+pub fn handle_shortcodes(specifier: &ModuleSpecifier, content: &mut String) {
+    if let Ok((_name, mut shortcodes)) = parse_for_shortcodes(&specifier, &content) {
         // the ranges of the shortcodes are computed based on the original file
         // and differences in ranges after a rendering step of a short code
         // are not considered.
@@ -55,13 +55,10 @@ pub fn handle_shortcodes(content: &mut String) {
 }
 
 pub fn string_to_html(source: &String, options: &ComrakOptions) -> String {
-    let mut content = source.to_string();
-    handle_shortcodes(&mut content);
-
     let arena = Arena::new();
     let mut html = Vec::new();
     let plugins = ComrakPlugins::default();
-    let root = parse_document(&arena, &content, &options);
+    let root = parse_document(&arena, &source, &options);
     format_html_with_plugins(root, &options, &mut html, &plugins).unwrap();
     String::from_utf8(html).unwrap()
 }
@@ -70,16 +67,13 @@ pub fn markdown_to_html(
     source: Arc<str>,
     options: ComrakOptions,
 ) -> (Option<FrontMatter>, Vec<u8>) {
-    let mut content = source.to_string();
-    handle_shortcodes(&mut content);
-
-    let preprocessed_source = RELREF_RE.replace_all(&content, |caps: &Captures| {
-        format!("[{}](/notes/{}.html)", &caps["label"], &caps["name"])
-    });
+    // let preprocessed_source = RELREF_RE.replace_all(&content, |caps: &Captures| {
+    //     format!("[{}](/notes/{}.html)", &caps["label"], &caps["name"])
+    // });
 
     let mut maybe_front_matter = None;
     let arena = Arena::new();
-    let root = parse_document(&arena, &preprocessed_source, &options);
+    let root = parse_document(&arena, &source, &options);
 
     fn iter_nodes<'a, F>(node: &'a AstNode<'a>, f: &mut F)
     where
@@ -94,10 +88,8 @@ pub fn markdown_to_html(
     iter_nodes(root, &mut |node| {
         if let NodeValue::FrontMatter(ref mut text) = node.data.borrow_mut().value {
             let mut documents = serde_yaml::Deserializer::from_slice(text);
-            let document = documents.nth(1).unwrap();
-            maybe_front_matter = match FrontMatter::deserialize(document) {
-                Ok(fm) => Some(fm),
-                Err(_) => None,
+            if let Some(document) = documents.nth(1) {
+                maybe_front_matter = FrontMatter::deserialize(document).ok();
             }
         }
         if let NodeValue::Text(ref mut text) = node.data.borrow_mut().value {

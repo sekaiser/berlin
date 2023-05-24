@@ -127,7 +127,6 @@ mod tests {
 
     #[test]
     fn build_graph() {
-        let empty: Vec<PathBuf> = Vec::new();
         let resolutions = ResolutionsBuilder::new()
             .add_rule(Path::new("main.css"), &vec![Path::new("a.css")])
             .add_rule(Path::new("style.css"), &vec![Path::new("a.css")])

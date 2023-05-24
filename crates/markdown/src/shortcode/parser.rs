@@ -1,5 +1,7 @@
-use errors::anyhow::Error;
+use berlin_core::{FrontMatter, ModuleSpecifier};
+use errors::anyhow::{Context, Error};
 use errors::error::generic_error;
+use slugify::slugify;
 use std::ops::Range;
 
 use pest::iterators::Pair;
@@ -81,6 +83,12 @@ fn parse_shortcode_call(pair: Pair<Rule>) -> (String, tera::Value) {
                         Rule::literal => {
                             arg_val = Some(parse_kwarg_value(p2));
                         }
+                        Rule::string => {
+                            arg_name = name.clone();
+                            arg_val =
+                                Some(tera::Value::String(replace_string_markers(p2.as_str())));
+                        }
+
                         _ => unreachable!("Got something unexpected in a kwarg: {:?}", p2),
                     }
                 }
@@ -93,7 +101,10 @@ fn parse_shortcode_call(pair: Pair<Rule>) -> (String, tera::Value) {
     (name.unwrap(), tera::Value::Object(args))
 }
 
-pub fn parse_for_shortcodes(content: &str) -> Result<(String, Vec<Shortcode>), Error> {
+pub fn parse_for_shortcodes(
+    specifier: &ModuleSpecifier,
+    content: &str,
+) -> Result<(String, Vec<Shortcode>), Error> {
     let mut shortcodes: Vec<Shortcode> = Vec::new();
     let mut output = String::with_capacity(content.len());
     let mut pairs = match ContentParser::parse(Rule::page, content) {
@@ -108,38 +119,105 @@ pub fn parse_for_shortcodes(content: &str) -> Result<(String, Vec<Shortcode>), E
             Rule::inline_shortcode | Rule::ignored_inline_shortcode => {
                 let span = p.as_span();
                 let (name, args) = parse_shortcode_call(p);
-                output.push_str(&name);
+
                 let mut args_copy = args.clone();
-                let src = args_copy
-                    .get_mut("src")
-                    .unwrap()
-                    .as_str()
-                    .unwrap()
-                    .to_string()
-                    .replace("\"", "");
+                match name.as_str() {
+                    "figure" => {
+                        output.push_str(&name);
+                        let src = args_copy
+                            .get_mut("src")
+                            .unwrap()
+                            .as_str()
+                            .unwrap()
+                            .to_string()
+                            .replace("\"", "");
 
-                let template = if let Some(caption) = args_copy.get_mut("caption") {
-                    let caption = caption.as_str().unwrap().to_string().replace("\"", "");
+                        let template = if let Some(caption) = args_copy.get_mut("caption") {
+                            let caption = caption.as_str().unwrap().to_string().replace("\"", "");
 
-                    format!(
-                        r#"<figure><img style="max-width:100%;" src="/static{src}"><figcaption>{caption}</figcaption></figure>"#,
-                    )
-                } else {
-                    format!(
-                        r#"<img style="width:456px;margin-top:5px;margin-bottom:5px;" src="{src}">"#
-                    )
-                };
+                            format!(
+                                r#"<figure><img style="max-width:100%;" src="/static{src}"><figcaption>{caption}</figcaption></figure>"#,
+                            )
+                        } else {
+                            format!(
+                                r#"<img style="width:456px;margin-top:5px;margin-bottom:5px;" src="{src}">"#
+                            )
+                        };
 
-                shortcodes.push(Shortcode {
-                    name,
-                    args,
-                    span: span.start()..span.end(),
-                    body: Some(template.to_string()),
-                });
+                        shortcodes.push(Shortcode {
+                            name,
+                            args,
+                            span: span.start()..span.end(),
+                            body: Some(template.to_string()),
+                        });
+                    }
+                    "relref" => {
+                        let val = args_copy
+                            .get_mut("relref")
+                            .unwrap()
+                            .as_str()
+                            .unwrap()
+                            .to_string()
+                            .replace("\"", "");
+
+                        let file = specifier
+                            .to_file_path()
+                            .map(|pb| pb.parent().unwrap().join(val))
+                            .unwrap();
+                        let target = ModuleSpecifier::from_file_path(file).expect("Invalid path.");
+                        let content = std::fs::read_to_string(target.path())
+                            .context(format!("Unable to read file {:?}", &target))?;
+                        if let Ok((fm, _)) = extract(&content) {
+                            let front_matter = serde_yaml::from_str::<FrontMatter>(&fm)?;
+                            let template =
+                                format!("/notes/{}.html", slugify!(&front_matter.title.unwrap()));
+                            shortcodes.push(Shortcode {
+                                name,
+                                args,
+                                span: span.start()..span.end(),
+                                body: Some(template.to_string()),
+                            });
+                        }
+                    }
+                    _ => println!("Unknown identifier {name}"),
+                }
             }
             _ => {}
         }
     }
 
     Ok((output, shortcodes))
+}
+
+fn extract(markdown: &str) -> Result<(String, String), Box<dyn std::error::Error>> {
+    let mut front_matter = String::default();
+    let mut sentinel = false;
+    let mut front_matter_lines = 0;
+    let lines = markdown.lines();
+
+    for line in lines.clone() {
+        front_matter_lines += 1;
+
+        if line.trim() == "---" {
+            if sentinel {
+                break;
+            }
+
+            sentinel = true;
+            continue;
+        }
+
+        if sentinel {
+            front_matter.push_str(line);
+            front_matter.push('\n');
+        }
+    }
+
+    Ok((
+        front_matter,
+        lines
+            .skip(front_matter_lines)
+            .collect::<Vec<&str>>()
+            .join("\n"),
+    ))
 }

@@ -22,3 +22,4 @@ errors.workspace = true
 serde_yaml.workspace = true
 tera.workspace = true
 regex.workspace = true
+slugify = "0.1.0"

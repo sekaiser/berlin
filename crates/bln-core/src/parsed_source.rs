@@ -1,6 +1,7 @@
 use serde::Deserialize;
+use url::Url;
 
-use crate::MediaType;
+use crate::{MediaType, ModuleSpecifier};
 use std::{any::Any, fs::Metadata, sync::Arc};
 
 #[derive(Clone, Debug)]
@@ -119,6 +120,14 @@ pub struct ParsedSourceBuilder {
 
 impl ParsedSourceBuilder {
     pub fn new(specifier: String, media_type: MediaType) -> Self {
+        let file_name = ModuleSpecifier::from(Url::parse(&specifier).ok().unwrap())
+            .to_file_path()
+            .ok()
+            .unwrap()
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
         ParsedSourceBuilder {
             specifier,
             media_type,
