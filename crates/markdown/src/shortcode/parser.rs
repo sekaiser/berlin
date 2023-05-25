@@ -2,10 +2,12 @@ use berlin_core::{FrontMatter, ModuleSpecifier};
 use errors::anyhow::{Context, Error};
 use errors::error::generic_error;
 use slugify::slugify;
+use std::io;
 use std::ops::Range;
+use std::path::PathBuf;
 
 use pest::iterators::Pair;
-use pest::Parser as PestParser;
+use pest::{Parser as PestParser, Span};
 use pest_derive::Parser as PestParser;
 
 #[derive(PestParser)]
@@ -152,32 +154,7 @@ pub fn parse_for_shortcodes(
                         });
                     }
                     "relref" => {
-                        let val = args_copy
-                            .get_mut("relref")
-                            .unwrap()
-                            .as_str()
-                            .unwrap()
-                            .to_string()
-                            .replace("\"", "");
-
-                        let file = specifier
-                            .to_file_path()
-                            .map(|pb| pb.parent().unwrap().join(val))
-                            .unwrap();
-                        let target = ModuleSpecifier::from_file_path(file).expect("Invalid path.");
-                        let content = std::fs::read_to_string(target.path())
-                            .context(format!("Unable to read file {:?}", &target))?;
-                        if let Ok((fm, _)) = extract(&content) {
-                            let front_matter = serde_yaml::from_str::<FrontMatter>(&fm)?;
-                            let template =
-                                format!("/notes/{}.html", slugify!(&front_matter.title.unwrap()));
-                            shortcodes.push(Shortcode {
-                                name,
-                                args,
-                                span: span.start()..span.end(),
-                                body: Some(template.to_string()),
-                            });
-                        }
+                        handle_relref(name, args_copy, &span, specifier, &mut shortcodes);
                     }
                     _ => println!("Unknown identifier {name}"),
                 }
@@ -189,15 +166,52 @@ pub fn parse_for_shortcodes(
     Ok((output, shortcodes))
 }
 
-fn extract(markdown: &str) -> Result<(String, String), Box<dyn std::error::Error>> {
+fn handle_relref(
+    name: String,
+    mut value: tera::Value,
+    span: &Span,
+    specifier: &ModuleSpecifier,
+    shortcodes: &mut Vec<Shortcode>,
+) {
+    let maybe_path = specifier.to_file_path().ok();
+    let maybe_relref = value
+        .get_mut("relref")
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string())
+        .map(|v| v.replace("\"", ""));
+
+    if let Some((Some(file_name), Some(path))) = Some((maybe_relref, maybe_path)) {
+        if let Some(title) = join(path, file_name).and_then(read_title_from_content_of_file) {
+            let template = format!("/notes/{}.html", slugify!(&title));
+            shortcodes.push(Shortcode {
+                name,
+                args: value,
+                span: span.start()..span.end(),
+                body: Some(template.to_string()),
+            });
+        }
+    };
+}
+
+fn join(path: PathBuf, file_name: String) -> Option<PathBuf> {
+    path.parent().map(|p| p.join(file_name))
+}
+
+fn read_title_from_content_of_file(path: PathBuf) -> Option<String> {
+    ModuleSpecifier::from_file_path(path)
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p.path()).ok())
+        .and_then(|s| extract_yaml(&s).ok())
+        .and_then(|s| serde_yaml::from_str::<FrontMatter>(&s).ok())
+        .and_then(|fm| fm.title)
+}
+
+fn extract_yaml(markdown: &str) -> Result<String, Box<dyn std::error::Error>> {
     let mut front_matter = String::default();
     let mut sentinel = false;
-    let mut front_matter_lines = 0;
     let lines = markdown.lines();
 
-    for line in lines.clone() {
-        front_matter_lines += 1;
-
+    for line in lines {
         if line.trim() == "---" {
             if sentinel {
                 break;
@@ -213,11 +227,5 @@ fn extract(markdown: &str) -> Result<(String, String), Box<dyn std::error::Error
         }
     }
 
-    Ok((
-        front_matter,
-        lines
-            .skip(front_matter_lines)
-            .collect::<Vec<&str>>()
-            .join("\n"),
-    ))
+    Ok(front_matter)
 }
