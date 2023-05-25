@@ -1,10 +1,9 @@
 use berlin_core::{FrontMatter, ModuleSpecifier};
-use errors::anyhow::{Context, Error};
+use errors::anyhow::Error;
 use errors::error::generic_error;
 use slugify::slugify;
-use std::io;
 use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use pest::iterators::Pair;
 use pest::{Parser as PestParser, Span};
@@ -20,15 +19,6 @@ pub struct Shortcode {
     pub(crate) args: tera::Value,
     pub(crate) span: Range<usize>,
     pub(crate) body: Option<String>,
-}
-
-fn replace_string_markers(input: &str) -> String {
-    match input.chars().next().unwrap() {
-        '"' => input.replace('"', ""),
-        '\'' => input.replace('\'', ""),
-        '`' => input.replace('`', ""),
-        _ => unreachable!("How did you even get there"),
-    }
 }
 
 fn parse_kwarg_value(pair: Pair<Rule>) -> tera::Value {
@@ -95,7 +85,9 @@ fn parse_shortcode_call(pair: Pair<Rule>) -> (String, tera::Value) {
                     }
                 }
 
-                args.insert(arg_name.unwrap(), arg_val.unwrap());
+                if let Some((Some(name), Some(value))) = Some((arg_name, arg_val)) {
+                    args.insert(name, value);
+                }
             }
             _ => unreachable!("Got something unexpected in a shortcode: {:?}", p),
         }
@@ -122,39 +114,14 @@ pub fn parse_for_shortcodes(
                 let span = p.as_span();
                 let (name, args) = parse_shortcode_call(p);
 
-                let mut args_copy = args.clone();
                 match name.as_str() {
                     "figure" => {
                         output.push_str(&name);
-                        let src = args_copy
-                            .get_mut("src")
-                            .unwrap()
-                            .as_str()
-                            .unwrap()
-                            .to_string()
-                            .replace("\"", "");
-
-                        let template = if let Some(caption) = args_copy.get_mut("caption") {
-                            let caption = caption.as_str().unwrap().to_string().replace("\"", "");
-
-                            format!(
-                                r#"<figure><img style="max-width:100%;" src="/static{src}"><figcaption>{caption}</figcaption></figure>"#,
-                            )
-                        } else {
-                            format!(
-                                r#"<img style="width:456px;margin-top:5px;margin-bottom:5px;" src="{src}">"#
-                            )
-                        };
-
-                        shortcodes.push(Shortcode {
-                            name,
-                            args,
-                            span: span.start()..span.end(),
-                            body: Some(template.to_string()),
-                        });
+                        handle_figure(name, args, &span, &mut shortcodes)
                     }
                     "relref" => {
-                        handle_relref(name, args_copy, &span, specifier, &mut shortcodes);
+                        output.push_str(&name);
+                        handle_relref(name, args, &span, specifier, &mut shortcodes);
                     }
                     _ => println!("Unknown identifier {name}"),
                 }
@@ -166,19 +133,34 @@ pub fn parse_for_shortcodes(
     Ok((output, shortcodes))
 }
 
+fn handle_figure(name: String, value: tera::Value, span: &Span, shortcodes: &mut Vec<Shortcode>) {
+    if let Some(src) = get_string("src", &value) {
+        let template = if let Some(caption) = get_string("caption", &value) {
+            format!(
+                r#"<figure><img style="max-width:100%;" src="/static{src}"><figcaption>{caption}</figcaption></figure>"#,
+            )
+        } else {
+            format!(r#"<img style="width:456px;margin-top:5px;margin-bottom:5px;" src="{src}">"#)
+        };
+
+        shortcodes.push(Shortcode {
+            name,
+            args: value,
+            span: span.start()..span.end(),
+            body: Some(template.to_string()),
+        });
+    }
+}
+
 fn handle_relref(
     name: String,
-    mut value: tera::Value,
+    value: tera::Value,
     span: &Span,
     specifier: &ModuleSpecifier,
     shortcodes: &mut Vec<Shortcode>,
 ) {
     let maybe_path = specifier.to_file_path().ok();
-    let maybe_relref = value
-        .get_mut("relref")
-        .and_then(|v| v.as_str())
-        .map(|v| v.to_string())
-        .map(|v| v.replace("\"", ""));
+    let maybe_relref = get_string("relref", &value);
 
     if let Some((Some(file_name), Some(path))) = Some((maybe_relref, maybe_path)) {
         if let Some(title) = join(path, file_name).and_then(read_title_from_content_of_file) {
@@ -193,7 +175,20 @@ fn handle_relref(
     };
 }
 
-fn join(path: PathBuf, file_name: String) -> Option<PathBuf> {
+fn replace_string_markers(input: &str) -> String {
+    match input.chars().next().unwrap() {
+        '"' => input.replace('"', ""),
+        '\'' => input.replace('\'', ""),
+        '`' => input.replace('`', ""),
+        _ => unreachable!("How did you even get there"),
+    }
+}
+
+fn get_string<'a>(name: &str, value: &'a tera::Value) -> Option<&'a str> {
+    value.get(name).and_then(|v| v.as_str())
+}
+
+fn join<P: AsRef<Path>>(path: PathBuf, file_name: P) -> Option<PathBuf> {
     path.parent().map(|p| p.join(file_name))
 }
 
