@@ -1,10 +1,11 @@
 use crate::shortcode::parse_for_shortcodes;
-use berlin_core::serde::Deserialize;
 use berlin_core::{FrontMatter, ModuleSpecifier};
-use comrak::nodes::{AstNode, NodeValue};
-use comrak::plugins::syntect::SyntectAdapter;
-use comrak::{format_html_with_plugins, parse_document, Arena, ComrakOptions, ComrakPlugins};
-use regex::{Captures, Regex};
+use libs::comrak::nodes::{AstNode, NodeValue};
+use libs::comrak::plugins::syntect::SyntectAdapter;
+use libs::comrak::{format_html_with_plugins, parse_document, Arena, ComrakOptions, ComrakPlugins};
+use libs::lazy_static;
+pub use libs::regex::Regex;
+use serde::Deserialize;
 use std::borrow::BorrowMut;
 use std::sync::Arc;
 
@@ -87,7 +88,7 @@ pub fn markdown_to_html(
 
     iter_nodes(root, &mut |node| {
         if let NodeValue::FrontMatter(ref mut text) = node.data.borrow_mut().value {
-            let mut documents = serde_yaml::Deserializer::from_slice(text);
+            let mut documents = libs::serde_yaml::Deserializer::from_slice(text);
             if let Some(document) = documents.nth(1) {
                 maybe_front_matter = FrontMatter::deserialize(document).ok();
             }

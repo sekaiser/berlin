@@ -14,4 +14,4 @@ path = "src/lib.rs"
 [dependencies]
 berlin_core.workspace = true
 cozo = "0.7"
-lazy_static = "1.4.0"
+libs.workspace = true

@@ -1,8 +1,9 @@
 use berlin_core::ParsedSource;
-use errors::anyhow::Error;
 use errors::error::generic_error;
+use libs::anyhow::Error;
+use libs::tera;
+use libs::tera::{Context, Function, Tera, Value};
 use std::path::PathBuf;
-use tera::Tera;
 
 #[derive(Clone)]
 struct Content(String);
@@ -36,7 +37,7 @@ impl Hera {
         &mut self,
         file_path: &str,
         parsed_source: &ParsedSource,
-        context: &tera::Context,
+        context: &Context,
     ) -> String {
         self.inner
             .tera
@@ -47,7 +48,7 @@ impl Hera {
             .unwrap()
     }
 
-    pub fn render_with_context(&mut self, file_path: &str, context: &tera::Context) -> String {
+    pub fn render_with_context(&mut self, file_path: &str, context: &Context) -> String {
         self.inner
             .tera
             .render(&file_path.to_string(), &context)
@@ -62,31 +63,14 @@ impl Hera {
     }
 }
 
-impl tera::Function for Content {
-    fn call(
-        &self,
-        _args: &std::collections::HashMap<String, tera::Value>,
-    ) -> tera::Result<tera::Value> {
-        let mut content = self.0.clone();
+impl Function for Content {
+    fn call(&self, _args: &std::collections::HashMap<String, Value>) -> tera::Result<Value> {
+        let content = self.0.clone();
 
-        Ok(tera::Value::String(content))
+        Ok(Value::String(content))
     }
 
     fn is_safe(&self) -> bool {
         true
     }
 }
-
-// #[cfg(test)]
-// mod tests {
-
-//     use super::*;
-//     #[test]
-//     fn test_something() {
-//         let content = r#"{{< figure src="/pics/athletics_db_excerpt.png" caption="<span class=\"figure-number\">Figure 1: </span>This is the caption for the next figure link (or table)" >}}"#;
-//         if let Ok((name, shortcodes)) = parse_for_shortcodes(content) {
-//             println!("shortcode_name={name}");
-//             println!("shortcodes={shortcodes:?}");
-//         }
-//     }
-// }

@@ -1,10 +1,10 @@
 pub use berlin_core::normalize_path;
 use berlin_core::ModuleSpecifier;
-use errors::anyhow::Error;
+use libs::anyhow::Error;
 use std::path::Path;
 use std::path::PathBuf;
 
-use glob::glob;
+use libs::glob::glob;
 
 /// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
 pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {

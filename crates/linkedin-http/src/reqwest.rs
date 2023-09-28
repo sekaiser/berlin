@@ -6,9 +6,10 @@ use super::{BaseHttpClient, Form, Headers, Query};
 use std::convert::TryInto;
 use std::time::Duration;
 
+use libs::log;
+use libs::serde_json::Value;
 use maybe_async::async_impl;
 use reqwest::{Method, RequestBuilder};
-use serde_json::Value;
 
 /// Custom enum that contains all the possible errors that may occur when using
 /// [`reqwest`].

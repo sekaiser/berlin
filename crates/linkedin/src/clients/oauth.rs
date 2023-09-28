@@ -1,15 +1,10 @@
-use crate::{
-    clients::BaseClient,
-    http::Query,
-    util::{build_map, JsonBuilder},
-    ClientResult, OAuth, Token,
-};
+use crate::{clients::BaseClient, ClientResult, OAuth, Token};
 
 use std::collections::HashMap;
 
+use libs::log;
+use libs::url::Url;
 use maybe_async::maybe_async;
-use serde_json::{json, Map};
-use url::Url;
 
 /// This trait implements the methods available strictly to clients with user
 /// authorization, including some parts of the authentication flow that are
@@ -65,7 +60,7 @@ pub trait OAuthClient: BaseClient {
         let expected_state = &self.get_oauth().state;
         let state = params.get("state").map(AsRef::as_ref);
 
-        if state != Some(expected_state) {
+        if state != Some(expected_state.as_str()) {
             log::error!("Request state does not match the callback state");
             return None;
         }

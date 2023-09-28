@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
-use anyhow::Error;
+use libs::anyhow::Error;
 
 pub fn custom_error(class: &'static str, message: impl Into<Cow<'static, str>>) -> Error {
     CustomError {

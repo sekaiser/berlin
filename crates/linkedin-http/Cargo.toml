@@ -12,18 +12,15 @@ description = "Http compatability layer for LinkedIn"
 
 [dependencies]
 async-trait = { version = "0.1.68", optional = true }
-log.workspace = true
 maybe-async = "0.2.7"
-thiserror = "1.0.40"
-serde_json.workspace = true
-
+thiserror.workspace = true
+libs.workspace = true
 # Supported clients
 reqwest = { version = "0.11.16", default-features = false, features = ["json", "socks"], optional = true }
 ureq = { version = "2.6.2", default-features = false, features = ["json", "cookies"], optional = true }
 
 
 [dev-dependencies]
-tokio.workspace = true
 linkedin-model.workspace = true
 
 [features]

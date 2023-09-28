@@ -1,17 +1,17 @@
 [package]
-name = "berlin_runtime"
-version = "0.1.0"
+name = "templates"
+version = "0.0.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
+readme = "README.md"
 repository.workspace = true
-description = "Provides the berlin runtime library"
+description = "Tera templates used by Berlin"
 
 [lib]
-name = "berlin_runtime"
-path = "lib.rs"
+path = "src/lib.rs"
 
 [dependencies]
 berlin_core.workspace = true
+errors.workspace = true
 libs.workspace = true
-# rusqlite.workspace = true

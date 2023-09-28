@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
-use errors::anyhow::Error;
 use errors::error::generic_error;
-use pandoc::{InputFormat, InputKind, OutputFormat, OutputKind, PandocOption, PandocOutput};
+use libs::anyhow::Error;
+use libs::pandoc;
+use libs::pandoc::{InputFormat, InputKind, OutputFormat, OutputKind, PandocOption, PandocOutput};
 
 pub fn parse(source: Arc<str>) -> Result<String, Error> {
     let mut pandoc = pandoc::new();

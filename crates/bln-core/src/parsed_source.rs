@@ -1,5 +1,5 @@
+use libs::url::Url;
 use serde::Deserialize;
-use url::Url;
 
 use crate::{MediaType, ModuleSpecifier};
 use std::{any::Any, fs::Metadata, sync::Arc};

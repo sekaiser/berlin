@@ -1,9 +1,9 @@
-use clap::Arg;
-use clap::ColorChoice;
-use clap::Command;
-use clap::ValueHint;
-use log::Level;
-use once_cell::sync::Lazy;
+use libs::clap;
+use libs::clap::ColorChoice;
+use libs::clap::ValueHint;
+use libs::clap::{Arg, Command};
+use libs::log::Level;
+use libs::once_cell::sync::Lazy;
 use std::path::PathBuf;
 
 static LONG_VERSION: Lazy<String> = Lazy::new(|| format!("{}", crate::version::berlin(),));
@@ -102,7 +102,7 @@ impl Flags {
 }
 
 fn clap_root() -> Command {
-    clap::Command::new("bln")
+    Command::new("bln")
         .bin_name("bln")
         .color(ColorChoice::Never)
         .max_term_width(80)

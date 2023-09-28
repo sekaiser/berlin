@@ -8,7 +8,7 @@ pub use config_file::ConfigFile;
 pub use flags::*;
 
 use berlin_core::ModuleSpecifier;
-use errors::anyhow::Error;
+use libs::anyhow::Error;
 
 use crate::cache::BerlinDir;
 

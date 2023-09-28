@@ -6,6 +6,7 @@ use crate::{
     ClientResult, Config, Credentials, Token,
 };
 
+use libs::log;
 use maybe_async::maybe_async;
 use std::sync::Arc;
 

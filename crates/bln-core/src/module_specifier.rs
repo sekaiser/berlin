@@ -1,12 +1,12 @@
 /// Taken from Deno
 /// <https://github.com/denoland/deno/blob/fd85f840cd707c31d08fa836562127e249c9ff62/core/module_specifier.rs>
 use crate::normalize_path;
+use libs::url::ParseError;
+use libs::url::Url;
 use std::env::current_dir;
 use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
-use url::ParseError;
-use url::Url;
 
 pub const DUMMY_SPECIFIER: &str = "<unknown>";
 

@@ -1,6 +1,6 @@
 use berlin_core::ModuleSpecifier;
-use errors::anyhow::Error;
 use errors::error::uri_error;
+use libs::anyhow::Error;
 use std::path::PathBuf;
 
 // Attempts to convert a specifier to a file path. By default, uses the Url
@@ -21,7 +21,7 @@ pub fn specifier_to_file_path(specifier: &ModuleSpecifier) -> Result<PathBuf, Er
                 {
                     let path_str = specifier.path();
                     match String::from_utf8(
-                        percent_encoding::percent_decode(path_str.as_bytes()).collect(),
+                        libs::percent_encoding::percent_decode(path_str.as_bytes()).collect(),
                     ) {
                         Ok(path_str) => Ok(PathBuf::from(path_str)),
                         Err(_) => Err(()),

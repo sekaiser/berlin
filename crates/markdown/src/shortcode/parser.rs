@@ -1,10 +1,11 @@
 use berlin_core::{FrontMatter, ModuleSpecifier};
-use errors::anyhow::Error;
 use errors::error::generic_error;
-use slugify::slugify;
+use libs::anyhow::Error;
+use libs::slugify::slugify;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
+use libs::tera;
 use pest::iterators::Pair;
 use pest::{Parser as PestParser, Span};
 use pest_derive::Parser as PestParser;
@@ -197,7 +198,7 @@ fn read_title_from_content_of_file(path: PathBuf) -> Option<String> {
         .ok()
         .and_then(|p| std::fs::read_to_string(p.path()).ok())
         .and_then(|s| extract_yaml(&s).ok())
-        .and_then(|s| serde_yaml::from_str::<FrontMatter>(&s).ok())
+        .and_then(|s| libs::serde_yaml::from_str::<FrontMatter>(&s).ok())
         .and_then(|fm| fm.title)
 }
 

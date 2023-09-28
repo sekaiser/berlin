@@ -4,9 +4,11 @@ use std::{
 };
 
 use berlin_core::{resolve_path, FrontMatter, MediaType, ParsedSource, ParsedSourceBuilder};
-use errors::anyhow::Error;
 use errors::error::generic_error;
-use slugify::slugify;
+use libs::anyhow::Error;
+use libs::serde_json;
+use libs::slugify::slugify;
+use libs::tera;
 
 use super::{
     model::{Article, Feed, Picture, Record, Tag},
@@ -241,7 +243,7 @@ pub fn parse_csv(maybe_source: Option<&ParsedSource>) -> Vec<Feed> {
     let mut feed: Vec<Feed> = Vec::new();
     if let Some(source) = maybe_source {
         if source.media_type() == MediaType::Csv {
-            let mut rdr = csv::ReaderBuilder::new()
+            let mut rdr = libs::csv::ReaderBuilder::new()
                 .has_headers(true)
                 .delimiter(b',')
                 .double_quote(true)

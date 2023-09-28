@@ -12,11 +12,6 @@ description = "A runtime for Berlin"
 path = "src/lib.rs"
 
 [dependencies]
-petgraph = "0.6.3"
-regex.workspace = true
 serde.workspace = true
-toml.workspace = true
 errors.workspace = true
-
-parking_lot = "0.12.1"
-url = { version = "2.3.1", features = ["serde", "expose_internals"] }
+libs.workspace = true

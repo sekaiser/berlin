@@ -12,12 +12,14 @@ use std::fmt;
 use std::{path::PathBuf, process::exit};
 
 use berlin_core::{resolve_path, ModuleSpecifier, ParsedSource};
-use errors::anyhow::Error;
+use libs::anyhow::Error;
 
 use crate::{args::ConfigFile, proc_state::ProcState};
+use libs::tera;
 
 mod render {
     use berlin_core::ParsedSource;
+    use libs::tera;
 
     use super::RenderStruct;
 
@@ -28,6 +30,7 @@ mod render {
 
 mod reducer {
     use crate::tasks::{AggregatedSources, Aggregators, ScopedParsedSourceMapperFn};
+    use libs::tera;
 
     use super::RenderData;
 
@@ -87,7 +90,7 @@ pub(crate) struct RenderData<T> {
 }
 
 fn do_slugify(source: &ParsedSource) -> String {
-    use slugify::slugify;
+    use libs::slugify::slugify;
 
     let maybe_title = source
         .front_matter()
@@ -425,7 +428,7 @@ impl<'a> Watch for Render<'a> {
                 if match input {
                     Input::Pattern(ref input_pattern)
                     | Input::PatternWithAggregate(ref input_pattern, _) => {
-                        let re = fnmatch_regex::glob_to_regex(input_pattern)?;
+                        let re = libs::fnmatch_regex::glob_to_regex(input_pattern)?;
                         re.is_match(&changed_file)
                     }
                     Input::Files(paths) => paths.contains(&PathBuf::from(changed_file)),
@@ -445,7 +448,7 @@ impl<'a> Watch for Render<'a> {
         let prefix = format!("{}/", ps.dir.templates_file_path().to_string_lossy());
         if let Some(changed_file) = specifier.path().strip_prefix(&prefix) {
             let expr = self.template.clone();
-            let re = fnmatch_regex::glob_to_regex(&expr)?;
+            let re = libs::fnmatch_regex::glob_to_regex(&expr)?;
 
             ps.hera.lock().full_reload()?;
             if re.is_match(&changed_file) {

@@ -1,10 +1,11 @@
+use libs::url::Url;
 use serde::Serialize;
 use serde::Serializer;
 use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
 
-pub type ModuleSpecifier = url::Url;
+pub type ModuleSpecifier = Url;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MediaType {

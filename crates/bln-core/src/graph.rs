@@ -1,17 +1,19 @@
-use errors::anyhow::Error;
 use errors::error::generic_error;
+use libs::anyhow::Error;
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
-use petgraph::graph::NodeIndex;
-use petgraph::visit::Dfs;
-use petgraph::Graph;
+use libs::petgraph::graph::NodeIndex;
+use libs::petgraph::visit::Dfs;
+use libs::petgraph::Directed;
+use libs::petgraph::Graph;
+use libs::petgraph::Incoming;
 
 pub struct Resolutions(Inner);
 
 pub struct Inner {
-    graph: Graph<PathBuf, (), petgraph::Directed>,
+    graph: Graph<PathBuf, (), Directed>,
     root_nodes: Vec<NodeIndex<u32>>,
     node_ids: HashMap<PathBuf, NodeIndex<u32>>,
 }
@@ -104,13 +106,13 @@ impl ResolutionsBuilder {
             }
         }
 
-        if petgraph::algo::is_cyclic_directed(&graph) {
+        if libs::petgraph::algo::is_cyclic_directed(&graph) {
             return Err(generic_error("Cannot construct graph: Cycle detected!"));
         }
 
         let root_nodes = graph
             .node_indices()
-            .filter(|n| graph.neighbors_directed(*n, petgraph::Incoming).count() == 0)
+            .filter(|n| graph.neighbors_directed(*n, Incoming).count() == 0)
             .collect::<Vec<_>>();
 
         Ok(Resolutions(Inner {

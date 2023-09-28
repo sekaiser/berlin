@@ -9,4 +9,4 @@ readme = "README.md"
 description = "Macros for Linkedin Web Api"
 
 [dev-dependencies]
-serde_json.workspace = true
+libs.workspace = true

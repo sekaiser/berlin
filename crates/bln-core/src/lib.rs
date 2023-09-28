@@ -4,12 +4,6 @@ mod module_specifier;
 mod normalize_path;
 mod parsed_source;
 
-// Re-exports
-pub use parking_lot;
-pub use serde;
-pub use toml;
-pub use url;
-
 pub use module_specifier::resolve_import;
 pub use module_specifier::resolve_path;
 pub use module_specifier::resolve_url;

@@ -14,4 +14,4 @@ path = "src/lib.rs"
 
 [dependencies]
 errors.workspace = true
-lightningcss = "1.0.0-alpha.40"
+libs.workspace = true

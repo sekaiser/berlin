@@ -1,7 +1,7 @@
 //! Custom serialization methods used throughout the crate
 
 pub mod duration_ms {
-    use chrono::Duration;
+    use libs::chrono::Duration;
     use serde::{de, Serializer};
     use std::convert::TryFrom;
     use std::fmt;
@@ -50,7 +50,7 @@ pub mod duration_ms {
 }
 
 pub mod millisecond_timestamp {
-    use chrono::{DateTime, NaiveDateTime, Utc};
+    use libs::chrono::{DateTime, NaiveDateTime, Utc};
     use serde::{de, Serializer};
     use std::fmt;
 
@@ -102,7 +102,7 @@ pub mod millisecond_timestamp {
 
 pub mod option_duration_ms {
     use crate::custom_serde::duration_ms;
-    use chrono::Duration;
+    use libs::chrono::Duration;
     use serde::{de, Serializer};
     use std::fmt;
 
@@ -160,7 +160,7 @@ pub mod option_duration_ms {
 }
 
 pub mod duration_second {
-    use chrono::Duration;
+    use libs::chrono::Duration;
     use serde::{de, Deserialize, Serializer};
 
     /// Deserialize `chrono::Duration` from seconds (represented as u64)

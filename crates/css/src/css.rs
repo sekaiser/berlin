@@ -1,9 +1,9 @@
 use std::path::Path;
 
-use errors::anyhow::Error;
 use errors::error::generic_error;
+use libs::anyhow::Error;
 
-use lightningcss::{
+use libs::lightningcss::{
     bundler::{Bundler, FileProvider},
     css_modules::{Config, Pattern},
     stylesheet::{MinifyOptions, ParserOptions, PrinterOptions, ToCssResult},

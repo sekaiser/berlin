@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::fmt;
 
+use libs::serde_json::Value;
 use maybe_async::maybe_async;
-use serde_json::Value;
 
 pub type Headers = HashMap<String, String>;
 pub type Query<'a> = HashMap<&'a str, &'a str>;

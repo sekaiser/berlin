@@ -11,7 +11,6 @@ description = "Org package"
 [lib]
 path = "src/lib.rs"
 
-
 [dependencies]
 errors.workspace = true
-pandoc = "0.8.10"
+libs.workspace = true

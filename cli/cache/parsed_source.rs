@@ -1,6 +1,6 @@
-use berlin_core::parking_lot::Mutex;
 use berlin_core::ModuleSpecifier;
 use berlin_core::ParsedSource;
+use libs::parking_lot::Mutex;
 
 use parser::{CapturingParser, ParsedSourceStore};
 

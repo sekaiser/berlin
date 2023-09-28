@@ -6,11 +6,9 @@ pub use oauth::OAuthClient;
 
 use crate::ClientResult;
 
-use std::fmt::Write as _;
-
 use serde::Deserialize;
 
 /// Converts a JSON response from LinkedIn into its model.
 pub(crate) fn convert_result<'a, T: Deserialize<'a>>(input: &'a str) -> ClientResult<T> {
-    serde_json::from_str::<T>(input).map_err(Into::into)
+    libs::serde_json::from_str::<T>(input).map_err(Into::into)
 }

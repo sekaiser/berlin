@@ -1,6 +1,6 @@
 use berlin_core::{MediaType, ModuleSpecifier, ParsedSource, ParsedSourceBuilder};
-use errors::anyhow::Error;
 use errors::error::generic_error;
+use libs::anyhow::Error;
 use markdown::handle_shortcodes;
 use std::cell::RefCell;
 use std::collections::HashMap;

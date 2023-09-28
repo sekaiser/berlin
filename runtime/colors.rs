@@ -1,18 +1,18 @@
-use atty;
-use once_cell::sync::Lazy;
+use libs::atty;
+use libs::once_cell::sync::Lazy;
+use libs::termcolor::Ansi;
+use libs::termcolor::Color::Ansi256;
+use libs::termcolor::Color::Black;
+use libs::termcolor::Color::Blue;
+use libs::termcolor::Color::Cyan;
+use libs::termcolor::Color::Green;
+use libs::termcolor::Color::Red;
+use libs::termcolor::Color::White;
+use libs::termcolor::Color::Yellow;
+use libs::termcolor::ColorSpec;
+use libs::termcolor::WriteColor;
 use std::fmt;
 use std::io::Write;
-use termcolor::Ansi;
-use termcolor::Color::Ansi256;
-use termcolor::Color::Black;
-use termcolor::Color::Blue;
-use termcolor::Color::Cyan;
-use termcolor::Color::Green;
-use termcolor::Color::Red;
-use termcolor::Color::White;
-use termcolor::Color::Yellow;
-use termcolor::ColorSpec;
-use termcolor::WriteColor;
 
 #[cfg(windows)]
 use termcolor::BufferWriter;

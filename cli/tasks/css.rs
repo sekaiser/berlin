@@ -1,5 +1,5 @@
 use berlin_core::{resolve_path, resolve_url_or_path, ModuleSpecifier};
-use errors::anyhow::Error;
+use libs::anyhow::Error;
 use std::{fmt, path::PathBuf};
 
 use crate::{proc_state::ProcState, util::path::specifier_to_file_path};
@@ -50,7 +50,7 @@ impl Watch for Css {
     fn on_change(&self, ps: &ProcState, specifier: &ModuleSpecifier) -> Result<i32, Error> {
         let prefix = format!("{}/", ps.dir.css_file_path().to_string_lossy());
         if let Some(changed_file) = specifier.path().strip_prefix(&prefix) {
-            let re = fnmatch_regex::glob_to_regex(&self.input_pattern)?;
+            let re = libs::fnmatch_regex::glob_to_regex(&self.input_pattern)?;
 
             if re.is_match(&changed_file) {
                 let paths: Vec<PathBuf> = ps

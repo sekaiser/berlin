@@ -2,9 +2,9 @@
 mod tests {
     use std::env;
 
-    use lazy_static::lazy_static;
+    use libs::lazy_static::lazy_static;
 
-    use cozo::DbInstance;
+    use libs::cozo::DbInstance;
 
     lazy_static! {
         static ref TEST_DB: DbInstance = {

@@ -13,13 +13,10 @@ path = "src/lib.rs"
 
 
 [dependencies]
-lazy_static = "1"
-comrak = "0.16"
-pest = "2.6.0"
-pest_derive = "2.6.0"
+serde.workspace = true
+pest.workspace = true
+pest_derive.workspace = true
+
 berlin_core.workspace = true
 errors.workspace = true
-serde_yaml.workspace = true
-tera.workspace = true
-regex.workspace = true
-slugify = "0.1.0"
+libs.workspace = true
