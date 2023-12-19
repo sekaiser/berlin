@@ -257,7 +257,7 @@ mod tests {
 
     #[test]
     fn test_resolve_import_error() {
-        use url::ParseError::*;
+        use libs::url::ParseError::*;
         use ModuleResolutionError::*;
 
         let tests = vec![
@@ -433,7 +433,7 @@ mod tests {
 
     #[test]
     fn test_resolve_url_or_path_error() {
-        use url::ParseError::*;
+        use libs::url::ParseError::*;
         use ModuleResolutionError::*;
 
         let mut tests = vec![

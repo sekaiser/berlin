@@ -46,7 +46,8 @@ impl RenderBuilder {
     pub fn build(self) -> Render<'static> {
         Render {
             name: self.name,
-            inputs: self.inputs.to_vec(),
+            // inputs: self.inputs.to_vec(),
+            inputs: vec![],
             template: self.template,
             maybe_aggregator: self.maybe_aggregator,
             add_to_context: self.add_to_context,

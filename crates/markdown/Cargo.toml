@@ -16,7 +16,7 @@ path = "src/lib.rs"
 serde.workspace = true
 pest.workspace = true
 pest_derive.workspace = true
-
-berlin_core.workspace = true
+parser.workspace = true
 errors.workspace = true
 libs.workspace = true
+files.workspace = true

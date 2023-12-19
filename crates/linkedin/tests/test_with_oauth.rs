@@ -2,7 +2,7 @@ use linkedin::{prelude::*, scopes, AuthCodeLinkedIn, ClientResult, Credentials, 
 
 use std::env;
 
-use chrono::{prelude::*, Duration};
+use libs::chrono::{prelude::*, Duration};
 use maybe_async::maybe_async;
 
 /// Generating a new OAuth client for the requests.

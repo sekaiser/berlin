@@ -7,7 +7,7 @@ use std::path::PathBuf;
 pub use config_file::ConfigFile;
 pub use flags::*;
 
-use berlin_core::ModuleSpecifier;
+use files::ModuleSpecifier;
 use libs::anyhow::Error;
 
 use crate::cache::BerlinDir;

@@ -1,4 +1,4 @@
-use berlin_core::ModuleSpecifier;
+use files::ModuleSpecifier;
 use libs::anyhow::Error;
 use std::fmt;
 

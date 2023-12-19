@@ -1,7 +1,8 @@
-use berlin_core::{FrontMatter, ModuleSpecifier};
 use errors::error::generic_error;
 use libs::anyhow::Error;
 use libs::slugify::slugify;
+use libs::url::Url;
+use serde::Deserialize;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
@@ -97,7 +98,7 @@ fn parse_shortcode_call(pair: Pair<Rule>) -> (String, tera::Value) {
 }
 
 pub fn parse_for_shortcodes(
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
     content: &str,
 ) -> Result<(String, Vec<Shortcode>), Error> {
     let mut shortcodes: Vec<Shortcode> = Vec::new();
@@ -157,7 +158,7 @@ fn handle_relref(
     name: String,
     value: tera::Value,
     span: &Span,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
     shortcodes: &mut Vec<Shortcode>,
 ) {
     let maybe_path = specifier.to_file_path().ok();
@@ -193,12 +194,17 @@ fn join<P: AsRef<Path>>(path: PathBuf, file_name: P) -> Option<PathBuf> {
     path.parent().map(|p| p.join(file_name))
 }
 
+#[derive(Deserialize)]
+pub struct ExtractedTitle {
+    pub title: Option<String>,
+}
+
 fn read_title_from_content_of_file(path: PathBuf) -> Option<String> {
-    ModuleSpecifier::from_file_path(path)
+    Url::from_file_path(path)
         .ok()
         .and_then(|p| std::fs::read_to_string(p.path()).ok())
         .and_then(|s| extract_yaml(&s).ok())
-        .and_then(|s| libs::serde_yaml::from_str::<FrontMatter>(&s).ok())
+        .and_then(|s| libs::serde_yaml::from_str::<ExtractedTitle>(&s).ok())
         .and_then(|fm| fm.title)
 }
 

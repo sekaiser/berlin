@@ -1,5 +1,5 @@
-use berlin_core::resolve_url_or_path;
-use berlin_core::ModuleSpecifier;
+use files::resolve_url_or_path;
+use files::ModuleSpecifier;
 use libs::anyhow::Error;
 use libs::log;
 use libs::log::info;

@@ -1,11 +1,11 @@
-use chrono::prelude::*;
-use chrono::Duration;
+use libs::chrono::prelude::*;
+use libs::chrono::Duration;
 
+use libs::url::Url;
 use linkedin::{
     prelude::*, scopes, AuthCodeLinkedIn, ClientCredsLinkedIn, Config, Credentials, OAuth, Token,
 };
 use std::{collections::HashMap, fs, io::Read, path::PathBuf};
-use url::Url;
 
 #[test]
 fn test_get_authorize_url() {

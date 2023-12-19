@@ -1,6 +1,6 @@
 use crate::proc_state::ProcState;
 use crate::tasks::{DefaultTask, WatchableTask};
-use berlin_core::ModuleSpecifier;
+use files::ModuleSpecifier;
 use libs::anyhow::Error;
 
 // pub trait Task: fmt::Display {

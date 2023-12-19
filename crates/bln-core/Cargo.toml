@@ -12,6 +12,13 @@ description = "A runtime for Berlin"
 path = "src/lib.rs"
 
 [dependencies]
+parser.workspace = true
 serde.workspace = true
 errors.workspace = true
 libs.workspace = true
+files.workspace = true
+org.workspace = true
+markdown.workspace = true
+css.workspace = true
+csv.workspace = true
+page.workspace = true

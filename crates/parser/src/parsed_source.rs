@@ -1,8 +1,8 @@
-use libs::url::Url;
-use serde::Deserialize;
+use ::serde::Deserialize;
+use files::MediaType;
+use libs::{tera::Value, url::Url};
 
-use crate::{MediaType, ModuleSpecifier};
-use std::{any::Any, fs::Metadata, sync::Arc};
+use std::{any::Any, collections::HashMap, fs::Metadata, sync::Arc};
 
 #[derive(Clone, Debug)]
 struct ParsedSourceInner {
@@ -11,9 +11,10 @@ struct ParsedSourceInner {
     data: Option<String>,
     front_matter: Option<FrontMatter>,
     metadata: Option<Metadata>,
+    custom: Option<HashMap<String, Value>>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Default)]
 pub struct FrontMatter {
     pub title: Option<String>,
     #[serde(rename = "date")]
@@ -107,6 +108,10 @@ impl ParsedSource {
     pub fn metadata(&self) -> Option<&Metadata> {
         self.inner.metadata.as_ref()
     }
+
+    pub fn custom(&self) -> Option<&HashMap<String, Value>> {
+        self.inner.custom.as_ref()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -116,11 +121,12 @@ pub struct ParsedSourceBuilder {
     content: Option<String>,
     front_matter: Option<FrontMatter>,
     metadata: Option<Metadata>,
+    custom: Option<HashMap<String, Value>>,
 }
 
 impl ParsedSourceBuilder {
     pub fn new(specifier: String, media_type: MediaType) -> Self {
-        let file_name = ModuleSpecifier::from(Url::parse(&specifier).ok().unwrap())
+        let file_name = Url::from(Url::parse(&specifier).ok().unwrap())
             .to_file_path()
             .ok()
             .unwrap()
@@ -134,6 +140,7 @@ impl ParsedSourceBuilder {
             content: None,
             front_matter: None,
             metadata: None,
+            custom: None,
         }
     }
 
@@ -162,6 +169,11 @@ impl ParsedSourceBuilder {
         self
     }
 
+    pub fn custom(mut self, custom: HashMap<String, Value>) -> Self {
+        self.custom = Some(custom);
+        self
+    }
+
     pub fn build(self) -> ParsedSource {
         ParsedSource {
             inner: Arc::new(ParsedSourceInner {
@@ -170,6 +182,7 @@ impl ParsedSourceBuilder {
                 data: self.content,
                 front_matter: self.front_matter,
                 metadata: self.metadata,
+                custom: self.custom,
             }),
         }
     }

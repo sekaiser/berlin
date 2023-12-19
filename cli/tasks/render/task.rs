@@ -2,7 +2,6 @@ use crate::tasks::render::render_builder::RenderBuilder;
 use crate::tasks::Aggregate;
 use crate::tasks::AggregatedSources;
 use crate::tasks::Aggregator;
-use crate::tasks::Input;
 use crate::tasks::InputLoader;
 use crate::tasks::Inputs;
 use crate::tasks::Task;
@@ -11,15 +10,17 @@ use crate::tasks::WatchableTask;
 use std::fmt;
 use std::{path::PathBuf, process::exit};
 
-use berlin_core::{resolve_path, ModuleSpecifier, ParsedSource};
+use berlin_core::parser::ToCapturingParser;
+use files::{resolve_path, ModuleSpecifier};
 use libs::anyhow::Error;
+use parser::ParsedSource;
 
 use crate::{args::ConfigFile, proc_state::ProcState};
 use libs::tera;
 
 mod render {
-    use berlin_core::ParsedSource;
     use libs::tera;
+    use parser::ParsedSource;
 
     use super::RenderStruct;
 
@@ -40,7 +41,7 @@ mod reducer {
         RenderData<&'a dyn Fn(&AggregatedSources) -> Vec<(String, tera::Context)>>;
 }
 
-fn initialize_context(
+pub fn initialize_context(
     maybe_module_specifier: Option<ModuleSpecifier>,
 ) -> Result<tera::Context, Error> {
     let mut context = tera::Context::new();
@@ -89,7 +90,7 @@ pub(crate) struct RenderData<T> {
     pub(crate) parent_context: tera::Context,
 }
 
-fn do_slugify(source: &ParsedSource) -> String {
+pub fn do_slugify(source: &ParsedSource) -> String {
     use libs::slugify::slugify;
 
     let maybe_title = source
@@ -424,30 +425,30 @@ impl<'a> Watch for Render<'a> {
 
         let prefix = format!("{}/", ps.dir.root_file_path().to_string_lossy());
         if let Some(changed_file) = specifier.path().strip_prefix(&prefix) {
-            for input in inputs.iter() {
-                if match input {
-                    Input::Pattern(ref input_pattern)
-                    | Input::PatternWithAggregate(ref input_pattern, _) => {
-                        let re = libs::fnmatch_regex::glob_to_regex(input_pattern)?;
-                        re.is_match(&changed_file)
-                    }
-                    Input::Files(paths) => paths.contains(&PathBuf::from(changed_file)),
-                } {
-                    if let Ok(file_path) = specifier.to_file_path() {
-                        ps.parsed_source_cache
-                            .free(&resolve_path(&file_path.to_string_lossy())?);
-                        return self.run_internal(ps);
-                    } else {
-                        eprintln!("Invalid path!");
-                        return Ok(1);
-                    }
-                }
-            }
+            // for input in inputs.iter() {
+            //     if match input {
+            //         Input::Pattern(ref input_pattern)
+            //         | Input::PatternWithAggregate(ref input_pattern, _) => {
+            //             let re = libs::fnmatch_regex::glob_to_regex(input_pattern)?;
+            //             re.is_match(&changed_file)
+            //         }
+            //         Input::Files(paths) => paths.contains(&PathBuf::from(changed_file)),
+            //     } {
+            //         if let Ok(file_path) = specifier.to_file_path() {
+            //             ps.parsed_source_cache
+            //                 .free(&resolve_path(&file_path.to_string_lossy())?);
+            //             return self.run_internal(ps);
+            //         } else {
+            //             eprintln!("Invalid path!");
+            //             return Ok(1);
+            //         }
+            //     }
+            // }
         }
 
         let prefix = format!("{}/", ps.dir.templates_file_path().to_string_lossy());
         if let Some(changed_file) = specifier.path().strip_prefix(&prefix) {
-            let expr = self.template.clone();
+            let expr = self.template;
             let re = libs::fnmatch_regex::glob_to_regex(&expr)?;
 
             ps.hera.lock().full_reload()?;

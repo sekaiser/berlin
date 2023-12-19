@@ -1,0 +1,18 @@
+[package]
+name = "csv"
+version = "0.0.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+description = "Csv package"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+errors.workspace = true
+files.workspace = true
+libs.workspace = true
+parser.workspace = true

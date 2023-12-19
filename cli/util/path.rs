@@ -1,5 +1,5 @@
-use berlin_core::ModuleSpecifier;
 use errors::error::uri_error;
+use files::ModuleSpecifier;
 use libs::anyhow::Error;
 use std::path::PathBuf;
 

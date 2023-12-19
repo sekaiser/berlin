@@ -1,10 +1,11 @@
 use crate::shortcode::parse_for_shortcodes;
-use berlin_core::{FrontMatter, ModuleSpecifier};
 use libs::comrak::nodes::{AstNode, NodeValue};
 use libs::comrak::plugins::syntect::SyntectAdapter;
 use libs::comrak::{format_html_with_plugins, parse_document, Arena, ComrakOptions, ComrakPlugins};
 use libs::lazy_static;
 pub use libs::regex::Regex;
+use libs::url::Url;
+use parser::FrontMatter;
 use serde::Deserialize;
 use std::borrow::BorrowMut;
 use std::sync::Arc;
@@ -34,7 +35,7 @@ impl MarkdownOptions {
     }
 }
 
-pub fn handle_shortcodes(specifier: &ModuleSpecifier, content: &mut String) {
+pub fn handle_shortcodes(specifier: &Url, content: &mut String) {
     if let Ok((_name, mut shortcodes)) = parse_for_shortcodes(&specifier, &content) {
         // the ranges of the shortcodes are computed based on the original file
         // and differences in ranges after a rendering step of a short code

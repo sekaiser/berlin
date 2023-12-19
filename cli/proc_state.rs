@@ -1,14 +1,16 @@
 use crate::args::CliOptions;
 use crate::args::Flags;
-use crate::cache::{BerlinDir, ParsedSourceCache};
+use crate::cache::BerlinDir;
 use crate::util::fs::load_files;
-use berlin_core::normalize_path;
-use berlin_core::ModuleSpecifier;
-use berlin_core::ParsedSource;
 use berlin_core::Resolutions;
 use berlin_core::ResolutionsBuilder;
+use files::normalize_path;
+use files::ModuleSpecifier;
 use libs::anyhow::Error;
 use libs::parking_lot::Mutex;
+use page::library_cache::LibraryCache;
+use parser::ParsedSource;
+use parser::ParsedSourceCache;
 use templates::Hera;
 
 use core::fmt;
@@ -30,6 +32,7 @@ pub struct Inner {
     pub dir: BerlinDir,
     pub options: Arc<CliOptions>,
     pub parsed_source_cache: ParsedSourceCache,
+    pub library_cache: LibraryCache,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
     pub maybe_css_resolutions: Option<Resolutions>,
     pub hera: Arc<Mutex<Hera>>,
@@ -67,6 +70,7 @@ impl ProcState {
     ) -> Result<Self, Error> {
         let dir = cli_options.resolve_berlin_dir()?;
         let parsed_source_cache = ParsedSourceCache::new(None);
+        let library_cache = LibraryCache::new(None);
 
         let maybe_file_watcher_reporter = maybe_sender.map(|sender| FileWatcherReporter {
             sender,
@@ -91,6 +95,7 @@ impl ProcState {
             dir,
             options: cli_options,
             parsed_source_cache,
+            library_cache,
             maybe_file_watcher_reporter,
             maybe_css_resolutions,
             hera: Arc::new(Mutex::new(hera)),

@@ -14,3 +14,6 @@ path = "src/lib.rs"
 [dependencies]
 errors.workspace = true
 libs.workspace = true
+markdown.workspace = true
+parser.workspace = true
+files.workspace = true

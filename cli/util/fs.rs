@@ -1,5 +1,5 @@
-pub use berlin_core::normalize_path;
-use berlin_core::ModuleSpecifier;
+pub use files::normalize_path;
+use files::ModuleSpecifier;
 use libs::anyhow::Error;
 use std::path::Path;
 use std::path::PathBuf;

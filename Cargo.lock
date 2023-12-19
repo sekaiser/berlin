@@ -211,8 +211,10 @@ dependencies = [
  "berlin_core",
  "berlin_runtime",
  "errors",
+ "files",
  "libs",
  "markdown",
+ "page",
  "parser",
  "serde",
  "templates",
@@ -223,8 +225,15 @@ dependencies = [
 name = "berlin_core"
 version = "0.0.0"
 dependencies = [
+ "css",
+ "csv 0.0.0",
  "errors",
+ "files",
  "libs",
+ "markdown",
+ "org",
+ "page",
+ "parser",
  "serde",
 ]
 
@@ -592,7 +601,7 @@ dependencies = [
  "chrono",
  "chrono-tz 0.8.2",
  "crossbeam",
- "csv",
+ "csv 1.2.1",
  "document-features",
  "either",
  "env_logger",
@@ -735,7 +744,9 @@ name = "css"
 version = "0.0.0"
 dependencies = [
  "errors",
+ "files",
  "libs",
+ "parser",
 ]
 
 [[package]]
@@ -763,6 +774,16 @@ checksum = "dfae75de57f2b2e85e8768c3ea840fd159c8f33e2b6522c7835b7abac81be16e"
 dependencies = [
  "quote",
  "syn 1.0.107",
+]
+
+[[package]]
+name = "csv"
+version = "0.0.0"
+dependencies = [
+ "errors",
+ "files",
+ "libs",
+ "parser",
 ]
 
 [[package]]
@@ -1054,6 +1075,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7a407cfaa3385c4ae6b23e84623d48c2798d06e3e6a1878f7f59f17b3f86499"
 dependencies = [
  "instant",
+]
+
+[[package]]
+name = "files"
+version = "0.0.0"
+dependencies = [
+ "libs",
+ "serde",
 ]
 
 [[package]]
@@ -1749,7 +1778,7 @@ dependencies = [
  "clap",
  "comrak",
  "cozo",
- "csv",
+ "csv 1.2.1",
  "env_logger",
  "fnmatch-regex",
  "futures",
@@ -1944,9 +1973,10 @@ dependencies = [
 name = "markdown"
 version = "0.0.0"
 dependencies = [
- "berlin_core",
  "errors",
+ "files",
  "libs",
+ "parser",
  "pest",
  "pest_derive",
  "serde",
@@ -2393,7 +2423,10 @@ name = "org"
 version = "0.0.0"
 dependencies = [
  "errors",
+ "files",
  "libs",
+ "markdown",
+ "parser",
 ]
 
 [[package]]
@@ -2413,6 +2446,18 @@ name = "owo-colors"
 version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1b04fb49957986fdce4d6ee7a65027d55d4b6d2265e5848bbb507b58ccfdb6f"
+
+[[package]]
+name = "page"
+version = "0.0.0"
+dependencies = [
+ "errors",
+ "files",
+ "libs",
+ "markdown",
+ "parser",
+ "serde",
+]
 
 [[package]]
 name = "page_size"
@@ -2499,12 +2544,10 @@ dependencies = [
 name = "parser"
 version = "0.0.0"
 dependencies = [
- "berlin_core",
- "css",
  "errors",
+ "files",
  "libs",
- "markdown",
- "org",
+ "serde",
 ]
 
 [[package]]
@@ -3586,7 +3629,6 @@ name = "storage"
 version = "0.0.0"
 dependencies = [
  "berlin_core",
- "cozo",
  "libs",
 ]
 
@@ -3722,9 +3764,12 @@ dependencies = [
 name = "templates"
 version = "0.0.0"
 dependencies = [
- "berlin_core",
  "errors",
+ "files",
  "libs",
+ "page",
+ "parser",
+ "serde",
 ]
 
 [[package]]

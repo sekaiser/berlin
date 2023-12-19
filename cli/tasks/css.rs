@@ -1,4 +1,5 @@
-use berlin_core::{resolve_path, resolve_url_or_path, ModuleSpecifier};
+use berlin_core::parser::ToCapturingParser;
+use files::{resolve_path, resolve_url_or_path, ModuleSpecifier};
 use libs::anyhow::Error;
 use std::{fmt, path::PathBuf};
 
@@ -39,7 +40,7 @@ impl Task for Css {
             InputLoader {
                 name: "css",
                 base_path: &ps.dir.css_file_path(),
-                inputs: &Input::Pattern(&self.input_pattern).into(),
+                inputs: &Input::Files(&self.input_pattern).into(),
                 parser: &ps.parsed_source_cache.as_capturing_parser(),
             },
         )
@@ -68,7 +69,7 @@ impl Watch for Css {
                 let files_provider = InputLoader {
                     name: "css",
                     base_path: &ps.dir.css_file_path(),
-                    inputs: &Input::Files(&paths).into(),
+                    inputs: &Input::Vec(&paths).into(),
                     parser: &ps.parsed_source_cache.as_capturing_parser(),
                 };
 

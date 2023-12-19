@@ -1,0 +1,20 @@
+[package]
+name = "page"
+version = "0.0.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+description = "Page package"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+errors.workspace = true
+serde.workspace = true
+libs.workspace = true
+markdown.workspace = true
+parser.workspace = true
+files.workspace = true

@@ -1,8 +1,9 @@
-use berlin_core::ParsedSource;
 use errors::error::generic_error;
 use libs::anyhow::Error;
 use libs::tera;
 use libs::tera::{Context, Function, Tera, Value};
+use page::library_cache::LibraryCache;
+use parser::ParsedSource;
 use std::path::PathBuf;
 
 #[derive(Clone)]
@@ -73,4 +74,10 @@ impl Function for Content {
     fn is_safe(&self) -> bool {
         true
     }
+}
+
+#[derive(Debug)]
+pub struct GetPage {
+    base_path: PathBuf,
+    library: LibraryCache,
 }

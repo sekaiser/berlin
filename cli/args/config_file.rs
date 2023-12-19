@@ -3,7 +3,7 @@ use crate::args::Flags;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::specifier_to_file_path;
 
-use berlin_core::ModuleSpecifier;
+use files::ModuleSpecifier;
 use libs::anyhow::anyhow;
 use libs::anyhow::bail;
 use libs::anyhow::Context;

@@ -13,6 +13,7 @@ path = "main.rs"
 doc = false
 
 [dependencies]
+files.workspace = true
 serde.workspace = true
 markdown.workspace = true
 parser.workspace = true
@@ -21,6 +22,7 @@ berlin_runtime.workspace = true
 libs.workspace = true
 errors.workspace = true
 templates.workspace = true
+page.workspace = true
 
 [dev-dependencies]
 test_util.workspace = true
