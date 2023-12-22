@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use parser::FrontMatter;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Hash, Eq, PartialEq, Debug, PartialOrd, Ord, Clone)]
@@ -48,6 +49,12 @@ impl From<&str> for Tag {
     }
 }
 
+impl From<&String> for Tag {
+    fn from(s: &String) -> Self {
+        Self::new(s)
+    }
+}
+
 impl Default for Tag {
     fn default() -> Self {
         Self::new("uncategorized")
@@ -57,6 +64,19 @@ impl Default for Tag {
 impl Display for Tag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)
+    }
+}
+
+impl Into<FrontMatter> for &Tag {
+    fn into(self) -> FrontMatter {
+        FrontMatter {
+            title: Some(self.to_string()),
+            author: None,
+            description: None,
+            published: None,
+            tags: None,
+            id: None,
+        }
     }
 }
 

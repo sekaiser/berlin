@@ -1,7 +1,7 @@
 use crate::args::ConfigFlag;
 use crate::args::Flags;
+use crate::util;
 use crate::util::fs::canonicalize_path;
-use crate::util::path::specifier_to_file_path;
 
 use files::ModuleSpecifier;
 use libs::anyhow::anyhow;
@@ -206,7 +206,7 @@ impl ConfigFile {
     }
 
     pub fn from_specifier(specifier: &ModuleSpecifier) -> Result<Self, Error> {
-        let config_path = specifier_to_file_path(specifier)?;
+        let config_path = util::specifier::to_file_path(specifier)?;
         let config_text = match std::fs::read_to_string(config_path) {
             Ok(text) => text,
             Err(err) => bail!(

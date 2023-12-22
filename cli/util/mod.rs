@@ -1,4 +1,5 @@
 pub mod file_watcher;
 pub mod fs;
 pub mod logger;
-pub mod path;
+mod path;
+pub use path::specifier;

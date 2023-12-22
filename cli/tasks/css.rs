@@ -3,7 +3,7 @@ use files::{resolve_path, resolve_url_or_path, ModuleSpecifier};
 use libs::anyhow::Error;
 use std::{fmt, path::PathBuf};
 
-use crate::{proc_state::ProcState, util::path::specifier_to_file_path};
+use crate::{proc_state::ProcState, util};
 
 use super::{Input, InputLoader, Task, Watch, WatchableTask};
 
@@ -17,7 +17,7 @@ impl Css {
         if let Some(input) = files_provider.load_input()?.get(files_provider.name) {
             for parsed_source in input.iter() {
                 let specifier = resolve_url_or_path(parsed_source.specifier())?;
-                let path_buf = specifier_to_file_path(&specifier)?;
+                let path_buf = util::specifier::to_file_path(&specifier)?;
                 let output = ps.dir.target_file_path().join("css").join(
                     self.output
                         .replace("{file}", path_buf.file_name().unwrap().to_str().unwrap()),

@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use super::tag::Tag;
 
-#[derive(Serialize, Default)]
+#[derive(Serialize, Default, Clone)]
 pub struct Article {
     pub title: String,
     pub description: String,

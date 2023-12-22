@@ -136,7 +136,9 @@ pub mod util {
     }
 
     pub trait EventHandler {
-        fn on_data_loaded(&self, srcs: &AggregatedSources) -> tera::Value;
+        fn on_data_loaded(&self, srcs: &AggregatedSources) -> tera::Value {
+            tera::Value::Null
+        }
     }
 
     pub struct GetArticlesByKey<'a, Key>(pub &'a Key)
@@ -363,7 +365,7 @@ pub fn bln_input_aggregate_by_category(
 
     if let Some(f) = maybe_sort_fn.as_ref() {
         let _ = map.values_mut().map(|v| {
-            v.sort_by(f.clone());
+            v.sort_by(f);
         });
     }
 

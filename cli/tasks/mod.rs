@@ -1,5 +1,5 @@
 use core::fmt;
-use core::fmt::Debug;
+use std::borrow::Borrow;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::path::Path;
@@ -8,9 +8,12 @@ use std::sync::Arc;
 
 use crate::tasks::functions::bln_input_feed_aggregate_all;
 use crate::tasks::functions::inject_photo_data;
+use crate::util;
+use crate::util::fs::consume_files;
 use crate::util::fs::load_files;
 use berlin_core::parser::CapturingParser;
 use berlin_core::parser::ToCapturingParser;
+use files::resolve_url_or_path;
 use files::MediaType;
 use files::ModuleSpecifier;
 use libs::anyhow::Context;
@@ -18,10 +21,8 @@ use libs::anyhow::Error;
 use libs::serde_json;
 use libs::tera;
 use libs::tera::Value;
-use page::model::article::Article;
 use page::model::feed::Feed;
 use page::model::tag::Tag;
-use parser::FrontMatter;
 use parser::ParsedSource;
 use parser::ParsedSourceBuilder;
 use parser::Parser;
@@ -34,7 +35,6 @@ use self::css::Css;
 use self::functions::bln_input_aggregate_all;
 use self::functions::bln_input_sort_by_date_published;
 use self::functions::csv::from_parsed_source;
-use self::functions::feed_item_to_parsed_source;
 use self::functions::task::Output;
 use self::functions::to_article;
 use self::functions::util::ComputeTags;
@@ -57,62 +57,7 @@ pub type SortFn = Box<dyn Fn(&ParsedSource, &ParsedSource) -> std::cmp::Ordering
 pub type InputAggregate<'a> =
     &'a dyn Fn(&str, &[ParsedSource], Option<SortFn>) -> AggregatedSources;
 
-pub type Map<T, U> = dyn Fn(&T) -> U;
-
-pub type ParsedSourcesMapperFn<T> = Map<Vec<ParsedSource>, T>;
-pub type ScopedParsedSourcesMapperFn<'a> = (&'a str, &'a ParsedSourcesMapperFn<Vec<tera::Value>>);
-pub type TemplateVarsAggregate<'a> = &'a ParsedSourcesMapperFn<tera::Context>;
-
-pub type ParsedSourceMapperFn = Map<ParsedSource, (String, ParsedSource, tera::Context)>;
-pub type ScopedParsedSourceMapperFn<'a> = (&'a str, &'a ParsedSourceMapperFn);
-
-pub enum Aggregate<'a> {
-    Category(&'a str, TemplateVarsAggregate<'a>),
-    // Merge(&'a str, &'a [(&'a str, NamedTemplateVarsAggregate<'a>)]),
-    Categories(&'a str, &'a [ScopedParsedSourcesMapperFn<'a>]),
-}
-
-impl<'a> Debug for Aggregate<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self {
-            Aggregate::Category(key, _) => f
-                .debug_tuple("Category")
-                .field(key)
-                .field(&"Fn(&Vec<ParsedSource>) -> tera::Context")
-                .finish(),
-            Aggregate::Categories(key, _) => f
-                .debug_tuple("Categories")
-                .field(key)
-                .field(&"Vec<(&str, Map<ParsedSource, (String, ParsedSource, tera::Context))>")
-                .finish(),
-        }
-    }
-}
-
-pub enum Aggregator<'a> {
-    // Create a context per input source
-    None(&'a [ScopedParsedSourceMapperFn<'a>]),
-    Merge(&'a [Aggregate<'a>]),
-    Reduce(&'a Map<AggregatedSources, Vec<(String, tera::Context)>>),
-}
-
-impl<'a> Debug for Aggregator<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self {
-            Aggregator::None(_) => f
-                .debug_tuple("None")
-                .field(&"Fn(&Vec<ParsedSource>) -> Vec<tera::Value>")
-                .finish(),
-            Aggregator::Merge(vec) => f.debug_tuple("Merge").field(vec).finish(),
-            Aggregator::Reduce(_) => f
-                .debug_tuple("Reduce")
-                .field(&"Map<AggregatedSources, Vec<(String, tera::Context)>>")
-                .finish(),
-        }
-    }
-}
-
-pub type Aggregators<'a> = &'a [Aggregate<'a>];
+// pub type Map<T, U> = dyn Fn(&T) -> U;
 
 pub enum ETask<'a> {
     Render(
@@ -122,6 +67,8 @@ pub enum ETask<'a> {
         Vec<Input<'a>>,
         Vec<Param<'a>>,
     ),
+    Mount(Output),
+    Css(&'a str, Output),
 }
 
 impl<'a> fmt::Debug for ETask<'a> {
@@ -235,7 +182,41 @@ impl<'a> Task for ETask<'a> {
                     std::fs::write(&out, &data)?;
                 };
             }
-            _ => {}
+            ETask::Mount(ref output) => {
+                consume_files(ps.dir.static_file_path(), "**/*.*", |specifiers| {
+                    let static_file_path = ps.dir.static_file_path();
+                    let target_file_path = ps.dir.target_file_path();
+                    let prefix = static_file_path.to_string_lossy();
+                    for specifier in specifiers {
+                        let relative_path = specifier
+                            .path()
+                            .strip_prefix(&format!("{}/", prefix))
+                            .unwrap();
+
+                        let path = target_file_path.join(output.replace("{file}", relative_path));
+
+                        std::fs::create_dir_all(&path.parent().unwrap()).unwrap();
+                        std::fs::copy(&specifier.path(), &path).unwrap();
+                    }
+                });
+            }
+            ETask::Css(input_pattern, ref output) => {
+                let input = Input::Files(input_pattern);
+                let aggregated_sources = input.load(
+                    "css",
+                    &ps.dir.css_file_path(),
+                    &ps.parsed_source_cache.as_capturing_parser(),
+                )?;
+                for parsed_source in aggregated_sources.values().flatten() {
+                    let specifier = resolve_url_or_path(parsed_source.specifier())?;
+                    let path_buf = util::specifier::to_file_path(&specifier)?;
+                    let output = ps.dir.target_file_path().join("css").join(
+                        output.replace("{file}", path_buf.file_name().unwrap().to_str().unwrap()),
+                    );
+                    std::fs::create_dir_all(&output.parent().unwrap())?;
+                    std::fs::write(output, parsed_source.data())?;
+                }
+            }
         };
 
         Ok(0)
@@ -433,114 +414,88 @@ impl DefaultTask {
                         Input::Files("data/feed.csv").into(),
                     ],
                     &|name, srcs, _| {
-                        let mut tags = HashMap::new();
+                        enum Content {
+                            Article(serde_json::Value),
+                            Feed(serde_json::Value),
+                        }
+                        let mut collected_tags: HashMap<Tag, Vec<Content>> = HashMap::new();
 
                         for src in srcs.iter() {
-                            let specifier = src.specifier();
-                            let media_type = MediaType::JsonFeedEntry;
-
-                            match src.media_type() {
+                            let _ = match src.media_type() {
                                 MediaType::Html => {
-                                    if let Some(fm) = src.front_matter() {
-                                        match fm.tags.as_ref() {
-                                            Some(fm_tags) => {
-                                                fm_tags.iter().for_each(|t| {
-                                                    tags.entry(t.to_string())
-                                                        .or_insert(Vec::new())
-                                                        .push(src.clone())
-                                                });
-                                            }
-                                            None => tags
-                                                .entry("uncategorized".to_string())
-                                                .or_insert(Vec::new())
-                                                .push(src.clone()),
-                                        }
+                                    let mut tags: Vec<Tag> = src
+                                        .front_matter()
+                                        .map(|fm| fm.tags.iter().flatten().map(Tag::from).collect())
+                                        .unwrap_or_default();
+
+                                    if tags.is_empty() {
+                                        tags.push(Tag::uncategorized());
+                                    }
+
+                                    let value = serde_json::to_value(to_article(src)).unwrap();
+                                    for t in tags.iter() {
+                                        collected_tags
+                                            .entry(t.clone())
+                                            .or_insert(Vec::new())
+                                            .push(Content::Article(value.clone()))
                                     }
                                 }
                                 MediaType::Csv => {
                                     for feed in from_parsed_source::<Feed>(src) {
-                                        if feed.tags.is_empty() {
-                                            tags.entry("uncategorized".to_string())
+                                        let mut tags = feed.tags.clone();
+                                        if tags.is_empty() {
+                                            tags.push(Tag::uncategorized());
+                                        }
+                                        let value = serde_json::to_value(feed).unwrap();
+                                        for t in tags.iter() {
+                                            collected_tags
+                                                .entry(t.clone())
                                                 .or_insert(Vec::new())
-                                                .push(feed_item_to_parsed_source(
-                                                    &feed,
-                                                    specifier,
-                                                    &media_type,
-                                                ));
-                                        } else {
-                                            feed.tags.iter().for_each(|t| {
-                                                tags.entry(t.name.clone())
-                                                    .or_insert(Vec::new())
-                                                    .push(feed_item_to_parsed_source(
-                                                        &feed,
-                                                        specifier,
-                                                        &media_type,
-                                                    ))
-                                            });
+                                                .push(Content::Feed(value.clone()))
                                         }
                                     }
                                 }
                                 _ => {}
-                            }
+                            };
                         }
 
                         let mut aggregated_sources = HashMap::new();
 
-                        let sources = tags
-                            .iter()
-                            .map(|sources_grouped_by_tag| {
-                                let mut articles: Vec<ParsedSource> = Vec::new();
-                                let mut feed: Vec<ParsedSource> = Vec::new();
-
-                                for s in sources_grouped_by_tag.1 {
-                                    match s.media_type() {
-                                        MediaType::Html => {
-                                            articles.push(s.to_owned());
+                        let sources = collected_tags
+                            .drain()
+                            .map(|mut sources_grouped_by_tag| {
+                                let mut articles: Vec<serde_json::Value> = Vec::new();
+                                let mut feed: Vec<serde_json::Value> = Vec::new();
+                                for s in sources_grouped_by_tag.1.drain(..) {
+                                    match s {
+                                        Content::Article(a) => {
+                                            articles.push(a);
                                         }
-                                        MediaType::JsonFeedEntry => {
-                                            feed.push(s.to_owned());
+                                        Content::Feed(f) => {
+                                            feed.push(f);
                                         }
-                                        _ => {}
                                     };
                                 }
 
-                                let tag = sources_grouped_by_tag.0;
+                                let tag = sources_grouped_by_tag.0.borrow();
                                 let mut custom: HashMap<String, Value> = HashMap::new();
                                 custom.insert(
                                     "articles".to_string(),
                                     serde_json::to_value(
-                                        articles
-                                            .iter()
-                                            .map(to_article)
-                                            .take(6)
-                                            .collect::<Vec<Article>>(),
+                                        articles.iter().take(6).collect::<Vec<_>>(),
                                     )
                                     .unwrap(),
                                 );
-                                custom.insert(
-                                    "tag_name".to_string(),
-                                    serde_json::to_value(tag).unwrap(),
-                                );
+                                custom.insert("tag_name".to_string(), tag.to_string().into());
                                 custom.insert(
                                     "feed".to_string(),
-                                    serde_json::to_value(
-                                        feed.iter().map(Feed::from).collect::<Vec<Feed>>(),
-                                    )
-                                    .unwrap(),
+                                    serde_json::to_value(feed).unwrap(),
                                 );
-                                let fm = FrontMatter {
-                                    title: Some(tag.clone()),
-                                    author: None,
-                                    description: None,
-                                    published: None,
-                                    tags: None,
-                                    id: None,
-                                };
                                 ParsedSourceBuilder::new(
                                     format!("file:///tags/{}.txt", tag),
                                     MediaType::JsonFeedEntry,
                                 )
-                                .front_matter(fm)
+                                .front_matter(tag.into())
                                 .custom(custom)
                                 .content("".to_string())
                                 .build()
@@ -622,6 +577,15 @@ impl DefaultTask {
                 vec![],
                 vec![],
             ),
+            ETask::Render(
+                "photostream",
+                "photostream.tera".into(),
+                "photostream.html".into(),
+                vec![],
+                vec![Param::Static(&inject_photo_data)],
+            ),
+            ETask::Css("styles.css".into(), "styles.css".into()),
+            ETask::Mount("static/{file}".into()),
         ];
 
         for task in tasks.iter() {
