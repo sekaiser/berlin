@@ -5,7 +5,7 @@ use libs::anyhow::Error;
 use markdown::DefaultMarkdownParser;
 use org::DefaultOrgParser;
 use parser::{ParsedSource, ParsedSourceBuilder, ParsedSourceCache, ParsedSourceStore, Parser};
-use std::{borrow::BorrowMut, sync::Arc};
+use std::sync::Arc;
 
 pub trait ToCapturingParser {
     /// Creates a parser that will reuse a ParsedSource from the store

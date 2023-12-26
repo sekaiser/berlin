@@ -1,6 +1,6 @@
 use core::fmt;
 use std::borrow::Borrow;
-use std::collections::BTreeSet;
+use std::collections::hash_map::IntoIter;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -21,8 +21,10 @@ use libs::anyhow::Error;
 use libs::serde_json;
 use libs::tera;
 use libs::tera::Value;
+use page::model::article::Article;
 use page::model::feed::Feed;
 use page::model::tag::Tag;
+use page::model::tag::Tags;
 use parser::ParsedSource;
 use parser::ParsedSourceBuilder;
 use parser::Parser;
@@ -30,13 +32,10 @@ use templates::template::TemplateName;
 
 use crate::proc_state::ProcState;
 
-use self::copy_static::CopyStatic;
-use self::css::Css;
 use self::functions::bln_input_aggregate_all;
 use self::functions::bln_input_sort_by_date_published;
 use self::functions::csv::from_parsed_source;
 use self::functions::task::Output;
-use self::functions::to_article;
 use self::functions::util::ComputeTags;
 use self::functions::util::EventHandler;
 use self::functions::util::GetArticlesByKey;
@@ -414,50 +413,61 @@ impl DefaultTask {
                         Input::Files("data/feed.csv").into(),
                     ],
                     &|name, srcs, _| {
+                        #[derive(Clone)]
                         enum Content {
                             Article(serde_json::Value),
                             Feed(serde_json::Value),
                         }
+
+                        struct GroupContentByTag {
+                            tags: Tags,
+                            content: Content,
+                        }
+
+                        impl IntoIterator for GroupContentByTag {
+                            type Item = (Tag, Vec<Content>);
+                            type IntoIter = IntoIter<Tag, Vec<Content>>;
+
+                            #[inline]
+                            fn into_iter(self) -> IntoIter<Tag, Vec<Content>> {
+                                let mut map: HashMap<Tag, Vec<Content>> = HashMap::new();
+
+                                for t in self.tags.iter() {
+                                    map.entry(t)
+                                        .or_insert(Vec::new())
+                                        .push(self.content.clone());
+                                }
+                                map.into_iter()
+                            }
+                        }
+
                         let mut collected_tags: HashMap<Tag, Vec<Content>> = HashMap::new();
 
-                        for src in srcs.iter() {
-                            let _ = match src.media_type() {
-                                MediaType::Html => {
-                                    let mut tags: Vec<Tag> = src
-                                        .front_matter()
-                                        .map(|fm| fm.tags.iter().flatten().map(Tag::from).collect())
-                                        .unwrap_or_default();
-
-                                    if tags.is_empty() {
-                                        tags.push(Tag::uncategorized());
+                        fn group_by_tags(srcs: &[ParsedSource]) -> HashMap<Tag, Vec<Content>> {
+                            let mut map: HashMap<Tag, Vec<Content>> = HashMap::new();
+                            for src in srcs.iter() {
+                                let _ = match src.media_type() {
+                                    MediaType::Html => {
+                                        let article = Article::from(src.clone());
+                                        let tags: Tags = src.into();
+                                        let content = Content::Article(article.into());
+                                        map.extend(GroupContentByTag { tags, content });
                                     }
-
-                                    let value = serde_json::to_value(to_article(src)).unwrap();
-                                    for t in tags.iter() {
-                                        collected_tags
-                                            .entry(t.clone())
-                                            .or_insert(Vec::new())
-                                            .push(Content::Article(value.clone()))
-                                    }
-                                }
-                                MediaType::Csv => {
-                                    for feed in from_parsed_source::<Feed>(src) {
-                                        let mut tags = feed.tags.clone();
-                                        if tags.is_empty() {
-                                            tags.push(Tag::uncategorized());
-                                        }
-                                        let value = serde_json::to_value(feed).unwrap();
-                                        for t in tags.iter() {
-                                            collected_tags
-                                                .entry(t.clone())
-                                                .or_insert(Vec::new())
-                                                .push(Content::Feed(value.clone()))
+                                    MediaType::Csv => {
+                                        for feed in from_parsed_source::<Feed>(src) {
+                                            let tags: Tags = src.into();
+                                            let content = Content::Feed(feed.into());
+                                            map.extend(GroupContentByTag { tags, content });
                                         }
                                     }
-                                }
-                                _ => {}
-                            };
+                                    _ => {}
+                                };
+                            }
+
+                            map
                         }
+
+                        collected_tags.extend(group_by_tags(srcs).drain());
 
                         let mut aggregated_sources = HashMap::new();
 
@@ -595,81 +605,6 @@ impl DefaultTask {
                 eprintln!("Error while running task: {e}");
             }
         }
-
-        //let tasks: &[&dyn WatchableTask] = &[
-        // &RenderBuilder::new("index", "index.tera", "index.html")
-        //     .input(&[
-        //         Input::Aggregation(
-        //             Input::Files("content/notes/*.md").into(),
-        //             &bln_input_sort_by_date_published,
-        //         ),
-        //         Input::Aggregation(
-        //             Box::new(Input::Files("data/feed.csv")),
-        //             &bln_input_feed_aggregate_all,
-        //         ),
-        //     ])
-        //     .template_vars(Aggregator::Merge(&[
-        //         Aggregate::Category("index", &collect_articles),
-        //         Aggregate::Category("feed", &parse_feed),
-        //         Aggregate::Categories(
-        //             "tags",
-        //             &[("index", &extract_tags), ("feed", &extract_tags_from_feed)],
-        //         ),
-        //     ]))
-        //     .add_to_context(&inject_photo_data)
-        //     .add_to_context(&|| -> tera::Context {
-        //         let mut context = tera::Context::new();
-        //         let vec: Vec<String> = vec![];
-        //         context.insert("slides", &vec);
-        //         context
-        //     })
-        //     .build(),
-        // &RenderBuilder::new("tags", "tags/base.tera", "tags/[slug].html")
-        //     .input(&[
-        //         Input::Aggregation(
-        //             Box::new(Input::Files("content/notes/*.md")),
-        //             &bln_input_aggregate_by_category,
-        //         ),
-        //         Input::Aggregation(
-        //             Box::new(Input::Files("data/feed.csv")),
-        //             &bln_parse_csv_aggregate_by_category,
-        //         ),
-        //     ])
-        //     .template_vars(Aggregator::Reduce(&collect_by_tag))
-        //     .build(),
-        // &RenderBuilder::new("notes", "notes/[slug].tera", "notes/[slug].html")
-        //     .input(&[Input::Files("content/notes/*.md")])
-        //     .template_vars(Aggregator::None(&[("notes", &extract_front_matter)]))
-        //     .build(),
-        //&task_notes,
-        // &RenderBuilder::new("about", "about.tera", "about.html").build(),
-        // &RenderBuilder::new("garage", "garage.tera", "garage.html").build(),
-        // &RenderBuilder::new("feed", "feed.tera", "feed.html")
-        //     .input(&[Input::Files("data/feed.csv")])
-        //     .template_vars(Aggregator::Merge(&[Aggregate::Category(
-        //         "feed",
-        //         &parse_feed,
-        //     )]))
-        //     .build(),
-        // &RenderBuilder::new("photostream", "photostream.tera", "photostream.html")
-        //     .add_to_context(&inject_photo_data)
-        //     .build(),
-        // &Css {
-        //     input_pattern: "styles.css".into(),
-        //     output: "styles.css".into(),
-        // },
-        // &CopyStatic {
-        //     output: "static/{file}".into(),
-        // },
-        //];
-
-        // for task in tasks.iter() {
-        //     let res = consumer(*task);
-
-        //     if let Err(e) = res {
-        //         eprintln!("Error while running task: {e}");
-        //     }
-        // }
         Ok(0)
     }
 }
@@ -695,6 +630,8 @@ impl Task for DefaultTask {
 #[cfg(test)]
 mod test {
     #![allow(warnings, unused)]
+    use std::any::Any;
+
     use super::*;
 
     #[test]
@@ -714,5 +651,126 @@ mod test {
         // );
 
         //task.run(ps);
+    }
+
+    #[test]
+    fn test() {
+        pub trait IntoPickSource<T> {
+            type Pick: Into<T>;
+
+            fn pick(&self) -> Self::Pick;
+        }
+
+        pub trait AsIntoPickSource<T> {
+            type PickSource: IntoPickSource<T>;
+
+            fn as_into_pick_source(&self) -> &Self::PickSource;
+        }
+
+        impl<T, PS> AsIntoPickSource<T> for PS
+        where
+            PS: IntoPickSource<T>,
+        {
+            type PickSource = Self;
+
+            fn as_into_pick_source(&self) -> &Self::PickSource {
+                self
+            }
+        }
+
+        pub trait PickSource {
+            type Pick;
+
+            fn pick(&self) -> Self::Pick;
+        }
+
+        pub trait AsPickSource {
+            type PickSource: PickSource;
+
+            fn as_pick_source(&self) -> &Self::PickSource;
+        }
+
+        impl<PS> AsPickSource for PS
+        where
+            PS: PickSource,
+        {
+            type PickSource = Self;
+
+            fn as_pick_source(&self) -> &Self::PickSource {
+                self
+            }
+        }
+
+        impl<PS> PickSource for PS
+        where
+            PS: Into<Tags> + Clone,
+        {
+            type Pick = Tags;
+
+            fn pick(&self) -> Self::Pick {
+                <PS as Into<Tags>>::into(self.clone())
+            }
+        }
+
+        #[derive(Clone)]
+        struct Wrapper<T>(T);
+
+        impl Into<Tags> for Wrapper<ParsedSource> {
+            fn into(self) -> Tags {
+                self.0
+                    .front_matter()
+                    .map(<&FrontMatter as Into<Tags>>::into)
+                    .filter(|t| !t.is_empty())
+                    .unwrap_or(Tags::uncategorized())
+            }
+        }
+
+        // impl PickSource for Feed {
+        //     type Pick = Tags;
+
+        //     fn pick(&self) -> Self::Pick {
+        //         Tags::from(&self.tags).get_or_when_empty(Tags::uncategorized())
+        //     }
+        // }
+
+        let source = ParsedSourceBuilder::new("file:///abc.txt".into(), MediaType::Html)
+            .front_matter(FrontMatter {
+                title: Some("no title".into()),
+                author: None,
+                description: None,
+                published: None,
+                tags: Some(vec!["abc".into(), "def".into()]),
+                id: None,
+            })
+            .build();
+
+        let vec: Tags = <&ParsedSource as Into<Tags>>::into(&source);
+
+        println!("{:?}", vec);
+
+        // pub trait Table: QuerySource + AsQuery + Sized {
+        //     type PrimaryKey: SelectableExpression<Self> + ValidGrouping<()>;
+        //     type AllColumns: SelectableExpression<Self> + ValidGrouping<()>;
+
+        //     /// Returns the primary key of this table.
+        //     ///
+        //     /// If the table has a composite primary key, this will be a tuple.
+        //     fn primary_key(&self) -> Self::PrimaryKey;
+        //     /// Returns a tuple of all columns belonging to this table.
+        //     fn all_columns() -> Self::AllColumns;
+        // }
+
+        // impl<T, Selection> Collector<Selection> for T
+        // where
+        //     Selection: Selector,
+        //     T: Table,
+        //     T::Query: SelectDsl<Selection>,
+        // {
+        //     type Output = <T::Query as SelectDsl<Selection>>::Output;
+
+        //     fn select(self, selection: Selection) -> Self::Output {
+        //         self.as_query().select(selection)
+        //     }
+        // }
     }
 }

@@ -1,6 +1,6 @@
-use std::fmt::Display;
+use std::{fmt::Display, slice::Iter};
 
-use parser::FrontMatter;
+use parser::{FrontMatter, ParsedSource};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Hash, Eq, PartialEq, Debug, PartialOrd, Ord, Clone)]
@@ -77,6 +77,69 @@ impl Into<FrontMatter> for &Tag {
             tags: None,
             id: None,
         }
+    }
+}
+
+#[derive(Serialize, Deserialize, Hash, Eq, PartialEq, Debug, PartialOrd, Ord, Clone)]
+pub struct Tags(Vec<Tag>);
+
+impl Tags {
+    pub fn unwrap_or_when_empty(self, tags: Vec<Tag>) -> Vec<Tag> {
+        match self.0.as_slice() {
+            [] => tags,
+            _ => self.0,
+        }
+    }
+
+    pub fn get_or_when_empty(self, tags: Tags) -> Self {
+        match self.0.as_slice() {
+            [] => tags,
+            _ => self,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn uncategorized() -> Self {
+        Self(vec![Tag::uncategorized()])
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = Tag> {
+        self.0.clone().into_iter()
+    }
+}
+
+impl Into<Tags> for &ParsedSource {
+    fn into(self) -> Tags {
+        self.front_matter()
+            .map(<&FrontMatter as Into<Tags>>::into)
+            .unwrap_or_default()
+    }
+}
+
+impl Into<Tags> for &FrontMatter {
+    fn into(self) -> Tags {
+        Tags(self.tags.iter().flatten().map(Tag::from).collect())
+    }
+}
+
+impl Default for Tags {
+    fn default() -> Self {
+        Self(vec![Tag::uncategorized()])
+    }
+}
+
+impl From<Vec<Tag>> for Tags {
+    fn from(value: Vec<Tag>) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&Vec<Tag>> for Tags {
+    fn from(value: &Vec<Tag>) -> Self {
+        Self(value.clone())
     }
 }
 

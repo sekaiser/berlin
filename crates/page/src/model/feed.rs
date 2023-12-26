@@ -7,7 +7,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::ParsedSource;
 
-use super::{record::Record, tag::Tag};
+use super::{
+    record::Record,
+    tag::{Tag, Tags},
+};
 
 #[derive(Hash, Eq, PartialEq, Debug, Serialize, Deserialize, PartialOrd, Ord, Clone, Default)]
 pub struct Feed {
@@ -34,6 +37,18 @@ impl Display for Feed {
 impl From<&ParsedSource> for Feed {
     fn from(value: &ParsedSource) -> Self {
         serde_json::from_str(value.data()).unwrap()
+    }
+}
+
+impl Into<libs::serde_json::Value> for Feed {
+    fn into(self) -> libs::serde_json::Value {
+        serde_json::to_value(self).expect("Converting Feed to serde_json::Value failed!")
+    }
+}
+
+impl Into<Tags> for Feed {
+    fn into(self) -> Tags {
+        Tags::from(self.tags).get_or_when_empty(Tags::uncategorized())
     }
 }
 

@@ -30,6 +30,12 @@ impl Display for Article {
     }
 }
 
+impl Into<libs::serde_json::Value> for Article {
+    fn into(self) -> libs::serde_json::Value {
+        serde_json::to_value(self).expect("Converting Article to serde_json::Value failed!")
+    }
+}
+
 impl From<ParsedSource> for Article {
     fn from(value: ParsedSource) -> Self {
         if let Some(front_matter) = value.front_matter() {
@@ -70,8 +76,6 @@ impl From<ParsedSource> for Article {
                 target,
             };
         }
-
-        // return Err(generic_error("front matter is not set!"));
 
         Article::default()
     }
