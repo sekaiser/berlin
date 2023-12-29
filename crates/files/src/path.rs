@@ -1,9 +1,9 @@
 pub mod specifier {
+    use errors::error::uri_error;
+    use libs::anyhow::Error;
     use std::path::PathBuf;
 
-    use errors::error::uri_error;
-    use files::ModuleSpecifier;
-    use libs::anyhow::Error;
+    use crate::ModuleSpecifier;
 
     // Attempts to convert a specifier to a file path. By default, uses the Url
     /// crate's `to_file_path()` method, but falls back to try and resolve unix-style

@@ -1,20 +1,18 @@
 [package]
-name = "page"
+name = "berlin_config"
 version = "0.0.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 readme = "README.md"
-description = "Page package"
+description = "Config file implementation for the Berlin CLI"
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
 errors.workspace = true
-serde.workspace = true
 libs.workspace = true
-markdown.workspace = true
-parser.workspace = true
 files.workspace = true
+serde.workspace = true

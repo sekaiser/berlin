@@ -1,17 +1,16 @@
 [package]
-name = "files"
+name = "berlin_unsync"
 version = "0.0.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
-readme = "README.md"
 repository.workspace = true
-description = "Components for accessing files"
+readme = "README.md"
+description = "A collection of adapters to make working with Tokio single-threaded runtimes easier"
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-libs.workspace = true
-serde.workspace = true
 errors.workspace = true
+libs.workspace = true

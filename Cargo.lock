@@ -208,23 +208,36 @@ dependencies = [
 name = "berlin"
 version = "0.1.0"
 dependencies = [
+ "berlin_config",
  "berlin_core",
  "berlin_runtime",
+ "berlin_unsync",
+ "content",
  "errors",
  "files",
  "libs",
  "markdown",
- "page",
  "parser",
  "serde",
  "templates",
- "test_util",
+]
+
+[[package]]
+name = "berlin_config"
+version = "0.0.0"
+dependencies = [
+ "errors",
+ "files",
+ "libs",
+ "serde",
 ]
 
 [[package]]
 name = "berlin_core"
 version = "0.0.0"
 dependencies = [
+ "berlin_config",
+ "berlin_unsync",
  "css",
  "csv 0.0.0",
  "errors",
@@ -232,7 +245,6 @@ dependencies = [
  "libs",
  "markdown",
  "org",
- "page",
  "parser",
  "serde",
 ]
@@ -242,6 +254,14 @@ name = "berlin_runtime"
 version = "0.1.0"
 dependencies = [
  "berlin_core",
+ "libs",
+]
+
+[[package]]
+name = "berlin_unsync"
+version = "0.0.0"
+dependencies = [
+ "errors",
  "libs",
 ]
 
@@ -542,6 +562,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.107",
+]
+
+[[package]]
+name = "content"
+version = "0.0.0"
+dependencies = [
+ "errors",
+ "files",
+ "libs",
+ "markdown",
+ "parser",
+ "serde",
 ]
 
 [[package]]
@@ -1081,6 +1113,7 @@ dependencies = [
 name = "files"
 version = "0.0.0"
 dependencies = [
+ "errors",
  "libs",
  "serde",
 ]
@@ -2448,18 +2481,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1b04fb49957986fdce4d6ee7a65027d55d4b6d2265e5848bbb507b58ccfdb6f"
 
 [[package]]
-name = "page"
-version = "0.0.0"
-dependencies = [
- "errors",
- "files",
- "libs",
- "markdown",
- "parser",
- "serde",
-]
-
-[[package]]
 name = "page_size"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3764,10 +3785,11 @@ dependencies = [
 name = "templates"
 version = "0.0.0"
 dependencies = [
+ "berlin_core",
+ "content",
  "errors",
  "files",
  "libs",
- "page",
  "parser",
  "serde",
 ]
@@ -3822,10 +3844,6 @@ dependencies = [
  "rustix 0.36.7",
  "windows-sys 0.42.0",
 ]
-
-[[package]]
-name = "test_util"
-version = "0.1.0"
 
 [[package]]
 name = "textwrap"

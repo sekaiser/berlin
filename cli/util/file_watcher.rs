@@ -23,7 +23,7 @@ use libs::tokio::sync::mpsc::UnboundedReceiver;
 use libs::tokio::time::sleep;
 
 const CLEAR_SCREEN: &str = "\x1B[2J\x1b[1;1H";
-const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(1000);
+const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(200);
 
 struct DebouncedReceiver {
     received_items: HashSet<PathBuf>,
@@ -76,75 +76,287 @@ where
 }
 
 pub struct PrintConfig {
-    pub job_name: String,
-    pub clear_screen: bool,
+    banner: &'static str,
+    job_name: &'static str,
+    clear_screen: bool,
 }
 
-fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
-    move || {
-        if clear_screen && libs::atty::is(libs::atty::Stream::Stderr) {
-            eprint!("{CLEAR_SCREEN}");
+impl PrintConfig {
+    /// By default `PrintConfig` uses "Watcher" as a banner name that will
+    /// be printed in color. If you need to customize it, use
+    /// `PrintConfig::new_with_banner` instead.
+    pub fn new(job_name: &'static str, clear_screen: bool) -> Self {
+        Self {
+            banner: "Watcher",
+            job_name,
+            clear_screen,
         }
-        info!("{} File change detected!", colors::intense_blue("Watcher"),);
+    }
+
+    pub fn new_with_banner(
+        banner: &'static str,
+        job_name: &'static str,
+        clear_screen: bool,
+    ) -> Self {
+        Self {
+            banner,
+            job_name,
+            clear_screen,
+        }
     }
 }
 
-pub async fn watch_func2<O, F>(
-    mut paths_to_watch_receiver: UnboundedReceiver<Vec<PathBuf>>,
-    mut operation: O,
+fn create_print_after_restart_fn(banner: &'static str, clear_screen: bool) -> impl Fn() {
+    move || {
+        if clear_screen && std::io::stderr().is_terminal() {
+            eprint!("{CLEAR_SCREEN}");
+        }
+        info!(
+            "{} File change detected! Restarting!",
+            colors::intense_blue(banner),
+        );
+    }
+}
+
+/// An interface to interact with Deno's CLI file watcher.
+#[derive(Debug)]
+pub struct WatcherCommunicator {
+    /// Send a list of paths that should be watched for changes.
+    paths_to_watch_tx: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
+
+    /// Listen for a list of paths that were changed.
+    changed_paths_rx: tokio::sync::broadcast::Receiver<Option<Vec<PathBuf>>>,
+
+    /// Send a message to force a restart.
+    restart_tx: tokio::sync::mpsc::UnboundedSender<()>,
+
+    restart_mode: Mutex<WatcherRestartMode>,
+
+    banner: String,
+}
+
+impl WatcherCommunicator {
+    pub fn watch_paths(&self, paths: Vec<PathBuf>) -> Result<(), Error> {
+        self.paths_to_watch_tx.send(paths).map_err(Error::from)
+    }
+
+    pub fn force_restart(&self) -> Result<Self, Error> {
+        *self.restart_mode.lock() = WatcherRestartMode::Automatic;
+        self.restart_tx.send(()).map_err(Error::from)
+    }
+
+    pub async fn watch_for_changed_paths(&self) -> Result<Option<Vec<PathBuf>>, AnyError> {
+        let mut rx = self.changed_paths_rx.resubscribe();
+        rx.recv().await.map_err(AnyError::from)
+    }
+
+    pub fn change_restart_mode(&self, restart_mode: WatcherRestartMode) {
+        *self.restart_mode.lock() = restart_mode;
+    }
+
+    pub fn print(&self, msg: String) {
+        log::info!("{} {}", self.banner, msg);
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum WatcherRestartMode {
+    /// When a file path changes the process is restarted.
+    Automatic,
+
+    /// When a file path changes the caller will trigger a restart, using
+    /// `WatcherInterface.restart_tx`.
+    Manual,
+}
+
+pub async fn watch_func<O, F>(
+    flags: Flags,
     print_config: PrintConfig,
+    operation: O,
 ) -> Result<(), Error>
 where
-    O: FnMut(ModuleSpecifier) -> Result<F, Error>,
+    O: FnMut(Flags, Arc<WatcherCommunicator>, Option<Vec<PathBuf>>) -> Result<F, Error>,
     F: Future<Output = Result<(), Error>>,
 {
+    let fut = watch_recv(
+        flags,
+        print_config,
+        WatcherRestartMode::Automatic,
+        operation,
+    )
+    .boxed_local();
+
+    fut.await
+
+    // let (watcher_sender, mut watcher_receiver) = DebouncedReceiver::new_with_sender();
+
+    // let PrintConfig {
+    //     job_name,
+    //     clear_screen,
+    // } = print_config;
+
+    // let print_after_restart = create_print_after_restart_fn(clear_screen);
+
+    // info!("{} {} started.", colors::intense_blue("Watcher"), job_name);
+
+    // let mut watcher = new_watcher(watcher_sender.clone())?;
+    // loop {
+    //     match paths_to_watch_receiver.try_recv() {
+    //         Ok(paths) => {
+    //             add_paths_to_watcher(&mut watcher, &paths);
+    //         }
+    //         Err(e) => match e {
+    //             mpsc::error::TryRecvError::Empty => {
+    //                 break;
+    //             }
+
+    //             _ => unreachable!(),
+    //         },
+    //     }
+    // }
+
+    // while let Some(res) = watcher_receiver.recv().await {
+    //     //let operation_future = error_handler(operation(operation_args.clone())?);
+    //     let args = resolve_url_or_path(res[0].to_str().unwrap())?;
+    //     let operation_future = error_handler(operation(args)?);
+    //     print_after_restart();
+
+    //     select! {
+    //         _ = operation_future => {
+    //             log::info!("{} {} done!",colors::intense_blue("Watcher"), job_name);
+    //            }
+    //     }
+    // }
+
+    // Ok(())
+}
+
+/// Creates a file watcher.
+///
+/// - `operation` is the actual operation we want to run every time the watcher detects file
+/// changes.
+pub async fn watch_recv<O, F>(
+    mut flags: Flags,
+    print_config: PrintConfig,
+    restart_mode: WatcherRestartMode,
+    mut operation: O,
+) -> Result<(), AnyError>
+where
+    O: FnMut(Flags, Arc<WatcherCommunicator>, Option<Vec<PathBuf>>) -> Result<F, AnyError>,
+    F: Future<Output = Result<(), AnyError>>,
+{
+    let (paths_to_watch_tx, mut paths_to_watch_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (restart_tx, mut restart_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (changed_paths_tx, changed_paths_rx) = tokio::sync::broadcast::channel(4);
     let (watcher_sender, mut watcher_receiver) = DebouncedReceiver::new_with_sender();
 
     let PrintConfig {
+        banner,
         job_name,
         clear_screen,
     } = print_config;
 
-    let print_after_restart = create_print_after_restart_fn(clear_screen);
+    let print_after_restart = create_print_after_restart_fn(banner, clear_screen);
+    let watcher_communicator = Arc::new(WatcherCommunicator {
+        paths_to_watch_tx: paths_to_watch_tx.clone(),
+        changed_paths_rx: changed_paths_rx.resubscribe(),
+        restart_tx: restart_tx.clone(),
+        restart_mode: Mutex::new(restart_mode),
+        banner: colors::intense_blue(banner).to_string(),
+    });
+    info!("{} {} started.", colors::intense_blue(banner), job_name);
 
-    info!("{} {} started.", colors::intense_blue("Watcher"), job_name);
+    let changed_paths = Rc::new(RefCell::new(None));
+    let changed_paths_ = changed_paths.clone();
+    let watcher_ = watcher_communicator.clone();
 
-    let mut watcher = new_watcher(watcher_sender.clone())?;
-    loop {
-        match paths_to_watch_receiver.try_recv() {
-            Ok(paths) => {
-                add_paths_to_watcher(&mut watcher, &paths);
-            }
-            Err(e) => match e {
-                mpsc::error::TryRecvError::Empty => {
-                    break;
+    berlin_core::unsync::spawn(async move {
+        loop {
+            let received_changed_paths = watcher_receiver.recv().await;
+            *changed_paths_.borrow_mut() = received_changed_paths.clone();
+
+            match *watcher_.restart_mode.lock() {
+                WatcherRestartMode::Automatic => {
+                    let _ = restart_tx.send(());
                 }
-
-                _ => unreachable!(),
-            },
+                WatcherRestartMode::Manual => {
+                    let _ = changed_paths_tx.send(received_changed_paths);
+                }
+            }
         }
-    }
+    });
 
-    while let Some(res) = watcher_receiver.recv().await {
-        //let operation_future = error_handler(operation(operation_args.clone())?);
-        let args = resolve_url_or_path(res[0].to_str().unwrap())?;
-        let operation_future = error_handler(operation(args)?);
-        print_after_restart();
+    loop {
+        // We may need to give the runtime a tick to settle, as cancellations may need to propagate
+        // to tasks. We choose yielding 10 times to the runtime as a decent heuristic. If watch tests
+        // start to fail, this may need to be increased.
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+
+        let mut watcher = new_watcher(watcher_sender.clone())?;
+        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx);
+
+        let receiver_future = async {
+            loop {
+                let maybe_paths = paths_to_watch_rx.recv().await;
+                add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
+            }
+        };
+        let operation_future = error_handler(operation(
+            flags.clone(),
+            watcher_communicator.clone(),
+            changed_paths.borrow_mut().take(),
+        )?);
+
+        // don't reload dependencies after the first run
+        flags.reload = false;
 
         select! {
-            _ = operation_future => {
-                log::info!("{} {} done!",colors::intense_blue("Watcher"), job_name);
-               }
-        }
-    }
+          _ = receiver_future => {},
+          _ = restart_rx.recv() => {
+            print_after_restart();
+            continue;
+          },
+          success = operation_future => {
+            consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx);
+            // TODO(bartlomieju): print exit code here?
+            info!(
+              "{} {} {}. Restarting on file change...",
+              colors::intense_blue(banner),
+              job_name,
+              if success {
+                "finished"
+              } else {
+                "failed"
+              }
+            );
+          },
+        };
+        let receiver_future = async {
+            loop {
+                let maybe_paths = paths_to_watch_rx.recv().await;
+                add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
+            }
+        };
 
-    Ok(())
+        // If we got this far, it means that the `operation` has finished; let's wait
+        // and see if there are any new paths to watch received or any of the already
+        // watched paths has changed.
+        select! {
+          _ = receiver_future => {},
+          _ = restart_rx.recv() => {
+            print_after_restart();
+            continue;
+          },
+        };
+    }
 }
 
 fn new_watcher(
     sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>,
 ) -> Result<RecommendedWatcher, Error> {
-    let watcher = Watcher::new(
+    Ok(Watcher::new(
         move |res: Result<NotifyEvent, NotifyError>| {
             if let Ok(event) = res {
                 if matches!(
@@ -162,9 +374,7 @@ fn new_watcher(
             }
         },
         Default::default(),
-    )?;
-
-    Ok(watcher)
+    )?)
 }
 
 fn add_paths_to_watcher(watcher: &mut RecommendedWatcher, paths: &[PathBuf]) {
@@ -172,4 +382,24 @@ fn add_paths_to_watcher(watcher: &mut RecommendedWatcher, paths: &[PathBuf]) {
         let _ = watcher.watch(path, RecursiveMode::Recursive);
     }
     log::debug!("Watching paths: {:?}", paths);
+}
+
+fn consume_paths_to_watch(
+    watcher: &mut RecommendedWatcher,
+    receiver: &mut UnboundedReceiver<Vec<PathBuf>>,
+) {
+    loop {
+        match receiver.try_recv() {
+            Ok(paths) => {
+                add_paths_to_watcher(watcher, &paths);
+            }
+            Err(e) => match e {
+                mpsc::error::TryRecvError::Empty => {
+                    break;
+                }
+                // there must be at least one receiver alive
+                _ => unreachable!(),
+            },
+        }
+    }
 }

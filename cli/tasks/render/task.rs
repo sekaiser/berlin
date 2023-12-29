@@ -7,47 +7,7 @@ use parser::ParsedSource;
 use crate::args::ConfigFile;
 use libs::tera;
 
-pub fn initialize_context(
-    maybe_module_specifier: Option<ModuleSpecifier>,
-) -> Result<tera::Context, Error> {
-    let mut context = tera::Context::new();
-    if let Some(config_specifier) = maybe_module_specifier {
-        if let Ok(config_file) = ConfigFile::read(config_specifier.path()) {
-            let site_config = config_file.to_site_config()?;
-            context.insert("title", &site_config.title);
-            context.insert("author", &site_config.author);
-            context.insert("description", &site_config.description);
-            context.insert("config_site_url", &site_config.url);
 
-            let profiles_config = config_file.to_profiles_config()?;
-            context.insert("linkedin", &profiles_config.linkedin);
-            context.insert("github", &profiles_config.github);
-            context.insert("twitter", &profiles_config.twitter);
-            context.insert("og_image_path", "");
-            context.insert("me", &profiles_config.linkedin);
-        }
-    }
-    Ok(context)
-}
-
-pub fn do_slugify(source: &ParsedSource) -> String {
-    use libs::slugify::slugify;
-
-    let maybe_title = source
-        .front_matter()
-        .map(|fm| fm.title.as_ref().expect("Title not set in front_matter"));
-
-    let value = match maybe_title {
-        Some(title) => title.to_owned(),
-        None => PathBuf::from(source.specifier().to_owned())
-            .file_stem()
-            .map(|n| n.to_string_lossy())
-            .map(|n| n.to_string())
-            .unwrap(),
-    };
-
-    slugify!(&value)
-}
 
 // impl<'a> WatchableTask for Render<'a> {}
 

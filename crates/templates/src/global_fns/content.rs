@@ -1,8 +1,8 @@
+use content::library_cache::LibraryCache;
 use errors::error::generic_error;
 use libs::anyhow::Error;
 use libs::tera;
 use libs::tera::{Context, Function, Tera, Value};
-use page::library_cache::LibraryCache;
 use parser::ParsedSource;
 use std::path::PathBuf;
 

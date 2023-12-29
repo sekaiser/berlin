@@ -1,4 +1,3 @@
-mod config_file;
 mod flags;
 
 use std::env;

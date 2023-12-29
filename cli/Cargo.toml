@@ -13,16 +13,18 @@ path = "main.rs"
 doc = false
 
 [dependencies]
+berlin_config.workspace = true
+berlin_unsync.workspace = true
+berlin_core.workspace = true
+berlin_runtime.workspace = true
+
 files.workspace = true
 serde.workspace = true
 markdown.workspace = true
 parser.workspace = true
-berlin_core.workspace = true
-berlin_runtime.workspace = true
 libs.workspace = true
 errors.workspace = true
 templates.workspace = true
-page.workspace = true
+content.workspace = true
 
 [dev-dependencies]
-test_util.workspace = true

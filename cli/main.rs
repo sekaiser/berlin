@@ -1,5 +1,6 @@
 mod args;
 mod cache;
+mod factory;
 mod proc_state;
 mod site_generator;
 mod tasks;

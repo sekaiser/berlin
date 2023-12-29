@@ -12,6 +12,8 @@ description = "A runtime for Berlin"
 path = "src/lib.rs"
 
 [dependencies]
+berlin_config.workspace = true
+berlin_unsync.workspace = true
 parser.workspace = true
 serde.workspace = true
 errors.workspace = true
@@ -21,4 +23,3 @@ org.workspace = true
 markdown.workspace = true
 css.workspace = true
 csv.workspace = true
-page.workspace = true

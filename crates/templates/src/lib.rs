@@ -1,5 +1,4 @@
 pub mod global_fns;
-pub mod template;
 pub mod tera;
 
 use libs::once_cell::sync::Lazy;

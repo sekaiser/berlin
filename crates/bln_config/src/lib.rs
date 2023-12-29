@@ -1,8 +1,5 @@
-use crate::args::ConfigFlag;
-use crate::args::Flags;
-use crate::util;
-use crate::util::fs::canonicalize_path;
-
+use files::fs::canonicalize_path;
+use files::to_file_path;
 use files::ModuleSpecifier;
 use libs::anyhow::anyhow;
 use libs::anyhow::bail;
@@ -17,6 +14,14 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub enum ConfigFlag {
+    #[default]
+    Discover,
+    Path(String),
+    Disabled,
+}
 
 fn parse_site_config(
     site_config: &HashMap<String, Value>,
@@ -107,20 +112,32 @@ impl ConfigFile {
         }
     }
 
-    pub fn discover(flags: &Flags) -> Result<Option<ConfigFile>, Error> {
-        match &flags.config_flag {
-            ConfigFlag::Path(config_path) => Ok(Some(ConfigFile::read(config_path)?)),
+    pub fn discover(
+        config_flag: &ConfigFlag,
+        maybe_config_path_args: Option<Vec<PathBuf>>,
+        cwd: &Path,
+    ) -> Result<Option<ConfigFile>, Error> {
+        match config_flag {
+            ConfigFlag::Disabled => Ok(None),
+            ConfigFlag::Path(config_path) => {
+                let config_path = PathBuf::from(config_path);
+                let config_path = if config_path.is_absolute() {
+                    config_path
+                } else {
+                    cwd.join(config_path)
+                };
+                Ok(Some(ConfigFile::read(&config_path)?))
+            }
             ConfigFlag::Discover => {
-                if let Some(config_path_args) = flags.config_path_args() {
+                if let Some(config_path_args) = maybe_config_path_args {
                     let mut checked = HashSet::new();
                     for f in config_path_args {
                         if let Some(cf) = Self::discover_from(&f, &mut checked)? {
                             return Ok(Some(cf));
                         }
                     }
-                    // From CWD walk up to root looking for deno.json or deno.jsonc
-                    let cwd = std::env::current_dir()?;
-                    Self::discover_from(&cwd, &mut checked)
+                    // From CWD walk up to root looking for berlin.toml"
+                    Self::discover_from(cwd, &mut checked)
                 } else {
                     Ok(None)
                 }
@@ -132,6 +149,24 @@ impl ConfigFile {
         start: &Path,
         checked: &mut HashSet<PathBuf>,
     ) -> Result<Option<ConfigFile>, Error> {
+        fn is_skippable_err(e: &Error) -> bool {
+            if let Some(ioerr) = e.downcast_ref::<std::io::Error>() {
+                use std::io::ErrorKind::*;
+                match ioerr.kind() {
+                    InvalidInput | PermissionDenied | NotFound => {
+                        // ok keep going
+                        true
+                    }
+                    _ => {
+                        const NOT_A_DIRECTORY: i32 = 20;
+                        cfg!(unix) && ioerr.raw_os_error() == Some(NOT_A_DIRECTORY)
+                    }
+                }
+            } else {
+                false
+            }
+        }
+
         /// Filenames that Berlin will recognize when discovering config.
         const CONFIG_FILE_NAMES: [&str; 1] = ["berlin.toml"];
 
@@ -144,20 +179,11 @@ impl ConfigFile {
                             log::debug!("Config file found at '{}'", f.display());
                             return Ok(Some(cf));
                         }
+                        Err(e) if is_skippable_err(&e) => {
+                            // ok, keep going
+                        }
                         Err(e) => {
-                            if let Some(ioerr) = e.downcast_ref::<std::io::Error>() {
-                                use std::io::ErrorKind::*;
-                                match ioerr.kind() {
-                                    InvalidInput | PermissionDenied | NotFound => {
-                                        // ok keep going
-                                    }
-                                    _ => {
-                                        return Err(e); // Unknown error. Stop.
-                                    }
-                                }
-                            } else {
-                                return Err(e); // Parse error or something else. Stop.
-                            }
+                            return Err(e);
                         }
                     }
                 }
@@ -206,7 +232,7 @@ impl ConfigFile {
     }
 
     pub fn from_specifier(specifier: &ModuleSpecifier) -> Result<Self, Error> {
-        let config_path = util::specifier::to_file_path(specifier)?;
+        let config_path = to_file_path(specifier)?;
         let config_text = match std::fs::read_to_string(config_path) {
             Ok(text) => text,
             Err(err) => bail!(
@@ -272,6 +298,12 @@ pub struct ConfigFileToml {
 mod tests {
     use super::*;
 
+    use std::path::PathBuf;
+
+    pub fn testdata_path() -> PathBuf {
+        PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"))).join("testdata")
+    }
+
     #[test]
     fn test_parse_config() {
         let config_text = r#"
@@ -312,9 +344,9 @@ mod tests {
     fn test_config_with_invalid_file() {
         let config_text = r#"{}"#;
         let config_specifier = ModuleSpecifier::parse("file:///berlin/berlin.toml").unwrap();
-        let config_file = ConfigFile::new(&config_text, &config_specifier).unwrap();
-        let site_config = config_file.to_site_config();
-        assert!(site_config.is_err());
+        let maybe_site_config =
+            ConfigFile::new(&config_text, &config_specifier).map(|cf| cf.to_site_config());
+        assert!(maybe_site_config.is_err());
     }
 
     #[test]
@@ -328,7 +360,7 @@ mod tests {
 
     #[test]
     fn test_discover_from_success() {
-        let testdata = test_util::testdata_path();
+        let testdata = testdata_path();
         let toml_file = testdata.join("site_config/berlin.toml");
         let mut checked = HashSet::new();
         let config_file = ConfigFile::discover_from(&toml_file, &mut checked)
@@ -342,7 +374,7 @@ mod tests {
 
     #[test]
     fn test_discover_from_malformed() {
-        let testdata = test_util::testdata_path();
+        let testdata = testdata_path();
         let d = testdata.join("malformed_config/");
         let mut checked = HashSet::new();
         let err = ConfigFile::discover_from(&d, &mut checked).unwrap_err();

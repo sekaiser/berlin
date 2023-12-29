@@ -1,17 +1,20 @@
 [package]
-name = "files"
+name = "content"
 version = "0.0.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
-readme = "README.md"
 repository.workspace = true
-description = "Components for accessing files"
+readme = "README.md"
+description = "Content package"
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-libs.workspace = true
-serde.workspace = true
 errors.workspace = true
+serde.workspace = true
+libs.workspace = true
+markdown.workspace = true
+parser.workspace = true
+files.workspace = true

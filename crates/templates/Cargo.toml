@@ -12,9 +12,10 @@ description = "Tera templates used by Berlin"
 path = "src/lib.rs"
 
 [dependencies]
+berlin_core.workspace = true
 files.workspace = true
 errors.workspace = true
 libs.workspace = true
 serde.workspace = true
 parser.workspace = true
-page.workspace = true
+content.workspace = true

@@ -3,142 +3,105 @@ use std::{
     ops::DerefMut,
 };
 
+use berlin_core::task::input::bln_input_aggregate_all;
+use content::model::{article::Article, feed::Feed, picture::Picture, record::Record, tag::Tag};
 use errors::error::generic_error;
 use files::{resolve_path, MediaType};
 use libs::anyhow::Error;
 use libs::serde_json;
 use libs::slugify::slugify;
 use libs::tera;
-use page::model::{article::Article, feed::Feed, picture::Picture, record::Record, tag::Tag};
 use parser::{FrontMatter, ParsedSource, ParsedSourceBuilder};
 use serde::Serialize;
+
+use self::util::to_article;
 
 use super::{AggregatedSources, SortFn};
 
 ////////////////////
 
-pub mod task {
-    use serde::{Deserialize, Serialize};
-
-    #[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
-    pub struct Output(String);
-
-    impl Output {
-        pub fn new<S: Into<String>>(name: S) -> Self {
-            Self(name.into())
-        }
-
-        pub fn as_str(&self) -> &str {
-            self.0.as_str()
-        }
-
-        pub fn to_string(self) -> String {
-            self.0
-        }
-
-        pub fn replace(&self, from: &str, to: &str) -> String {
-            self.0.replace(from, to)
-        }
-
-        pub fn contains(&self, s: &str) -> bool {
-            self.0.contains(s)
-        }
-    }
-
-    impl AsRef<str> for Output {
-        fn as_ref(&self) -> &str {
-            self.0.as_str()
-        }
-    }
-
-    impl From<String> for Output {
-        fn from(s: String) -> Self {
-            Self::new(s)
-        }
-    }
-
-    impl From<&str> for Output {
-        fn from(s: &str) -> Self {
-            Self::new(s)
-        }
-    }
-
-    impl std::fmt::Display for Output {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "{}", self.0)
-        }
-    }
-}
+pub mod task {}
 
 pub mod tags {
-    use std::{cell::RefCell, collections::HashMap};
+    use std::collections::{hash_map::IntoIter, HashMap};
 
-    use page::model::tag::Tag;
+    use content::model::{
+        article,
+        feed::Feed,
+        tag::{Tag, Tags},
+    };
+    use files::MediaType;
+    use libs::{pandoc::DocumentClass::Article, serde_json};
     use parser::ParsedSource;
 
-    pub struct TaggedParsedSourceStore {
-        store: RefCell<HashMap<Tag, ParsedSource>>,
+    use super::csv::from_parsed_source;
+
+    #[derive(Clone)]
+    pub enum Content {
+        Article(serde_json::Value),
+        Feed(serde_json::Value),
     }
 
-    impl std::default::Default for TaggedParsedSourceStore {
-        fn default() -> Self {
-            Self {
-                store: RefCell::new(HashMap::new()),
+    struct GroupContentByTag {
+        tags: Tags,
+        content: Content,
+    }
+
+    impl IntoIterator for GroupContentByTag {
+        type Item = (Tag, Vec<Content>);
+        type IntoIter = IntoIter<Tag, Vec<Content>>;
+
+        #[inline]
+        fn into_iter(self) -> IntoIter<Tag, Vec<Content>> {
+            let mut map: HashMap<Tag, Vec<Content>> = HashMap::new();
+
+            for t in self.tags.iter() {
+                map.entry(t)
+                    .or_insert(Vec::new())
+                    .push(self.content.clone());
             }
+            map.into_iter()
         }
     }
 
-    impl TaggedParsedSourceStore {
-        pub fn set_parsed_source(
-            &self,
-            tag: Tag,
-            parsed_source: ParsedSource,
-        ) -> Option<ParsedSource> {
-            self.store.borrow_mut().insert(tag, parsed_source)
+    pub fn compute_tagged_sources(srcs: &[ParsedSource]) -> HashMap<Tag, Vec<Content>> {
+        let mut map: HashMap<Tag, Vec<Content>> = HashMap::new();
+        for src in srcs.iter() {
+            let _ = match src.media_type() {
+                MediaType::Html => {
+                    let article = article::Article::from(src.clone());
+                    let tags: Tags = src.into();
+                    let content = Content::Article(article.into());
+                    map.extend(GroupContentByTag { tags, content });
+                }
+                MediaType::Csv => {
+                    for feed in from_parsed_source::<Feed>(src) {
+                        let tags: Tags = src.into();
+                        let content = Content::Feed(feed.into());
+                        map.extend(GroupContentByTag { tags, content });
+                    }
+                }
+                _ => {}
+            };
         }
 
-        pub fn get_parsed_source(&self, tag: &Tag) -> Option<ParsedSource> {
-            self.store.borrow_mut().get(tag).cloned()
-        }
-
-        pub fn values(&self) -> Vec<ParsedSource> {
-            self.store
-                .borrow()
-                .values()
-                .map(|value| value.clone())
-                .collect::<Vec<_>>()
-        }
-
-        // Return all parsed sources
-        // pub fn values(&self) -> Values<Tag, ParsedSource> {
-        //     let store = self.store.borrow();
-        //     Values {
-        //         inner: store.iter(),
-        //     }
-        // }
+        map
     }
 }
 
 pub mod util {
     use std::collections::BTreeSet;
 
+    use content::model::{article, feed::Feed, tag::Tag};
     use libs::{serde_json, tera};
-    use page::model::{article::Article, feed::Feed, tag::Tag};
     use parser::ParsedSource;
 
     use crate::tasks::AggregatedSources;
 
-    use super::{csv::from_parsed_source, FromParsedSource};
+    use super::csv::from_parsed_source;
 
-    pub fn to_article(parsed_source: &ParsedSource) -> Article {
-        Article::from_parsed_source(parsed_source.to_owned())
-            .expect("Could not parse parsed_source!")
-    }
-
-    pub trait EventHandler {
-        fn on_data_loaded(&self, srcs: &AggregatedSources) -> tera::Value {
-            tera::Value::Null
-        }
+    pub fn to_article(parsed_source: &ParsedSource) -> article::Article {
+        article::Article::from(parsed_source.to_owned())
     }
 
     pub struct GetArticlesByKey<'a, Key>(pub &'a Key)
@@ -205,8 +168,8 @@ pub mod util {
 }
 
 pub mod csv {
+    use content::model::record::Record;
     use files::MediaType;
-    use page::model::record::Record;
     use parser::ParsedSource;
 
     mod reader {
@@ -270,28 +233,6 @@ pub fn bln_input_sort_by_date_published(
     });
 
     bln_input_aggregate_all(name, sources, Some(sort_fn))
-}
-
-pub fn bln_input_aggregate_all(
-    name: &str,
-    sources: &[ParsedSource],
-    sort_fn: Option<SortFn>,
-) -> AggregatedSources {
-    let mut v = sources.to_vec();
-    sort_fn.map(|f| v.deref_mut().sort_by(f));
-
-    let mut map = HashMap::new();
-    map.insert(name.into(), v);
-
-    map
-}
-
-pub fn bln_input_feed_aggregate_all(
-    _name: &str,
-    sources: &[ParsedSource],
-    sort_fn: Option<SortFn>,
-) -> AggregatedSources {
-    bln_input_aggregate_all("feed", sources, sort_fn)
 }
 
 pub fn extract_tags_from_feed(sources: &Vec<ParsedSource>) -> Vec<tera::Value> {
@@ -533,13 +474,9 @@ pub fn collect_articles(srcs: &Vec<ParsedSource>) -> tera::Context {
         .iter()
         .map(to_article)
         .take(6)
-        .collect::<Vec<Article>>();
+        .collect::<Vec<content::model::article::Article>>();
 
     wrap_into_context("articles", &articles)
-}
-
-pub fn to_article(parsed_source: &ParsedSource) -> Article {
-    Article::from_parsed_source(parsed_source.to_owned()).expect("Could not parse parsed_source!")
 }
 
 fn wrap_into_context<T: Serialize + ?Sized, S: Into<String>>(key: S, value: &T) -> tera::Context {

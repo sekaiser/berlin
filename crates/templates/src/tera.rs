@@ -1,11 +1,10 @@
 use std::sync::{Arc, Mutex};
 
+use berlin_core::task::template_name::TemplateName;
 use libs::{
     anyhow::Error,
     tera::{Context, Tera},
 };
-
-use crate::template::TemplateName;
 
 #[derive(Debug)]
 pub struct TeraRenderer {

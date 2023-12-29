@@ -5,7 +5,7 @@ use std::{fmt, path::PathBuf};
 
 use crate::{proc_state::ProcState, util};
 
-use super::{Input, InputLoader, Task, Watch, WatchableTask};
+use super::{Input, Task, Watch, WatchableTask};
 
 pub struct Css {
     pub input_pattern: String,
@@ -87,5 +87,35 @@ impl<'a> fmt::Debug for Css {
             .field("input_pattern", &self.input_pattern)
             .field("output", &self.output)
             .finish()
+    }
+}
+
+pub struct InputLoader<'a> {
+    pub name: &'a str,
+    pub base_path: &'a PathBuf,
+    pub inputs: &'a Inputs<'a>,
+    pub parser: &'a CapturingParser<'a>,
+}
+
+impl<'a> InputLoader<'a> {
+    pub fn load_input(&self) -> Result<AggregatedSources, Error> {
+        let InputLoader {
+            inputs,
+            name,
+            base_path,
+            parser,
+        } = self;
+        let mut aggregate = HashMap::new();
+        for input in inputs.iter() {
+            let aggregated_sources = input.load(name, base_path, parser)?;
+            for (key, ref mut parsed_sources_mut) in aggregated_sources {
+                aggregate
+                    .entry(key)
+                    .or_insert(Vec::new())
+                    .append(parsed_sources_mut);
+            }
+        }
+
+        Ok(aggregate)
     }
 }

@@ -1,10 +1,10 @@
-pub use files::normalize_path;
-use files::ModuleSpecifier;
 use libs::anyhow::Error;
 use std::path::Path;
 use std::path::PathBuf;
 
 use libs::glob::glob;
+
+use crate::ModuleSpecifier;
 
 /// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
 pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
