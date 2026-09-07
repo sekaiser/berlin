@@ -3,7 +3,7 @@ name = "berlin_document"
 version = "0.0.0"
 authors.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 repository.workspace = true
 description = "Berlin's typed semantic document model"
 

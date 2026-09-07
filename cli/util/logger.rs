@@ -1,3 +1,8 @@
+// Portions adapted from Deno.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// See cli/THIRD_PARTY_NOTICES.txt in the repository (THIRD_PARTY_NOTICES.txt
+// in the CLI package) for the applicable permission and copyright notice.
+
 use std::io::Write;
 
 use env_logger;
