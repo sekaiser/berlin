@@ -7,10 +7,6 @@ Berlin starts from a simple idea: keep ownership of your content, describe how i
 should be processed, and publish it in more than one place without maintaining a
 separate authoring workflow for every channel.
 
-The long-term direction is a content deployment and management system: not just
-rendering pages, but knowing what was produced, from which sources, and eventually
-what is published where.
-
 **Status:** experimental and actively evolving. Today Berlin builds static websites
 and local LinkedIn drafts. It does not yet publish through LinkedIn, X, or Substack
 APIs, synchronize remote content, or monitor live publications.
@@ -182,6 +178,3 @@ not bundled with Berlin. The minimal fixture does not require it.
 - [Architecture and design boundaries](ARCHITECTURE.md)
 - [Local publishing projects](docs/local-publishing.md)
 - [Code listings and Org references](docs/code-listings.md)
-
-Berlin is still finding its shape. Concrete publishing workflows, bug reports,
-and small improvements are welcome—especially those that simplify the system.

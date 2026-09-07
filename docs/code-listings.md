@@ -56,12 +56,6 @@ coderef prefix depends on reference positions: re-exporting updates internal
 links, but externally shared line URLs are not guaranteed to survive edits.
 Use the named listing URL for durable external references.
 
-The paired test fixtures use a real ox-hugo export, verified on 2026-09-07 with
-Emacs 31.1 and ox-hugo 20251206.1738 from Berlin's Nix environment. The Markdown
-fixture contains the exported body, with exporter-generated front matter removed.
-Reference-prefix generation remains an exporter implementation detail: tests
-check the declared prefix and links rather than reproducing its hashing algorithm.
-
 ## Captions and highlighting
 
 An immediately following ox-hugo `src-block-caption` wrapper is associated with
@@ -98,12 +92,6 @@ cargo run --bin bln -- build --pipeline site
 
 These commands require a local publishing project. See
 [Local publishing](local-publishing.md) for a synthetic example and acceptance checks.
-
-## Next stages
-
-Guided steps and a precompiled Rust/WASM JSON demonstration can then build on
-those references. Arbitrary Rust compilation in the browser is not part of the
-listing renderer. Keep static explanations and sample output as the fallback.
 
 ## Checks
 
