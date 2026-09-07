@@ -49,10 +49,8 @@ You need a current stable Rust toolchain. Emacs is optional when starting from
 Markdown; Org export additionally needs ox-hugo. The Nix development shell provides
 Rust, Node.js, and Emacs with ox-hugo.
 
-The current public implementation is on `publish/berlin`:
-
 ```sh
-git clone --single-branch --branch publish/berlin https://github.com/sekaiser/berlin.git
+git clone https://github.com/sekaiser/berlin.git
 cd berlin
 cargo build --bin bln
 ```
@@ -170,10 +168,8 @@ nix develop --command support/check
 ```
 
 UnoCSS is optional project-level styling tooling, separate from Berlin's Rust
-renderer. Its dependencies are locked in `package-lock.json`. Supply your own
-project-local `unocss.config.ts`, then use `npm ci` and `npm run css` to generate
-utilities from your templates and Markdown. The configuration is ignored and is
-not bundled with Berlin. The minimal fixture does not require it.
+renderer. Keep its configuration, Node manifest, and lockfile in the publishing
+project and run its CSS commands there. The minimal fixture does not require it.
 
 ## Further reading
 

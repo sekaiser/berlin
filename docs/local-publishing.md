@@ -34,3 +34,25 @@ belongs to the host website.
 Before publishing a repository, inspect both its tree and its outgoing history.
 Do not use `git push --all` or `git push --mirror` when local branches contain
 unpublished content.
+
+## Keeping a project inside the tool checkout
+
+Use an ignored subdirectory such as `local/personal-site/` for a complete
+publishing project. Keep its pipeline, content, templates, assets, styling
+configuration, Node manifest/lockfile, and project-specific tests together.
+The root `/local/` ignore rule excludes the whole project from Berlin's repository.
+
+Run it from Berlin's root:
+
+```sh
+BERLIN_DIR="$PWD/local/personal-site" cargo run --bin bln -- serve --watch
+```
+
+The Org operation loads `support/ox-hugo/export.el` relative to the publishing
+project. Include a copy there and review it when upgrading Berlin. This lets the
+project move into a separate repository without a link back to Berlin's source.
+
+Inside that project, ignore generated `_site/`, `_berlin/`, transaction files,
+and `node_modules/`. Keep authored sources and presentation files available for
+versioning when the project becomes its own repository. GitHub Pages deployment
+is configured separately from Berlin's build pipelines.

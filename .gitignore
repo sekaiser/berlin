@@ -9,6 +9,7 @@ debug/
 target/
 _site/
 _berlin/
+/local/
 
 # Local publishing project: never include personal content or presentation.
 /data/
