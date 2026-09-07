@@ -1,3 +1,5 @@
+![Black-and-white illustration of the Berlin skyline](images/berlin-header.svg)
+
 # Berlin
 
 A local-first, programmable publishing system built in Rust. Transform structured
