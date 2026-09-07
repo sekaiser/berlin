@@ -1,6 +1,6 @@
-import { defineConfig, presetUno } from "unocss";
+import presetWind3 from "@unocss/preset-wind3";
 
-export default defineConfig({
+export default {
   rules: [
     ["white-space-normal", { "white-space": "normal" }],
     ["white-space-nowrap", { "white-space": "nowrap" }],
@@ -37,7 +37,7 @@ export default defineConfig({
     ],
   ],
   presets: [
-    presetUno(),
+    presetWind3(),
   ],
   shortcuts: [
     {
@@ -63,4 +63,4 @@ export default defineConfig({
       ].join(" "),
     },
   ],
-});
+};

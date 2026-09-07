@@ -1,0 +1,12 @@
+#+title: Code reference export contract
+
+#+NAME: country-extraction
+#+BEGIN_SRC rust -n 20 -r
+fn country_name(value: &Value) -> &Value {
+    &value["countryObject"]["name"] (ref:country-name)
+}
+#+END_SRC
+
+The [[(country-name)][country lookup]] extracts the nested name.
+
+See [[country-extraction][the complete example]].

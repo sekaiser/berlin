@@ -1,0 +1,5 @@
+{% extends "_base.tera" %}
+{% block content %}
+<h1>Example notebook</h1>
+{% for article in articles %}<p><a href="{{ article.target }}">{{ article.title }}</a></p>{% endfor %}
+{% endblock content %}

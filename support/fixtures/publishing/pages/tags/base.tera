@@ -1,0 +1,2 @@
+{% extends "_base.tera" %}
+{% block content %}<h1>{{ tag_name }}</h1>{% for article in articles %}<p>{{ article.title }}</p>{% endfor %}{% endblock content %}

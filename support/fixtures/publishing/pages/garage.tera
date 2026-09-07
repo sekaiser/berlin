@@ -1,0 +1,2 @@
+{% extends "_base.tera" %}
+{% block content %}<h1>Experiments</h1>{% endblock content %}

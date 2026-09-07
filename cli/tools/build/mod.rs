@@ -1,14 +1,17 @@
-use libs::anyhow::Error;
+use anyhow::Error;
 
 use crate::args::BuildFlags;
-use crate::args::Flags;
-use crate::proc_state::ProcState;
-use crate::site_generator::create_main_site_generator;
+use crate::project::Project;
+use crate::tasks::ExecutionOptions;
+use crate::tasks::run_pipeline_with_options;
 
-pub async fn build(flags: Flags, _build_flags: BuildFlags) -> Result<(), Error> {
-    let ps = ProcState::build(flags.clone()).await?;
-    let site_generator = create_main_site_generator(&ps)?;
-    site_generator.run_tasks()?;
-
-    Ok(())
+pub fn build(build_flags: BuildFlags) -> Result<(), Error> {
+    let project = Project::load()?;
+    run_pipeline_with_options(
+        &project,
+        &build_flags.pipeline,
+        ExecutionOptions {
+            dry_run: build_flags.dry_run,
+        },
+    )
 }

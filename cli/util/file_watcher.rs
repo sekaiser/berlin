@@ -1,175 +1,185 @@
-use berlin_core::resolve_url_or_path;
-use berlin_core::ModuleSpecifier;
-use libs::anyhow::Error;
-use libs::log;
-use libs::log::info;
-use libs::notify::event::Event as NotifyEvent;
-use libs::notify::event::EventKind;
-use libs::notify::Error as NotifyError;
-use libs::notify::RecommendedWatcher;
-use libs::notify::RecursiveMode;
-use libs::notify::Watcher;
 use std::collections::HashSet;
 use std::future::Future;
+use std::io::IsTerminal;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 
-use crate::colors;
-use crate::util::fs::canonicalize_path;
-use libs::tokio::select;
-use libs::tokio::sync::mpsc;
-use libs::tokio::sync::mpsc::UnboundedReceiver;
-use libs::tokio::time::sleep;
+use anyhow::Context as _;
+use anyhow::Error;
+use log::info;
+use notify::RecommendedWatcher;
+use notify::RecursiveMode;
+use notify::Watcher;
+use notify::event::EventKind;
+use tokio::select;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::time::sleep;
 
-const CLEAR_SCREEN: &str = "\x1B[2J\x1b[1;1H";
+use crate::colors;
+
+const CLEAR_SCREEN: &str = "\x1B[H\x1B[2J\x1B[3J";
 const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(1000);
 
 struct DebouncedReceiver {
-    received_items: HashSet<PathBuf>,
-    receiver: UnboundedReceiver<Vec<PathBuf>>,
+    received_paths: HashSet<PathBuf>,
+    receiver: UnboundedReceiver<notify::Result<Vec<PathBuf>>>,
 }
 
 impl DebouncedReceiver {
-    fn new_with_sender() -> (Arc<mpsc::UnboundedSender<Vec<PathBuf>>>, Self) {
+    fn new_with_sender() -> (mpsc::UnboundedSender<notify::Result<Vec<PathBuf>>>, Self) {
         let (sender, receiver) = mpsc::unbounded_channel();
         (
-            Arc::new(sender),
+            sender,
             Self {
                 receiver,
-                received_items: HashSet::new(),
+                received_paths: HashSet::new(),
             },
         )
     }
 
-    async fn recv(&mut self) -> Option<Vec<PathBuf>> {
-        if self.received_items.is_empty() {
-            self.received_items
-                .extend(self.receiver.recv().await?.into_iter());
+    async fn recv(&mut self) -> notify::Result<Option<Vec<PathBuf>>> {
+        if self.received_paths.is_empty() {
+            let Some(paths) = self.receiver.recv().await else {
+                return Ok(None);
+            };
+            self.received_paths.extend(paths?);
         }
-
         loop {
             select! {
-                items = self.receiver.recv() => {
-                    self.received_items.extend(items?);
-                }
+                paths = self.receiver.recv() => match paths {
+                    Some(paths) => self.received_paths.extend(paths?),
+                    None => return Ok(None),
+                },
                 _ = sleep(DEBOUNCE_INTERVAL) => {
-                    return Some(self.received_items.drain().collect());
+                    return Ok(Some(self.received_paths.drain().collect()));
                 }
             }
         }
     }
-}
-
-async fn error_handler<F>(watch_future: F)
-where
-    F: Future<Output = Result<(), Error>>,
-{
-    let result = watch_future.await;
-    if let Err(err) = result {
-        eprintln!(
-            "{}:{}",
-            colors::red_bold("error"),
-            err.to_string().trim_start_matches("error: ")
-        );
-    };
 }
 
 pub struct PrintConfig {
-    pub job_name: String,
-    pub clear_screen: bool,
+    banner: &'static str,
+    job_name: &'static str,
+    clear_screen: bool,
 }
 
-fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
-    move || {
-        if clear_screen && libs::atty::is(libs::atty::Stream::Stderr) {
-            eprint!("{CLEAR_SCREEN}");
+impl PrintConfig {
+    pub fn new(banner: &'static str, job_name: &'static str, clear_screen: bool) -> Self {
+        Self {
+            banner,
+            job_name,
+            clear_screen,
         }
-        info!("{} File change detected!", colors::intense_blue("Watcher"),);
     }
 }
 
-pub async fn watch_func2<O, F>(
-    mut paths_to_watch_receiver: UnboundedReceiver<Vec<PathBuf>>,
-    mut operation: O,
+pub async fn watch_recv<O, F>(
+    paths_to_watch: Vec<PathBuf>,
     print_config: PrintConfig,
+    mut operation: O,
 ) -> Result<(), Error>
 where
-    O: FnMut(ModuleSpecifier) -> Result<F, Error>,
+    O: FnMut(Option<Vec<PathBuf>>) -> Result<F, Error>,
     F: Future<Output = Result<(), Error>>,
 {
-    let (watcher_sender, mut watcher_receiver) = DebouncedReceiver::new_with_sender();
+    let (event_tx, mut events) = DebouncedReceiver::new_with_sender();
+    let mut watcher = new_watcher(event_tx)?;
+    let mut watched_paths = HashSet::new();
+    add_paths_to_watcher(&mut watcher, &paths_to_watch, &mut watched_paths)?;
+    let mut changed_paths: Option<Vec<PathBuf>> = None;
 
-    let PrintConfig {
-        job_name,
-        clear_screen,
-    } = print_config;
+    info!(
+        "{} {} started.",
+        colors::intense_blue(print_config.banner),
+        print_config.job_name
+    );
 
-    let print_after_restart = create_print_after_restart_fn(clear_screen);
-
-    info!("{} {} started.", colors::intense_blue("Watcher"), job_name);
-
-    let mut watcher = new_watcher(watcher_sender.clone())?;
     loop {
-        match paths_to_watch_receiver.try_recv() {
-            Ok(paths) => {
-                add_paths_to_watcher(&mut watcher, &paths);
-            }
-            Err(e) => match e {
-                mpsc::error::TryRecvError::Empty => {
-                    break;
+        if let Some(paths) = &changed_paths {
+            let message = paths
+                .first()
+                .map(|path| format!("Rebuilding after change to {path:?}"))
+                .unwrap_or_else(|| "Rebuilding after file change".into());
+            log::info!(
+                "{} {}",
+                colors::intense_blue(print_config.banner),
+                colors::gray(message)
+            );
+        }
+
+        let success = match operation(changed_paths.take()) {
+            Ok(future) => match future.await {
+                Ok(()) => true,
+                Err(error) => {
+                    eprintln!(
+                        "{}: {}",
+                        colors::red_bold("error"),
+                        error.to_string().trim_start_matches("error: ")
+                    );
+                    false
                 }
-
-                _ => unreachable!(),
             },
+            Err(error) => return Err(error),
+        };
+
+        info!(
+            "{} {} {}. Watching for changes...",
+            colors::intense_blue(print_config.banner),
+            print_config.job_name,
+            if success { "finished" } else { "failed" }
+        );
+
+        changed_paths = select! {
+            paths = events.recv() => paths?,
+            _ = tokio::signal::ctrl_c() => return Ok(()),
+        };
+
+        if print_config.clear_screen && std::io::stderr().is_terminal() {
+            eprint!("{}", CLEAR_SCREEN);
         }
     }
-
-    while let Some(res) = watcher_receiver.recv().await {
-        //let operation_future = error_handler(operation(operation_args.clone())?);
-        let args = resolve_url_or_path(res[0].to_str().unwrap())?;
-        let operation_future = error_handler(operation(args)?);
-        print_after_restart();
-
-        select! {
-            _ = operation_future => {
-                log::info!("{} {} done!",colors::intense_blue("Watcher"), job_name);
-               }
-        }
-    }
-
-    Ok(())
 }
 
 fn new_watcher(
-    sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>,
+    sender: mpsc::UnboundedSender<notify::Result<Vec<PathBuf>>>,
 ) -> Result<RecommendedWatcher, Error> {
-    let watcher = Watcher::new(
-        move |res: Result<NotifyEvent, NotifyError>| {
-            if let Ok(event) = res {
-                if matches!(
-                    event.kind,
-                    EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
-                ) {
-                    let paths = event
-                        .paths
-                        .iter()
-                        .filter_map(|path| canonicalize_path(path).ok())
-                        .collect();
-
-                    sender.send(paths).unwrap();
+    Ok(Watcher::new(
+        move |result: notify::Result<notify::Event>| {
+            let paths = match result {
+                Ok(event)
+                    if matches!(
+                        event.kind,
+                        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+                    ) =>
+                {
+                    Some(Ok(event.paths))
                 }
+                Ok(_) => None,
+                Err(error) => Some(Err(error)),
+            };
+            if let Some(paths) = paths {
+                let _ = sender.send(paths);
             }
         },
         Default::default(),
-    )?;
-
-    Ok(watcher)
+    )?)
 }
 
-fn add_paths_to_watcher(watcher: &mut RecommendedWatcher, paths: &[PathBuf]) {
+fn add_paths_to_watcher(
+    watcher: &mut RecommendedWatcher,
+    paths: &[PathBuf],
+    watched_paths: &mut HashSet<PathBuf>,
+) -> Result<(), Error> {
     for path in paths {
-        let _ = watcher.watch(path, RecursiveMode::Recursive);
+        if watched_paths.insert(path.clone()) {
+            watcher
+                .watch(path, RecursiveMode::Recursive)
+                .map_err(Error::from)
+                .with_context(|| format!("Unable to watch {}", path.display()))?;
+        }
     }
-    log::debug!("Watching paths: {:?}", paths);
+    log::debug!("Watching paths: {:?}", watched_paths);
+    Ok(())
 }

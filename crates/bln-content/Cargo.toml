@@ -1,0 +1,15 @@
+[package]
+name = "berlin_content"
+version = "0.0.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Typed semantic collections and assemblies for Berlin"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+berlin_document.workspace = true
+serde.workspace = true

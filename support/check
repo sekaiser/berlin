@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
+repository=$PWD
+
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+node --test support/web/code-controls.test.cjs
+cargo build --quiet --bin bln
+
+# Acceptance checks never read or regenerate the author's local website.
+check_project=$(mktemp -d "${TMPDIR:-/tmp}/berlin-check.XXXXXX")
+echo "Acceptance project: $check_project"
+cp -R support/fixtures/publishing/. "$check_project/"
+mkdir -p "$check_project/support"
+cp -R support/ox-hugo "$check_project/support/"
+export BERLIN_DIR="$check_project"
+
+cargo run --quiet --manifest-path "$repository/Cargo.toml" --bin bln -- build --pipeline org --dry-run
+cargo run --quiet --manifest-path "$repository/Cargo.toml" --bin bln -- build --pipeline org
+cargo run --quiet --manifest-path "$repository/Cargo.toml" --bin bln -- build --pipeline site
+cargo run --quiet --manifest-path "$repository/Cargo.toml" --bin bln -- build --pipeline linkedin
+
+test -s "$check_project/_site/index.html"
+test -s "$check_project/_site/notes/example-article.html"
+test -s "$check_project/_site/static/example.txt"
+test -s "$check_project/_site/css/styles.css"
+test -s "$check_project/_berlin/linkedin/manifest.json"
+for pipeline in org site linkedin; do
+    test -s "$check_project/_berlin/receipts/$pipeline.json"
+done
+# Leave this temporary project available for inspecting exported content and receipts.
+echo "Acceptance passed; artifacts retained at $check_project"

@@ -1,21 +1,26 @@
-use berlin_core::{FrontMatter, ModuleSpecifier};
-use errors::error::generic_error;
-use libs::anyhow::Error;
-use libs::slugify::slugify;
 use std::ops::Range;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use libs::tera;
+use anyhow::Context as _;
+use anyhow::Error;
+use anyhow::anyhow;
+use anyhow::bail;
+use pest::Parser as PestParser;
+use pest::Span;
 use pest::iterators::Pair;
-use pest::{Parser as PestParser, Span};
 use pest_derive::Parser as PestParser;
+use slugify::slugify;
+use url::Url as ModuleSpecifier;
+
+use crate::front_matter::FrontMatter;
 
 #[derive(PestParser)]
 #[grammar = "content.pest"]
-pub struct ContentParser;
+struct ContentParser;
 
 #[derive(PartialEq, Debug, Eq)]
-pub struct Shortcode {
+pub(crate) struct Shortcode {
     pub(crate) name: String,
     pub(crate) args: tera::Value,
     pub(crate) span: Range<usize>,
@@ -96,18 +101,10 @@ fn parse_shortcode_call(pair: Pair<Rule>) -> (String, tera::Value) {
     (name.unwrap(), tera::Value::Object(args))
 }
 
-pub fn parse_for_shortcodes(
-    specifier: &ModuleSpecifier,
-    content: &str,
-) -> Result<(String, Vec<Shortcode>), Error> {
+pub(super) fn parse(specifier: &ModuleSpecifier, content: &str) -> Result<Vec<Shortcode>, Error> {
     let mut shortcodes: Vec<Shortcode> = Vec::new();
-    let mut output = String::with_capacity(content.len());
-    let mut pairs = match ContentParser::parse(Rule::page, content) {
-        Ok(p) => p,
-        Err(_e) => {
-            return Err(generic_error("parsing failed"));
-        }
-    };
+    let mut pairs = ContentParser::parse(Rule::page, content)
+        .map_err(|error| anyhow!("shortcode parsing failed in {specifier}: {error}"))?;
 
     for p in pairs.next().unwrap().into_inner() {
         match p.as_rule() {
@@ -117,40 +114,43 @@ pub fn parse_for_shortcodes(
 
                 match name.as_str() {
                     "figure" => {
-                        output.push_str(&name);
-                        handle_figure(name, args, &span, &mut shortcodes)
+                        handle_figure(name, args, &span, &mut shortcodes)?;
                     }
                     "relref" => {
-                        output.push_str(&name);
-                        handle_relref(name, args, &span, specifier, &mut shortcodes);
+                        handle_relref(name, args, &span, specifier, &mut shortcodes)?;
                     }
-                    _ => println!("Unknown identifier {name}"),
+                    _ => bail!("unsupported shortcode '{name}' in {specifier}"),
                 }
             }
             _ => {}
         }
     }
 
-    Ok((output, shortcodes))
+    Ok(shortcodes)
 }
 
-fn handle_figure(name: String, value: tera::Value, span: &Span, shortcodes: &mut Vec<Shortcode>) {
-    if let Some(src) = get_string("src", &value) {
-        let template = if let Some(caption) = get_string("caption", &value) {
-            format!(
-                r#"<figure><img style="max-width:100%;" src="/static{src}"><figcaption>{caption}</figcaption></figure>"#,
-            )
-        } else {
-            format!(r#"<img style="width:456px;margin-top:5px;margin-bottom:5px;" src="{src}">"#)
-        };
+fn handle_figure(
+    name: String,
+    value: tera::Value,
+    span: &Span,
+    shortcodes: &mut Vec<Shortcode>,
+) -> Result<(), Error> {
+    let src = get_string("src", &value).context("figure shortcode requires a 'src' argument")?;
+    let template = if let Some(caption) = get_string("caption", &value) {
+        format!(
+            r#"<figure><img style="max-width:100%;" src="/static{src}"><figcaption>{caption}</figcaption></figure>"#,
+        )
+    } else {
+        format!(r#"<img style="width:456px;margin-top:5px;margin-bottom:5px;" src="{src}">"#)
+    };
 
-        shortcodes.push(Shortcode {
-            name,
-            args: value,
-            span: span.start()..span.end(),
-            body: Some(template.to_string()),
-        });
-    }
+    shortcodes.push(Shortcode {
+        name,
+        args: value,
+        span: span.start()..span.end(),
+        body: Some(template),
+    });
+    Ok(())
 }
 
 fn handle_relref(
@@ -159,28 +159,32 @@ fn handle_relref(
     span: &Span,
     specifier: &ModuleSpecifier,
     shortcodes: &mut Vec<Shortcode>,
-) {
-    let maybe_path = specifier.to_file_path().ok();
-    let maybe_relref = get_string("relref", &value);
-
-    if let Some((Some(file_name), Some(path))) = Some((maybe_relref, maybe_path)) {
-        if let Some(title) = join(path, file_name).and_then(read_title_from_content_of_file) {
-            let template = format!("/notes/{}.html", slugify!(&title));
-            shortcodes.push(Shortcode {
-                name,
-                args: value,
-                span: span.start()..span.end(),
-                body: Some(template.to_string()),
-            });
-        }
-    };
+) -> Result<(), Error> {
+    let path = specifier
+        .to_file_path()
+        .map_err(|_| anyhow!("relref source is not a file URL: {specifier}"))?;
+    let file_name =
+        get_string("relref", &value).context("relref shortcode requires a target path")?;
+    let target = join(path, file_name).context("relref source has no parent directory")?;
+    let title = read_title_from_content_of_file(target.clone())
+        .with_context(|| format!("unable to resolve relref target {}", target.display()))?;
+    let template = format!("/notes/{}.html", slugify!(&title));
+    shortcodes.push(Shortcode {
+        name,
+        args: value,
+        span: span.start()..span.end(),
+        body: Some(template),
+    });
+    Ok(())
 }
 
 fn replace_string_markers(input: &str) -> String {
-    match input.chars().next().unwrap() {
-        '"' => input.replace('"', ""),
-        '\'' => input.replace('\'', ""),
-        '`' => input.replace('`', ""),
+    let marker = input.chars().next().unwrap();
+    let value = &input[marker.len_utf8()..input.len() - marker.len_utf8()];
+    match marker {
+        '"' => value.replace("\\\"", "\"").replace("\\\\", "\\"),
+        '\'' => value.replace("\\'", "'").replace("\\\\", "\\"),
+        '`' => value.to_owned(),
         _ => unreachable!("How did you even get there"),
     }
 }
@@ -198,7 +202,7 @@ fn read_title_from_content_of_file(path: PathBuf) -> Option<String> {
         .ok()
         .and_then(|p| std::fs::read_to_string(p.path()).ok())
         .and_then(|s| extract_yaml(&s).ok())
-        .and_then(|s| libs::serde_yaml::from_str::<FrontMatter>(&s).ok())
+        .and_then(|s| serde_saphyr::from_str::<FrontMatter>(&s).ok())
         .and_then(|fm| fm.title)
 }
 

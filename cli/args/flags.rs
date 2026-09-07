@@ -1,104 +1,49 @@
-use libs::clap;
-use libs::clap::ColorChoice;
-use libs::clap::ValueHint;
-use libs::clap::{Arg, Command};
-use libs::log::Level;
-use libs::once_cell::sync::Lazy;
-use std::path::PathBuf;
+use std::sync::LazyLock;
 
-static LONG_VERSION: Lazy<String> = Lazy::new(|| format!("{}", crate::version::berlin(),));
+use clap::Arg;
+use clap::ArgAction;
+use clap::ColorChoice;
+use clap::Command;
+use log::Level;
 
-static SHORT_VERSION: Lazy<String> = Lazy::new(|| {
+static LONG_VERSION: LazyLock<String> = LazyLock::new(|| crate::version::berlin().to_string());
+static SHORT_VERSION: LazyLock<String> = LazyLock::new(|| {
     crate::version::berlin()
         .split('+')
         .next()
-        .unwrap()
+        .unwrap_or_default()
         .to_string()
 });
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BuildFlags {}
+pub struct BuildFlags {
+    pub dry_run: bool,
+    pub pipeline: String,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InitFlags {
-    pub dir: Option<String>,
-    // pub theme: Option<String>,
-    // pub theme_location: Option<String>,
+pub struct PlanFlags {
+    pub json: bool,
+    pub pipeline: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ServeFlags {
-    pub dir: Option<String>,
-    pub port: u32,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InfoFlags {
-    pub json: bool,
-    pub file: Option<String>,
+    pub port: u16,
+    pub watch: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BerlinSubcommand {
     Build(BuildFlags),
-    Init(InitFlags),
-    Info(InfoFlags),
+    Plan(PlanFlags),
     Serve(ServeFlags),
 }
 
-impl Default for BerlinSubcommand {
-    fn default() -> BerlinSubcommand {
-        BerlinSubcommand::Info(InfoFlags {
-            json: false,
-            file: None,
-        })
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ConfigFlag {
-    Discover,
-    Path(String),
-}
-
-impl Default for ConfigFlag {
-    fn default() -> Self {
-        Self::Discover
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct Flags {
     pub subcommand: BerlinSubcommand,
-    pub cache_path: Option<PathBuf>,
-    pub config_flag: ConfigFlag,
     pub log_level: Option<Level>,
-    pub watch: Option<Vec<PathBuf>>,
-}
-
-impl Flags {
-    // Extract path arguments for config search paths.
-    /// If it returns Some(vec), the config should be discovered
-    /// from the current dir after trying to discover from each entry in vec.
-    /// If it returns None, the config file shouldn't be discovered at all.
-    pub fn config_path_args(&self) -> Option<Vec<PathBuf>> {
-        Some(vec![])
-        // if let Ok(module_specifier) = berlin_core::resolve_url_or_path(script) {
-        //     if module_specifier.scheme() == "file" {
-        //         if let Ok(p) = module_specifier.to_file_path() {
-        //             Some(vec![p])
-        //         } else {
-        //             Some(vec![])
-        //         }
-        //     } else {
-        //         // When the entrypoint doesn't have file: scheme (it's the remote
-        //         // script), then we don't auto discover config file.
-        //         None
-        //     }
-        // } else {
-        //     Some(vec![])
-        // }
-    }
 }
 
 fn clap_root() -> Command {
@@ -108,13 +53,14 @@ fn clap_root() -> Command {
         .max_term_width(80)
         .version(SHORT_VERSION.as_str())
         .long_version(LONG_VERSION.as_str())
+        .subcommand_required(true)
+        .arg_required_else_help(true)
         .arg(
             Arg::new("log-level")
                 .short('L')
                 .long("log-level")
                 .help("Set log level")
                 .hide(true)
-                .num_args(1)
                 .value_parser(["debug", "info"])
                 .global(true),
         )
@@ -123,153 +69,163 @@ fn clap_root() -> Command {
                 .short('q')
                 .long("quiet")
                 .help("Suppress diagnostic output")
+                .action(ArgAction::SetTrue)
                 .global(true),
         )
-        .subcommand(init_subcommand())
         .subcommand(build_subcommand())
+        .subcommand(plan_subcommand())
         .subcommand(serve_subcommand())
-}
-
-fn init_subcommand() -> Command {
-    Command::new("init").about("Initialize a new project").arg(
-        Arg::new("dir")
-            .num_args(1)
-            .required(false)
-            .value_hint(ValueHint::DirPath),
-    )
 }
 
 fn build_subcommand() -> Command {
     Command::new("build")
-        .about("Compile the data")
-        .arg(config_arg())
+        .about("Execute a content pipeline")
+        .arg(pipeline_arg("Select the pipeline to execute"))
+        .arg(
+            Arg::new("dry-run")
+                .long("dry-run")
+                .help("Show effectful work without writing outputs")
+                .action(ArgAction::SetTrue),
+        )
+}
+
+fn plan_subcommand() -> Command {
+    Command::new("plan")
+        .about("Show the content pipeline without executing it")
+        .arg(pipeline_arg("Select a named pipeline"))
+        .arg(
+            Arg::new("json")
+                .long("json")
+                .help("Print the pipeline as JSON")
+                .action(ArgAction::SetTrue),
+        )
 }
 
 fn serve_subcommand() -> Command {
     Command::new("serve")
-        .about("Start the webserver.")
-        .arg(config_arg())
-        .arg(serve_arg())
-        .arg(watch_arg())
-}
-
-fn config_arg<'a>() -> clap::Arg {
-    Arg::new("config")
-        .short('c')
-        .long("config")
-        .value_name("FILE")
-        .help("Specify the configuration file")
-        //.long_help(CONFIG_HELP.as_str())
-        .num_args(1)
-        .value_hint(ValueHint::FilePath)
-}
-
-fn serve_arg<'a>() -> clap::Arg {
-    Arg::new("port")
-        .short('p')
-        .long("port")
-        .value_name("Port")
-        .help("Specify the port the webserver should use.")
-        //.long_help(CONFIG_HELP.as_str())
-        .num_args(1)
-        .value_hint(ValueHint::Unknown)
-}
-
-fn watch_arg<'a>() -> clap::Arg {
-    let arg = Arg::new("watch")
-        .short('w')
-        .long("watch")
-        .help("Watch for file changes and restart automatically");
-
-    arg.value_name("FILES")
-        .num_args(1)
-        .required(false)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .long_help(
-            "Watch for file changes and restart process automatically.
-Local files from entry point module graph are watched by default.
-Additional paths might be watched by passing them as arguments to this flag.",
+        .about("Build and serve the website")
+        .arg(
+            Arg::new("port")
+                .short('p')
+                .long("port")
+                .value_name("PORT")
+                .help("Set the HTTP server port")
+                .value_parser(clap::value_parser!(u16))
+                .default_value("8081"),
         )
-        .value_hint(ValueHint::AnyPath)
+        .arg(
+            Arg::new("watch")
+                .short('w')
+                .long("watch")
+                .help("Watch project inputs and rebuild automatically")
+                .action(ArgAction::SetTrue),
+        )
 }
 
-/// Main entry point for parsing berlin's command line flags.
+fn pipeline_arg(help: &'static str) -> Arg {
+    Arg::new("pipeline")
+        .long("pipeline")
+        .value_name("PIPELINE")
+        .help(help)
+        .default_value("site")
+}
+
 pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
-    let mut app = clap_root();
-    let matches = app.try_get_matches_from_mut(&args)?;
-
-    let mut flags = Flags::default();
-
-    if matches.contains_id("quiet") {
-        flags.log_level = Some(Level::Error);
+    let matches = clap_root().try_get_matches_from(args)?;
+    let log_level = if matches.get_flag("quiet") {
+        Some(Level::Error)
     } else {
-        if let Some(log_level) = matches.get_one::<String>("log-level") {
-            flags.log_level = match log_level.as_str() {
-                "debug" => Some(Level::Debug),
-                "info" => Some(Level::Info),
-                _ => unreachable!(),
-            }
+        match matches.get_one::<String>("log-level").map(String::as_str) {
+            Some("debug") => Some(Level::Debug),
+            Some("info") => Some(Level::Info),
+            _ => None,
+        }
+    };
+
+    let subcommand = match matches.subcommand().expect("subcommand is required") {
+        ("build", args) => BerlinSubcommand::Build(BuildFlags {
+            dry_run: args.get_flag("dry-run"),
+            pipeline: selected_pipeline(args),
+        }),
+        ("plan", args) => BerlinSubcommand::Plan(PlanFlags {
+            json: args.get_flag("json"),
+            pipeline: selected_pipeline(args),
+        }),
+        ("serve", args) => BerlinSubcommand::Serve(ServeFlags {
+            port: *args.get_one::<u16>("port").expect("port has a default"),
+            watch: args.get_flag("watch"),
+        }),
+        _ => unreachable!("Clap only returns registered subcommands"),
+    };
+
+    Ok(Flags {
+        subcommand,
+        log_level,
+    })
+}
+
+fn selected_pipeline(args: &clap::ArgMatches) -> String {
+    args.get_one::<String>("pipeline")
+        .expect("pipeline has a default")
+        .clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn separate_site_config_flag_is_no_longer_accepted() {
+        for command in ["build", "serve"] {
+            let result = flags_from_vec(vec![
+                "bln".into(),
+                command.into(),
+                "--config".into(),
+                "berlin.toml".into(),
+            ]);
+            assert!(result.is_err());
         }
     }
 
-    match matches.subcommand() {
-        Some(("init", m)) => init(&mut flags, m),
-        Some(("build", m)) => build(&mut flags, m),
-        Some(("serve", m)) => serve(&mut flags, m),
-        _ => {}
+    #[test]
+    fn serve_watch_is_an_explicit_boolean_flag() {
+        let without_watch = flags_from_vec(vec!["bln".into(), "serve".into()]).unwrap();
+        let with_watch =
+            flags_from_vec(vec!["bln".into(), "serve".into(), "--watch".into()]).unwrap();
+
+        assert!(matches!(
+            without_watch.subcommand,
+            BerlinSubcommand::Serve(ServeFlags { watch: false, .. })
+        ));
+        assert!(matches!(
+            with_watch.subcommand,
+            BerlinSubcommand::Serve(ServeFlags { watch: true, .. })
+        ));
     }
 
-    Ok(flags)
-}
+    #[test]
+    fn quiet_is_a_boolean_flag() {
+        let flags = flags_from_vec(vec!["bln".into(), "--quiet".into(), "build".into()]).unwrap();
+        assert_eq!(flags.log_level, Some(Level::Error));
+    }
 
-fn init(flags: &mut Flags, matches: &clap::ArgMatches) {
-    flags.subcommand = BerlinSubcommand::Init(InitFlags {
-        dir: matches.get_one::<String>("dir").map(|f| f.to_string()),
-    });
-}
+    #[test]
+    fn build_dry_run_is_an_explicit_boolean_flag() {
+        let flags = flags_from_vec(vec![
+            "bln".into(),
+            "build".into(),
+            "--pipeline".into(),
+            "org".into(),
+            "--dry-run".into(),
+        ])
+        .unwrap();
 
-fn build(flags: &mut Flags, matches: &clap::ArgMatches) {
-    config_args_parse(flags, matches);
-    flags.subcommand = BerlinSubcommand::Build(BuildFlags {});
-}
-
-fn serve(flags: &mut Flags, matches: &clap::ArgMatches) {
-    serve_args_parse(flags, matches);
-    watch_arg_parse(flags, matches, false);
-    flags.subcommand = BerlinSubcommand::Serve(ServeFlags {
-        dir: None,
-        port: 8081,
-    });
-}
-
-fn config_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-    flags.config_flag = if let Some(config) = matches.get_one::<String>("config") {
-        ConfigFlag::Path(config.to_string())
-    } else {
-        ConfigFlag::Discover
-    };
-}
-
-fn serve_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-    flags.config_flag = if let Some(config) = matches.get_one::<String>("config") {
-        ConfigFlag::Path(config.to_string())
-    } else {
-        ConfigFlag::Discover
-    };
-}
-
-fn watch_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches, allow_extra: bool) {
-    if allow_extra {
-        if let Some(f) = matches.get_many::<String>("watch") {
-            flags.watch = Some(f.map(PathBuf::from).collect());
-        }
-    } else if matches.contains_id("watch") {
-        flags.watch = Some(vec![
-            PathBuf::from("./pages"),
-            PathBuf::from("./content"),
-            PathBuf::from("./css"),
-            PathBuf::from("./layouts"),
-        ]);
+        assert!(matches!(
+            flags.subcommand,
+            BerlinSubcommand::Build(BuildFlags {
+                dry_run: true,
+                pipeline,
+            }) if pipeline == "org"
+        ));
     }
 }

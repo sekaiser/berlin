@@ -15,12 +15,29 @@ doc = false
 [dependencies]
 serde.workspace = true
 markdown.workspace = true
-parser.workspace = true
+berlin_document.workspace = true
+berlin_document_html.workspace = true
+berlin_document_linkedin.workspace = true
+berlin_content.workspace = true
 berlin_core.workspace = true
-berlin_runtime.workspace = true
-libs.workspace = true
-errors.workspace = true
-templates.workspace = true
+berlin_pipeline_dsl = { path = "../crates/pipeline-dsl", version = "0.0.0" }
+anyhow.workspace = true
+clap.workspace = true
+csv.workspace = true
+env_logger.workspace = true
+glob.workspace = true
+log.workspace = true
+lightningcss.workspace = true
+notify.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+slugify.workspace = true
+tera.workspace = true
+termcolor.workspace = true
+tempfile.workspace = true
+tokio.workspace = true
+url.workspace = true
+warp.workspace = true
 
 [dev-dependencies]
-test_util.workspace = true
+tempfile.workspace = true
