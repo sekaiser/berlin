@@ -172,9 +172,10 @@ nix develop --command support/check
 ```
 
 UnoCSS is optional project-level styling tooling, separate from Berlin's Rust
-renderer. Its dependencies are locked in `package-lock.json`; `npm ci` and
-`npm run css` generate utilities from a local project's templates and Markdown.
-The minimal fixture does not require it.
+renderer. Its dependencies are locked in `package-lock.json`. Supply your own
+project-local `unocss.config.ts`, then use `npm ci` and `npm run css` to generate
+utilities from your templates and Markdown. The configuration is ignored and is
+not bundled with Berlin. The minimal fixture does not require it.
 
 ## Further reading
 

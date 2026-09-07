@@ -18,6 +18,7 @@ _berlin/
 /sass/
 /static/
 /berlin.pipeline.rhai
+/unocss.config.ts
 # Article-specific browser tests remain with the local website.
 /tests/json-explorer.test.mjs
 /tests/code-controls.test.cjs

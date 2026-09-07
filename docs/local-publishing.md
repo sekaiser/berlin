@@ -2,7 +2,7 @@
 
 Berlin does not bundle the author's personal website. Root-level `data/`,
 `content/`, `pages/`, `css/`, `sass/`, `static/`, and
-`berlin.pipeline.rhai` are ignored for local authoring. Generated `_site/` and
+`berlin.pipeline.rhai`, along with `unocss.config.ts`, are ignored for local authoring. Generated `_site/` and
 `_berlin/` remain ignored too. Ignoring a path does not remove earlier commits
 or already tracked files.
 
