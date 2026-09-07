@@ -13,36 +13,6 @@ separate authoring workflow for every channel.
 and local LinkedIn drafts. It does not yet publish through LinkedIn, X, or Substack
 APIs, synchronize remote content, or monitor live publications.
 
-## License
-
-Berlin is [source-available](LICENSE), not open source. Personal and other
-noncommercial use is permitted under the license, including publishing generated
-websites and posts.
-
-An unmonetized personal technical blog is permitted despite incidental
-professional visibility; deliberate business promotion requires permission.
-Lawfully generated output may remain online and later be monetized without
-running Berlin again. Further business use of Berlin requires authorization.
-
-Using Berlin to conduct or support business requires **explicit written approval
-from Sebastian Kaiser or a commercial license**. This includes internal business
-tools, company websites, client work, and evaluation for a business deployment,
-even when Berlin itself is not sold.
-
-The license also sets conditions for redistribution, contributions, and AI use.
-It permits building and testing solely to prepare contributions, including
-organizational contributions. If you publish supplied presentation assets or
-adapted quick-start examples, preserve their notices and make LICENSE and NOTICE
-available with the assets or alongside the hosted output; Berlin does not
-currently copy these files automatically.
-Third-party licenses and previously granted rights remain applicable; see
-[NOTICE](NOTICE). Request permission through the
-[issue tracker](https://github.com/sekaiser/berlin/issues).
-
-Retained Deno-derived CLI code carries its
-[MIT notice](cli/THIRD_PARTY_NOTICES.txt); the source-available terms do not
-replace that permission or valid earlier MIT grants for Berlin.
-
 ## How it works
 
 ```text
@@ -206,3 +176,33 @@ project and run its CSS commands there. The minimal fixture does not require it.
 - [Architecture and design boundaries](ARCHITECTURE.md)
 - [Local publishing projects](docs/local-publishing.md)
 - [Code listings and Org references](docs/code-listings.md)
+
+## License
+
+Berlin is [source-available](LICENSE), not open source. Personal and other
+noncommercial use is permitted under the license, including publishing generated
+websites and posts.
+
+An unmonetized personal technical blog is permitted despite incidental
+professional visibility; deliberate business promotion requires permission.
+Lawfully generated output may remain online and later be monetized without
+running Berlin again. Further business use of Berlin requires authorization.
+
+Using Berlin to conduct or support business requires **explicit written approval
+from Sebastian Kaiser or a commercial license**. This includes internal business
+tools, company websites, client work, and evaluation for a business deployment,
+even when Berlin itself is not sold.
+
+The license also sets conditions for redistribution, contributions, and AI use.
+It permits building and testing solely to prepare contributions, including
+organizational contributions. If you publish supplied presentation assets or
+adapted quick-start examples, preserve their notices and make LICENSE and NOTICE
+available with the assets or alongside the hosted output; Berlin does not
+currently copy these files automatically.
+Third-party licenses and previously granted rights remain applicable; see
+[NOTICE](NOTICE). Request permission through the
+[issue tracker](https://github.com/sekaiser/berlin/issues).
+
+Retained Deno-derived CLI code carries its
+[MIT notice](cli/THIRD_PARTY_NOTICES.txt); the source-available terms do not
+replace that permission or valid earlier MIT grants for Berlin.
