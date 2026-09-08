@@ -320,7 +320,7 @@ impl<'a> RenderSession<'a> {
                 let _ = writeln!(
                     self.output,
                     "<figure><img style=\"max-width:100%;\" \
-                     src=\"/static{source}\"><figcaption>{caption}</figcaption></figure>"
+                     src=\"{source}\"><figcaption>{caption}</figcaption></figure>"
                 );
             }
             None => {

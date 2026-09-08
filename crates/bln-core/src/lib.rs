@@ -1,6 +1,8 @@
 //! Typed, effect-free pipeline plans and their validation rules.
 
+mod deployment;
 mod pipeline;
+pub use deployment::DeploymentTarget;
 mod website;
 
 pub use pipeline::ArtifactKind;

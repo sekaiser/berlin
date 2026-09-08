@@ -1,0 +1,6 @@
+/* The clipped paper is behind the link, so keyboard focus is never clipped. */
+.paper-tag { --tag-paper: var(--moss); --tag-ink: var(--moss-ink); --tag-edge: #b3c1a2; position: relative; isolation: isolate; display: inline-flex; align-items: center; min-height: 30px; max-width: 100%; padding: 5px 12px 5px 23px; color: var(--tag-ink); font: 600 .75rem/1.6 var(--font-interface); text-decoration: none; overflow-wrap: anywhere; transition: transform .15s ease; }
+.paper-tag::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--tag-paper); border: 1px solid var(--tag-edge); clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%); }
+.paper-tag::after { content: ""; position: absolute; left: 8px; top: calc(50% - 2.5px); width: 5px; height: 5px; border: 1px solid var(--tag-edge); border-radius: 50%; background: var(--paper); }
+.paper-tag:hover { color: var(--tag-ink); transform: translateY(-2px); text-decoration: underline; }
+.paper-tag:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }

@@ -1,0 +1,20 @@
+{% import "macros/tag.tera" as tags %}
+{% import "macros/notebook_preview.tera" as previews %}
+{% macro entry(title, description, date, target, topics, preview=false, heading_level=3, kind="article") %}
+<article class="journal-entry">
+  {% set artwork = previews::image(preview=preview) | trim %}
+  {% if artwork %}<a class="journal-entry-visual" href="{{config_site_url}}{{target}}">{{artwork | safe}}</a>{% endif %}
+  <div class="journal-entry-copy">
+    <p class="journal-date">{% if kind == "guide" %}<span class="journal-kind">Guide</span>{% endif %}<span>Published</span><time datetime="{{date}}">{{date | date(format="%d %b %Y")}}</time></p>
+    {% if heading_level == 2 %}
+      <h2><a href="{{config_site_url}}{{target}}">{{title}}</a></h2>
+    {% else %}
+      <h3><a href="{{config_site_url}}{{target}}">{{title}}</a></h3>
+    {% endif %}
+    <div class="journal-excerpt">{{description | safe}}</div>
+    {% if topics | length > 0 %}
+      <div class="journal-topics">{% for tag in topics %}{{ tags::tag(label=tag.name, target=tag.target) }}{% endfor %}</div>
+    {% endif %}
+  </div>
+</article>
+{% endmacro entry %}

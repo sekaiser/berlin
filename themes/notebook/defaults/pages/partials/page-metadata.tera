@@ -1,0 +1,23 @@
+{% set sharing_title = title %}
+{% set sharing_description = description %}
+{% if page_id %}
+  {% set sharing_title = page_title ~ " | " ~ author %}
+  {% set sharing_description = page_description | default(value=description) %}
+{% elif tag_name %}
+  {% set sharing_title = tag_name ~ " | " ~ title %}
+{% elif page_path == "/feed.html" %}
+  {% set sharing_title = "Reading | " ~ title %}
+{% elif page_path == "/notes.html" %}
+  {% set sharing_title = "Notes | " ~ title %}
+{% elif page_path == "/search.html" %}
+  {% set sharing_title = "Search | " ~ title %}
+{% elif page_path == "/about.html" %}
+  {% set sharing_title = "About | " ~ title %}
+{% endif %}
+<title>{{sharing_title}}</title>
+<meta name="description" content="{{sharing_description | striptags | truncate(length=180)}}">
+<meta property="og:title" content="{{sharing_title}}">
+<meta property="og:description" content="{{sharing_description | striptags | truncate(length=180)}}">
+<meta property="og:type" content="{% if page_id %}article{% else %}website{% endif %}">
+{% if config_site_url %}<link rel="canonical" href="{{config_site_url}}{{page_path}}"><meta property="og:url" content="{{config_site_url}}{{page_path}}">{% endif %}
+{% if page_published %}<meta property="article:published_time" content="{{page_published}}">{% endif %}

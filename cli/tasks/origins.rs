@@ -4,13 +4,14 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
+use crate::project::Project;
 use anyhow::{Context, Error, bail};
 use berlin_content::{AuthoringOrigin, AuthoringReport, DocumentCollection, OriginHeading};
 use berlin_document::Document;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-const DIRECTORY: &str = "_berlin/org-origins";
+const DIRECTORY: &str = ".berlin/org-origins";
 
 #[derive(Deserialize)]
 pub(super) struct ExportOrigins {
@@ -38,7 +39,7 @@ pub(super) struct HeadingOrigin {
 struct StoredOrigin {
     schema_version: u32,
     document: String,
-    /// Project-relative authoring path; no workstation path in the cache itself.
+    /// Project-relative or @root-relative authoring path; no absolute cache authority.
     source: PathBuf,
     source_hash: String,
     markdown_hash: String,
@@ -48,15 +49,12 @@ struct StoredOrigin {
 /// Content-addressed maps from an uncommitted export cannot match older Markdown.
 /// Old maps may coexist; checks never create or update this directory.
 pub(super) fn store(
-    root: &Path,
+    project: &Project,
     published_markdown: &Path,
     origin: ExportOrigin,
 ) -> Result<(), Error> {
-    let source = origin
-        .source
-        .strip_prefix(root)
-        .context("Org origin is outside the project")?
-        .to_owned();
+    let root = project.root();
+    let source = crate::util::fs::source_reference(project, &origin.source)?;
     if !confined(&source) {
         bail!("Org origin must be a confined project-relative path");
     }
@@ -79,7 +77,11 @@ pub(super) fn store(
     Ok(())
 }
 
-pub(super) fn enrich(root: &Path, documents: &DocumentCollection, report: &mut AuthoringReport) {
+pub(super) fn enrich(
+    project: &Project,
+    documents: &DocumentCollection,
+    report: &mut AuthoringReport,
+) {
     let documents: HashMap<_, _> = documents
         .non_drafts()
         .map(|document| (&document.id, document))
@@ -90,7 +92,7 @@ pub(super) fn enrich(root: &Path, documents: &DocumentCollection, report: &mut A
             continue;
         };
         let origin = origins.entry(&document.id).or_insert_with(|| {
-            load(root, document).unwrap_or_else(|error| {
+            load(project, document).unwrap_or_else(|error| {
                 log::warn!("Ignoring local Org origin for '{}': {error}", document.id.0);
                 None
             })
@@ -127,7 +129,11 @@ fn unique_heading(headings: &[HeadingOrigin], fragment: &str) -> Option<OriginHe
     matches.next().is_none().then(|| first.heading.clone())
 }
 
-fn load(root: &Path, document: &Document) -> Result<Option<(StoredOrigin, String, bool)>, Error> {
+fn load(
+    project: &Project,
+    document: &Document,
+) -> Result<Option<(StoredOrigin, String, bool)>, Error> {
+    let root = project.root();
     let Some(markdown) = url::Url::parse(&document.provenance.source)
         .ok()
         .and_then(|uri| uri.to_file_path().ok())
@@ -148,15 +154,17 @@ fn load(root: &Path, document: &Document) -> Result<Option<(StoredOrigin, String
     {
         bail!("Source map does not match this document or contains an unsafe path");
     }
-    let source = root.join(&stored.source);
-    let canonical = match source.canonicalize() {
+    let source = match crate::util::fs::resolve_source(project, &stored.source) {
         Ok(path) => path,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error.into()),
+        Err(error)
+            if error
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound) =>
+        {
+            return Ok(None);
+        }
+        Err(error) => return Err(error),
     };
-    if !canonical.starts_with(root.canonicalize()?) {
-        bail!("Org source resolves outside the project");
-    }
     let stale = digest(&fs::read(&source)?) != stored.source_hash;
     let uri = url::Url::from_file_path(&source)
         .map_err(|_| anyhow::anyhow!("Invalid Org source path"))?;
@@ -221,7 +229,11 @@ mod tests {
 
     fn report(root: &Path, documents: &DocumentCollection) -> AuthoringReport {
         let mut report = AuthoringReport::analyze(documents).unwrap();
-        enrich(root, documents, &mut report);
+        enrich(
+            &Project::new(root.to_owned(), vec![]),
+            documents,
+            &mut report,
+        );
         report
     }
 
@@ -229,7 +241,12 @@ mod tests {
     fn attaches_heading_to_reference_and_only_file_to_document_observations() {
         let root = tempfile::tempdir().unwrap();
         let (documents, origin) = fixture(root.path());
-        store(root.path(), &origin.markdown.clone(), origin).unwrap();
+        store(
+            &Project::new(root.path().to_owned(), vec![]),
+            &origin.markdown.clone(),
+            origin,
+        )
+        .unwrap();
         let report = report(root.path(), &documents);
         for finding in report.findings {
             let origin = finding.location.origin.unwrap();
@@ -260,7 +277,12 @@ mod tests {
     fn changed_org_falls_back_to_file_and_changed_markdown_has_no_mapping() {
         let root = tempfile::tempdir().unwrap();
         let (documents, origin) = fixture(root.path());
-        store(root.path(), &origin.markdown.clone(), origin).unwrap();
+        store(
+            &Project::new(root.path().to_owned(), vec![]),
+            &origin.markdown.clone(),
+            origin,
+        )
+        .unwrap();
         fs::write(root.path().join("note.org"), "* Changed\n").unwrap();
         for finding in report(root.path(), &documents).findings {
             let origin = finding.location.origin.unwrap();
@@ -288,7 +310,12 @@ mod tests {
                 .all(|f| f.location.origin.is_none())
         );
         let cache = cache_path(root.path(), &origin.markdown, &origin.markdown_hash).unwrap();
-        store(root.path(), &origin.markdown.clone(), origin).unwrap();
+        store(
+            &Project::new(root.path().to_owned(), vec![]),
+            &origin.markdown.clone(),
+            origin,
+        )
+        .unwrap();
         fs::write(cache, "invalid json").unwrap();
         let report = report(root.path(), &documents);
         assert!(report.has_errors());
@@ -300,7 +327,12 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let (documents, mut origin) = fixture(root.path());
         origin.headings.push(origin.headings[0].clone());
-        store(root.path(), &origin.markdown.clone(), origin).unwrap();
+        store(
+            &Project::new(root.path().to_owned(), vec![]),
+            &origin.markdown.clone(),
+            origin,
+        )
+        .unwrap();
         assert!(
             report(root.path(), &documents).findings.iter().all(|f| f
                 .location
@@ -322,18 +354,34 @@ mod tests {
         let mut stored: StoredOrigin = serde_json::from_slice(&fs::read(&cache).unwrap()).unwrap();
         stored.source = "../outside.org".into();
         fs::write(&cache, serde_json::to_vec(&stored).unwrap()).unwrap();
-        assert!(load(root.path(), &documents.as_slice()[0]).is_err());
+        assert!(
+            load(
+                &Project::new(root.path().to_owned(), vec![]),
+                &documents.as_slice()[0]
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn different_export_maps_coexist_without_replacing_the_current_export() {
         let root = tempfile::tempdir().unwrap();
         let (documents, origin) = fixture(root.path());
-        store(root.path(), &origin.markdown.clone(), origin).unwrap();
+        store(
+            &Project::new(root.path().to_owned(), vec![]),
+            &origin.markdown.clone(),
+            origin,
+        )
+        .unwrap();
         let (_, mut next) = fixture(root.path());
         next.markdown_hash = digest(b"next export not committed");
         next.headings.clear();
-        store(root.path(), &next.markdown.clone(), next).unwrap();
+        store(
+            &Project::new(root.path().to_owned(), vec![]),
+            &next.markdown.clone(),
+            next,
+        )
+        .unwrap();
         assert_eq!(
             fs::read_dir(root.path().join(DIRECTORY)).unwrap().count(),
             2
@@ -344,6 +392,83 @@ mod tests {
                 .findings
                 .iter()
                 .any(|f| f.location.origin.as_ref().unwrap().heading.is_some())
+        );
+    }
+
+    #[test]
+    fn source_maps_resolve_using_selected_pipeline_files() {
+        let workspace = tempfile::tempdir().unwrap();
+        let root = workspace.path().join("site");
+        let data = workspace.path().join("data");
+        fs::create_dir(&root).unwrap();
+        fs::create_dir(&data).unwrap();
+        let (documents, mut origin) = fixture(&root);
+        fs::rename(&origin.source, data.join("note.org")).unwrap();
+        origin.source = data.join("note.org");
+        fs::write(
+            root.join("roots.rhai"),
+            "const SOURCE_ROOTS = #{data: \"../data\"};",
+        )
+        .unwrap();
+        // The default does not authorize this root and must not be consulted.
+        fs::write(root.join("berlin.pipeline.rhai"), "").unwrap();
+        let project = Project::new(root.clone(), vec!["roots.rhai".into()]);
+        store(&project, &origin.markdown.clone(), origin).unwrap();
+        let mut report = AuthoringReport::analyze(&documents).unwrap();
+        enrich(&project, &documents, &mut report);
+        assert!(
+            report
+                .findings
+                .iter()
+                .all(|finding| finding.location.origin.is_some())
+        );
+        fs::write(root.join("roots.rhai"), "").unwrap();
+        let mut report = AuthoringReport::analyze(&documents).unwrap();
+        enrich(&project, &documents, &mut report);
+        assert!(
+            report
+                .findings
+                .iter()
+                .all(|finding| finding.location.origin.is_none())
+        );
+    }
+
+    #[test]
+    fn external_origins_require_current_root_authorization() {
+        let workspace = tempfile::tempdir().unwrap();
+        let project = workspace.path().join("site");
+        let data = workspace.path().join("data");
+        fs::create_dir(&project).unwrap();
+        fs::create_dir(&data).unwrap();
+        let (documents, mut origin) = fixture(&project);
+        fs::rename(&origin.source, data.join("note.org")).unwrap();
+        origin.source = data.join("note.org");
+        fs::write(
+            project.join("berlin.pipeline.rhai"),
+            "const SOURCE_ROOTS = #{data: \"../data\"};",
+        )
+        .unwrap();
+        store(
+            &Project::new(project.clone(), vec![]),
+            &origin.markdown.clone(),
+            origin,
+        )
+        .unwrap();
+        assert!(report(&project, &documents).findings.iter().all(|finding| {
+            finding
+                .location
+                .origin
+                .as_ref()
+                .unwrap()
+                .source
+                .ends_with("/data/note.org")
+        }));
+        fs::write(project.join("berlin.pipeline.rhai"), "").unwrap();
+        assert!(
+            report(&project, &documents)
+                .findings
+                .iter()
+                .all(|finding| finding.location.origin.is_none())
         );
     }
 }

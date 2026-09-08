@@ -1,0 +1,14 @@
+<section class="article-discussion" aria-labelledby="discussion-title"
+  data-repo="{{config_giscus.repo}}" data-repo-id="{{config_giscus.repo_id}}"
+  data-category="{{config_giscus.category}}" data-category-id="{{config_giscus.category_id}}"
+  data-term="{{page_discussion_term}}" data-theme="{{config_giscus.theme | default(value='light')}}">
+  <h2 id="discussion-title">Continue the conversation</h2>
+  <p>Questions, corrections, or another perspective? This article’s discussion lives on GitHub.</p>
+  <p class="discussion-privacy">Loading comments connects to giscus and GitHub. A GitHub account is needed to comment.</p>
+  <div class="discussion-actions">
+    <button type="button" class="discussion-load" aria-controls="article-discussion" hidden>Load discussion</button>
+    <a href="{{page_discussion_url}}">Find this discussion on GitHub</a>
+  </div>
+  <p class="discussion-status" role="status" aria-live="polite"></p>
+  <div class="giscus" id="article-discussion"></div>
+</section>

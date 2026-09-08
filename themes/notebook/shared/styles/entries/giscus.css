@@ -1,0 +1,25 @@
+/* Optional iframe theme: host this file publicly before configuring its HTTPS URL.
+   The upstream base is fetched only after the reader loads the discussion. */
+@import url("https://giscus.app/themes/light.css");
+@import "../tokens.css";
+main {
+  --color-fg-default: var(--ink);
+  --color-fg-muted: var(--muted);
+  --color-fg-subtle: var(--muted);
+  --color-canvas-default: var(--surface);
+  --color-canvas-overlay: var(--surface);
+  --color-canvas-inset: var(--surface-inset);
+  --color-canvas-subtle: var(--surface-inset);
+  --color-border-default: var(--rule-strong);
+  --color-border-muted: var(--rule);
+  --color-accent-fg: var(--accent);
+  --color-accent-emphasis: var(--accent);
+  --color-accent-subtle: #f6e8db;
+  --color-btn-text: var(--ink);
+  --color-btn-bg: var(--surface);
+  --color-btn-hover-bg: var(--surface-inset);
+  --color-btn-primary-bg: var(--accent);
+  --color-btn-primary-hover-bg: #823f2b;
+  --color-btn-primary-selected-bg: #823f2b;
+  color-scheme: light;
+}

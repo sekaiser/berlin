@@ -1,0 +1,24 @@
+{% import "macros/tag.tera" as tags %}
+{% import "macros/notebook_connection.tera" as connections %}
+{% import "macros/notebook_summary.tera" as summaries %}
+{% macro bookmark(title, date, target, host, topics, heading_level=3, show_topics=true, annotation="", show_connection=true) %}
+<article class="journal-bookmark">
+  <p class="journal-label">{{host}}</p>
+  {% if heading_level == 2 %}
+    <h2><a href="{{target}}">{{title}}</a></h2>
+  {% else %}
+    <h3><a href="{{target}}">{{title}}</a></h3>
+  {% endif %}
+  {% if annotation | trim %}
+    <div class="journal-annotation"><span class="journal-label">My reading note</span><p>{{annotation}}</p></div>
+  {% else %}
+    {{ summaries::summary(target=target) }}
+  {% endif %}
+  {% set saved_day = date | split(pat=" ") | first %}
+  <p class="journal-saved">Saved <time datetime="{{date}}">{{saved_day | date(format="%d %b %Y")}}</time></p>
+  {% if show_topics and topics | length > 0 %}
+    <div class="journal-topics">{% for tag in topics %}{{ tags::tag(label=tag.name, target=tag.target) }}{% endfor %}</div>
+  {% endif %}
+  {% if show_connection %}{{ connections::connection(subject=target) }}{% endif %}
+</article>
+{% endmacro bookmark %}

@@ -14,6 +14,11 @@
 
 Berlin publishes structured content.
 
+#+CAPTION: An exported source asset.
+[[file:diagram.svg]]
+
+Download the [[file:example.csv][example data]].
+
 #+NAME: greeting
 #+BEGIN_SRC rust -n -r
 fn main() {

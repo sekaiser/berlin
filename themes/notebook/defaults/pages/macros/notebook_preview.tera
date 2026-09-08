@@ -1,0 +1,11 @@
+{# Content-owned artwork; absent metadata leaves an entry text-led. #}
+{% macro image(preview) %}
+{% if preview %}
+  {% if preview.source is starting_with("/") and preview.source is not starting_with("//") %}
+    {% set source = config_site_url ~ preview.source %}
+  {% else %}
+    {% set source = preview.source %}
+  {% endif %}
+  <img src="{{source | escape}}" alt="{{preview.alt | escape}}" width="{{preview.width}}" height="{{preview.height}}" loading="lazy" decoding="async">
+{% endif %}
+{% endmacro image %}

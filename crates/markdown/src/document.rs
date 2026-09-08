@@ -34,6 +34,7 @@ pub(super) fn from_ast<'a>(
     source: &Source<'_>,
 ) -> Result<Document, String> {
     let metadata = front_matter.map_or_else(Metadata::default, |value| Metadata {
+        preview: value.preview.clone(),
         title: value.title.clone(),
         slug: value.slug.clone(),
         previous_slugs: value.previous_slugs.clone(),

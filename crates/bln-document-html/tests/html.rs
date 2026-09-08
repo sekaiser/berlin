@@ -43,7 +43,7 @@ fn main() {}
     assert!(output.contains("<table>"));
     assert!(output.contains(
         "<figure><img style=\"max-width:100%;\" \
-         src=\"/static/pics/example.png\"><figcaption>Example figure</figcaption></figure>"
+         src=\"/pics/example.png\"><figcaption>Example figure</figcaption></figure>"
     ));
     assert!(output.contains("<code class=\"language-rust\">"));
     assert!(document.blocks.iter().any(|block| matches!(

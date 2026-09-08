@@ -63,8 +63,21 @@ impl<'a> PipelineRun<'a> {
         outcome
     }
 
+    pub(super) fn release(mut self) -> Result<super::release::WebsiteRelease, Error> {
+        self.lock = Some(output::ProjectLock::acquire(self.project.root())?);
+        let prepared = self.prepare()?;
+        self.execute(&prepared)?;
+        // Seal the complete staged site; never install over the preview output.
+        super::release::seal(
+            self.project,
+            self.pipeline,
+            &prepared.plan,
+            &self.output_root,
+        )
+    }
+
     fn prepare(&mut self) -> Result<PreparedPipeline, Error> {
-        let program = crate::pipeline::load_pipeline_program(self.project.root())?;
+        let program = crate::pipeline::load_pipeline_program(self.project)?;
         let plan = program
             .load(self.pipeline)
             .map_err(|error| anyhow::anyhow!(error.to_string()))?;
@@ -90,6 +103,14 @@ impl<'a> PipelineRun<'a> {
     }
 
     fn execute_and_commit(&mut self, prepared: &PreparedPipeline) -> Result<(), Error> {
+        self.execute(prepared)?;
+        if let Some(transaction) = self.transaction.take() {
+            transaction.commit()?;
+        }
+        Ok(())
+    }
+
+    fn execute(&mut self, prepared: &PreparedPipeline) -> Result<(), Error> {
         for node in prepared.plan.topological_order()? {
             let artifact = NodeExecutor {
                 project: self.project,
@@ -101,9 +122,6 @@ impl<'a> PipelineRun<'a> {
             }
             .execute(node)?;
             self.accept_output(node, artifact)?;
-        }
-        if let Some(transaction) = self.transaction.take() {
-            transaction.commit()?;
         }
         Ok(())
     }
@@ -149,7 +167,7 @@ impl<'a> PipelineRun<'a> {
             return;
         }
         if let Err(receipt_error) = receipt::write_setup_failure(
-            self.project.root(),
+            self.project,
             self.pipeline,
             self.started_at,
             self.timer.elapsed(),
@@ -165,7 +183,7 @@ impl<'a> PipelineRun<'a> {
         }
         let error_message = outcome.as_ref().err().map(ToString::to_string);
         if let Err(receipt_error) = receipt::write(receipt::ReceiptContext {
-            project_root: self.project.root(),
+            project: self.project,
             pipeline: self.pipeline,
             started_at: self.started_at,
             duration: self.timer.elapsed(),

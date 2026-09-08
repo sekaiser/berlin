@@ -60,7 +60,7 @@ struct FileReceipt {
 }
 
 pub(super) struct ReceiptContext<'a> {
-    pub project_root: &'a Path,
+    pub project: &'a crate::project::Project,
     pub pipeline: &'a str,
     pub started_at: SystemTime,
     pub duration: Duration,
@@ -87,9 +87,9 @@ pub(super) fn write(context: ReceiptContext<'_>) -> Result<(), Error> {
             .unwrap_or_default()
             .as_secs(),
         duration_ms: context.duration.as_millis().try_into().unwrap_or(u64::MAX),
-        inputs: input_receipts(context.project_root, context.plan, context.artifacts)?,
+        inputs: input_receipts(context.project, context.plan, context.artifacts)?,
         outputs: if context.error.is_none() {
-            output_receipts(context.project_root, context.owned_roots)?
+            output_receipts(context.project.root(), context.owned_roots)?
         } else {
             Vec::new()
         },
@@ -97,20 +97,24 @@ pub(super) fn write(context: ReceiptContext<'_>) -> Result<(), Error> {
         error: context.error,
     };
 
-    persist(context.project_root, context.pipeline, &receipt)
+    persist(context.project.root(), context.pipeline, &receipt)
 }
 
 pub(super) fn write_setup_failure(
-    project_root: &Path,
+    project: &crate::project::Project,
     pipeline: &str,
     started_at: SystemTime,
     duration: Duration,
     error: &str,
 ) -> Result<(), Error> {
-    let pipeline_file = project_root.join("berlin.pipeline.rhai");
+    let project_root = project.root();
     let mut inputs = BTreeMap::new();
-    if pipeline_file.is_file() {
-        insert_file_input(&mut inputs, project_root, &pipeline_file, None)?;
+    for pipeline_file in project
+        .pipeline_files()
+        .iter()
+        .filter(|path| path.is_file())
+    {
+        insert_file_input(&mut inputs, project_root, pipeline_file, None)?;
     }
     let receipt = BuildReceipt {
         schema_version: 1,
@@ -131,7 +135,7 @@ pub(super) fn write_setup_failure(
 }
 
 fn persist(project_root: &Path, pipeline: &str, receipt: &BuildReceipt<'_>) -> Result<(), Error> {
-    let directory = project_root.join("_berlin/receipts");
+    let directory = project_root.join(".berlin/receipts");
     fs::create_dir_all(&directory)?;
     let destination = directory.join(receipt_filename(pipeline));
     let mut temporary = tempfile::NamedTempFile::new_in(&directory)?;
@@ -157,24 +161,24 @@ fn receipt_filename(pipeline: &str) -> String {
 }
 
 fn input_receipts(
-    project_root: &Path,
+    project: &crate::project::Project,
     plan: &PipelinePlan,
     artifacts: &HashMap<NodeId, RuntimeArtifact>,
 ) -> Result<Vec<InputReceipt>, Error> {
     let mut inputs = BTreeMap::new();
-    collect_operational_inputs(&mut inputs, project_root, plan)?;
-    collect_source_inputs(&mut inputs, project_root, plan, artifacts)?;
+    collect_operational_inputs(&mut inputs, project, plan)?;
+    collect_source_inputs(&mut inputs, project.root(), plan, artifacts)?;
     enrich_content_ids(&mut inputs, plan, artifacts)?;
     Ok(inputs.into_values().collect())
 }
 
 fn collect_operational_inputs(
     inputs: &mut BTreeMap<String, InputReceipt>,
-    project_root: &Path,
+    project: &crate::project::Project,
     plan: &PipelinePlan,
 ) -> Result<(), Error> {
-    for path in operational_inputs(project_root, plan)? {
-        insert_file_input(inputs, project_root, &path, None)?;
+    for path in operational_inputs(project, plan)? {
+        insert_file_input(inputs, project.root(), &path, None)?;
     }
     Ok(())
 }
@@ -315,21 +319,31 @@ fn merge_content_id(input: &mut InputReceipt, content_id: &str) -> Result<(), Er
     Ok(())
 }
 
-fn operational_inputs(project_root: &Path, plan: &PipelinePlan) -> Result<Vec<PathBuf>, Error> {
-    let mut inputs = vec![project_root.join("berlin.pipeline.rhai")];
-    if plan
-        .nodes()
-        .iter()
-        .any(|node| matches!(&node.operation, Operation::RenderWebsite { .. }))
-    {
-        inputs.extend(load_files(project_root, "pages/**/*.tera")?);
+fn operational_inputs(
+    project: &crate::project::Project,
+    plan: &PipelinePlan,
+) -> Result<Vec<PathBuf>, Error> {
+    let project_root = project.root();
+    let mut inputs = project.pipeline_files().to_vec();
+    for node in plan.nodes() {
+        if let Operation::RenderWebsite { config } = &node.operation {
+            match &config.theme {
+                Some(selected) => inputs.extend(
+                    super::theme::Theme::load(project_root, selected)?
+                        .inputs()
+                        .cloned(),
+                ),
+                None => inputs.extend(load_files(project, "pages/**/*.tera")?),
+            }
+        }
     }
     if plan
         .nodes()
         .iter()
         .any(|node| matches!(&node.operation, Operation::ExportOrg { .. }))
+        && let Some(path) = super::org::exporter_override(project_root)
     {
-        inputs.push(project_root.join("support/ox-hugo/export.el"));
+        inputs.push(path);
     }
     Ok(inputs)
 }
@@ -385,7 +399,21 @@ fn collect_files(path: &Path, files: &mut Vec<PathBuf>) -> Result<(), Error> {
 }
 
 fn display_path(project_root: &Path, path: &Path) -> String {
-    path.strip_prefix(project_root)
+    let relative = path
+        .strip_prefix(project_root)
+        .ok()
+        .map(Path::to_owned)
+        .or_else(|| {
+            // A theme is resolved canonically; the project may use an OS alias
+            // such as macOS /var rather than /private/var.
+            path.canonicalize()
+                .ok()?
+                .strip_prefix(project_root.canonicalize().ok()?)
+                .ok()
+                .map(Path::to_owned)
+        });
+    relative
+        .as_deref()
         .unwrap_or(path)
         .to_string_lossy()
         .into_owned()
@@ -476,6 +504,7 @@ mod tests {
                 "exported",
                 Operation::ExportOrg {
                     backend: "ox-hugo".into(),
+                    section: "notes".into(),
                 },
             ))
             .with_node(PipelineNode::new(

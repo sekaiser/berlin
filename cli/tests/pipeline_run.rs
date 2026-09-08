@@ -21,7 +21,11 @@ fn fixture(pipeline: &str) -> tempfile::TempDir {
 }
 
 fn receipt(root: &Path) -> serde_json::Value {
-    serde_json::from_slice(&fs::read(root.join("_berlin/receipts/test.json")).unwrap()).unwrap()
+    assert!(
+        !root.join("_berlin").exists(),
+        "build must use .berlin for state"
+    );
+    serde_json::from_slice(&fs::read(root.join(".berlin/receipts/test.json")).unwrap()).unwrap()
 }
 
 const COPY: &str = r#"
@@ -164,7 +168,7 @@ fn dry_runs_create_neither_outputs_nor_receipts_even_on_failure() {
         let result = build(root.path(), true);
         assert_eq!(result.status.success(), pipeline == COPY);
         assert!(!root.path().join("public").exists());
-        assert!(!root.path().join("_berlin").exists());
+        assert!(!root.path().join(".berlin").exists());
         assert!(!root.path().join(".berlin.lock").exists());
         assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
     }
@@ -177,7 +181,7 @@ fn receipt_failure_does_not_replace_the_run_outcome() {
         fs::create_dir(root.path().join("assets")).unwrap();
         fs::write(root.path().join("assets/example.txt"), "example").unwrap();
         // A file prevents receipt directory creation.
-        fs::write(root.path().join("_berlin"), "blocked").unwrap();
+        fs::write(root.path().join(".berlin"), "blocked").unwrap();
         let result = build(root.path(), false);
         assert_eq!(
             result.status.success(),
@@ -189,4 +193,85 @@ fn receipt_failure_does_not_replace_the_run_outcome() {
             assert!(root.path().join("public/example.txt").exists());
         }
     }
+}
+
+#[test]
+fn themed_build_records_effective_inputs_and_preserves_output_on_failure() {
+    let root = fixture(
+        r#"
+pipeline test {
+    output render_website(
+        assemble_website(parse_markdown(load_markdown("*.md")), parse_feed(load_data("*.csv"))),
+        "public", website_config(#{theme: "theme"})
+    );
+}
+"#,
+    );
+    let write = |relative: &str, text: &str| {
+        let path = root.path().join(relative);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    };
+    write(
+        "theme/defaults/pages/_base.tera",
+        "{% block content %}{% endblock %}",
+    );
+    for page in ["index", "notes", "feed", "about"] {
+        write(
+            &format!("theme/shared/pages/{page}.tera"),
+            "{% extends \"_base.tera\" %}{% block content %}Default{% endblock %}",
+        );
+    }
+    write("pages/index.tera", "Personal opening");
+    write(
+        "theme/shared/styles/entries/notebook.css",
+        "@import '../tokens.css';",
+    );
+    write("theme/shared/styles/tokens.css", ":root { --ink: green; }");
+    write("styles/tokens.css", ":root { --ink: purple; }");
+    let result = build(root.path(), false);
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(root.path().join("public/index.html")).unwrap(),
+        "Personal opening"
+    );
+    assert!(!root.path().join("assets/css/notebook.css").exists());
+    assert!(!root.path().join("pages/feed.tera").exists());
+    let report = receipt(root.path());
+    let inputs = report["inputs"].as_array().unwrap();
+    for path in [
+        "pages/index.tera",
+        "styles/tokens.css",
+        "theme/shared/pages/feed.tera",
+        "theme/shared/styles/entries/notebook.css",
+    ] {
+        assert!(
+            inputs.iter().any(|input| input["path"] == path),
+            "missing {path}"
+        );
+    }
+    assert!(
+        !inputs
+            .iter()
+            .any(|input| input["path"] == "theme/shared/styles/tokens.css")
+    );
+    write(
+        "theme/shared/styles/entries/notebook.css",
+        "@import 'missing.css';",
+    );
+    assert!(!build(root.path(), false).status.success());
+    assert_eq!(receipt(root.path())["status"], "failed");
+    assert_eq!(
+        fs::read_to_string(root.path().join("public/index.html")).unwrap(),
+        "Personal opening"
+    );
+    assert!(
+        fs::read_to_string(root.path().join("public/assets/css/notebook.css"))
+            .unwrap()
+            .contains("--ink:purple")
+    );
 }

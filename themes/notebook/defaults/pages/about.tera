@@ -1,0 +1,4 @@
+{% extends "_overview.tera" %}
+{% block overview_kind %}notebook-about{% endblock overview_kind %}
+{% block overview_opening %}<p class="journal-label">About</p><h1>{{author}}</h1>{% endblock overview_opening %}
+{% block overview_body %}<p class="journal-lead">{{description}}</p>{% endblock overview_body %}

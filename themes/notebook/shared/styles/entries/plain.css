@@ -1,0 +1,8 @@
+/* Landscape-free composition, used by the distributable starter.
+   The private illustrated site does not load this sheet. */
+.theme-plain main::before, .theme-plain main::after,
+.theme-plain .study-title::after { display: none !important; }
+.theme-plain main { padding-top: 0 !important; }
+.theme-plain .study-title { display: block; min-height: 0; padding: 0; }
+.theme-plain .study-title > *, .theme-plain .study-title h1 { max-width: none; }
+.theme-plain .notebook-overview .journal-index-opening { max-width: none; min-height: 0; }

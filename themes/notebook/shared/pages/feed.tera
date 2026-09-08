@@ -1,0 +1,36 @@
+{% extends "_overview.tera" %}
+{% import "macros/notebook_bookmark.tera" as reading %}
+{% block page_styles %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{config_site_url}}/assets/css/reading.css">
+  <script defer src="{{config_site_url}}/static/js/reading.js?v=5"></script>
+{% endblock page_styles %}
+{% block overview_kind %}notebook-reading{% endblock overview_kind %}
+{% block overview_opening %}
+    <p class="journal-label">The reading list</p>
+    <h1>Other people’s <em>ideas.</em></h1>
+    <p class="journal-lead">Articles and references I’ve saved along the way.</p>
+{% endblock overview_opening %}
+{% block overview_body %}
+  <section aria-label="Saved reading">
+  <form class="reading-tools" role="search" aria-label="Search saved reading" hidden>
+    <label class="reading-query">Find a reference<input type="search" name="q" placeholder="Title, tag, or a phrase" aria-controls="reading-entries" autocomplete="off"></label>
+    <fieldset class="reading-tags" aria-describedby="reading-tags-hint">
+      <legend>Tags</legend>
+      <p id="reading-tags-hint">Match all selected tags. Counts show matches with that tag included.</p>
+      <div class="reading-tag-options"></div>
+    </fieldset>
+    <output aria-live="polite" aria-atomic="true"></output>
+    <button type="reset">Clear filters</button>
+  </form>
+  <p class="reading-no-results" hidden>No matching references. Try another phrase or clear the filters.</p>
+  <div class="journal-library" id="reading-entries">
+    {% for f in feed %}
+      {{ reading::bookmark(title=f.title, date=f.date_added, target=f.url, host=f.host, topics=f.tags, heading_level=2, annotation=f.annotation | default(value="")) }}
+    {% else %}
+      <p class="journal-empty">No saved references yet.</p>
+    {% endfor %}
+  </div>
+  <a class="journal-link journal-more" href="{{config_site_url}}/notes.html">Explore my notes</a>
+  </section>
+{% endblock overview_body %}

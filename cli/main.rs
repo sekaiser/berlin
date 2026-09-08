@@ -28,10 +28,28 @@ fn run_local<F: std::future::Future>(future: F) -> F::Output {
 
 fn run_subcommand(flags: Flags) -> Result<(), Error> {
     match flags.subcommand.clone() {
-        BerlinSubcommand::Plan(plan_flags) => pipeline::print_current_plan(plan_flags),
-        BerlinSubcommand::Check(check_flags) => tools::check::check(check_flags),
-        BerlinSubcommand::Build(build_flags) => tools::build::build(build_flags),
-        BerlinSubcommand::Serve(serve_flags) => run_local(tools::serve::serve(serve_flags)),
+        BerlinSubcommand::Release(release_flags) => {
+            tools::release::prepare(release_flags, flags.pipeline_files)
+        }
+        BerlinSubcommand::ReleasePlan(id) => tools::release::plan(&id, flags.pipeline_files),
+        BerlinSubcommand::Publish(publish_flags) => {
+            tools::release::publish(publish_flags, flags.pipeline_files)
+        }
+        BerlinSubcommand::Publication(publication_flags) => {
+            tools::release::inspect(publication_flags, flags.pipeline_files)
+        }
+        BerlinSubcommand::Plan(plan_flags) => {
+            pipeline::print_current_plan(plan_flags, flags.pipeline_files)
+        }
+        BerlinSubcommand::Check(check_flags) => {
+            tools::check::check(check_flags, flags.pipeline_files)
+        }
+        BerlinSubcommand::Build(build_flags) => {
+            tools::build::build(build_flags, flags.pipeline_files)
+        }
+        BerlinSubcommand::Serve(serve_flags) => {
+            run_local(tools::serve::serve(serve_flags, flags.pipeline_files))
+        }
     }
 }
 

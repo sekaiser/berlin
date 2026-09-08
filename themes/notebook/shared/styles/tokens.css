@@ -1,0 +1,38 @@
+/* Public design tokens. Project overrides may redefine these roles. */
+:root {
+  --paper: #faf7ef;
+  --canvas: #ecefe7;
+  --surface: #fcf9f0;
+  --surface-edge: #d1d8cd;
+  --tile-shadow: 0 2px 3px rgb(38 57 75 / 4%), 0 10px 24px rgb(38 57 75 / 5%);
+  --page-shadow: 0 3px 6px rgb(38 57 75 / 4%), 0 20px 60px rgb(38 57 75 / 7%);
+  --ink: #273b32;
+  --muted: #5d695a;
+  --accent: #94492f;
+  --rule: #d7dccd;
+  --sky: #e4eff5;
+  --sky-ink: #34566f;
+  --moss: #e8eddb;
+  --moss-ink: #435a3c;
+  --apricot: #f8e4d2;
+  --lavender: #eee8f3;
+  --title-color: #425c43;
+  --title-wash: #e3eacb;
+  --font-reading: Georgia, "Times New Roman", serif;
+  /* Soft, expressive display serif; body and technical UI keep their existing faces. */
+  --font-display: "Fraunces", Georgia, serif;
+  --font-interface: Optima, Candara, "Segoe UI", sans-serif;
+  --font-label: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --body-background-color: var(--canvas);
+  --color-fg-default: var(--ink);
+  --font-main: var(--font-interface);
+  --rule-strong: #9fae98;
+  --accent-rule: #b6815d;
+  --surface-inset: #edf0e5;
+  --surroundings: #dfe7df;
+  --caption-ink: #6a5b44;
+  --metadata-font: .85rem/1.5 var(--font-reading);
+  --caption-font: italic .95rem/1.65 var(--font-reading);
+  --notebook-width: 1280px;
+  --notebook-gutter: 48px;
+}

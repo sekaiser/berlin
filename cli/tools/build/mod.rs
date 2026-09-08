@@ -5,8 +5,11 @@ use crate::project::Project;
 use crate::tasks::ExecutionOptions;
 use crate::tasks::run_pipeline_with_options;
 
-pub fn build(build_flags: BuildFlags) -> Result<(), Error> {
-    let project = Project::load()?;
+pub fn build(
+    build_flags: BuildFlags,
+    pipeline_files: Vec<std::path::PathBuf>,
+) -> Result<(), Error> {
+    let project = Project::load(pipeline_files)?;
     run_pipeline_with_options(
         &project,
         &build_flags.pipeline,

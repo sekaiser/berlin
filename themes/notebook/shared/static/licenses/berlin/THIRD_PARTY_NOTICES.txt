@@ -1,0 +1,43 @@
+Deno-derived code
+=================
+
+Portions of the following Berlin files are adapted from Deno:
+
+  util/file_watcher.rs  <- cli/util/file_watcher.rs
+  util/logger.rs        <- cli/util/logger.rs
+  colors.rs             <- runtime/colors.rs
+  args/flags.rs         <- cli/args/flags.rs
+
+Left-hand paths are relative to Berlin's cli directory. Right-hand paths
+are relative to the Deno repository. The retained implementations were
+compared with Deno v1.33.4:
+https://github.com/denoland/deno/tree/v1.33.4
+
+The Deno-derived portions remain covered by the MIT license below. Berlin's
+root LICENSE does not replace these terms. Preserve this notice with copies
+or substantial portions of that software, including distributed CLI packages.
+Dependencies are separately licensed by their respective rights holders.
+
+Upstream license:
+https://github.com/denoland/deno/blob/v1.33.4/LICENSE.md
+
+MIT License
+
+Copyright 2018-2023 the Deno authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

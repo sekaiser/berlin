@@ -1,0 +1,54 @@
+/* Code is a quiet working surface within the article's paper sheet. */
+.code-listing { margin: 1.8em 0; border: 1px solid #d4d9cd; border-radius: 6px 14px 6px 6px; background: #fff; box-shadow: 0 3px 0 #e5e8dc; overflow: hidden; scroll-margin-top: 24px; }
+.code-listing:target { outline: 2px solid var(--moss-ink); outline-offset: 3px; }
+.code-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0; padding: 10px 16px; background: #edf0e5; border-bottom: 1px solid #d4d9cd; font: .8rem/1.5 var(--font-interface); color: var(--moss-ink); }
+.code-language { font-weight: 600; }
+.code-actions { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+.code-actions a, .code-copy { color: var(--moss-ink); font: inherit; }
+.code-copy { border: 1px solid #c5cfbb; border-radius: 4px; background: var(--surface); padding: 2px 10px; cursor: pointer; }
+.code-copy[hidden] { display: none; }
+.code-copy:hover { background: var(--moss); }
+.code-copy:disabled { cursor: wait; }
+.code-status:empty { display: none; }
+.code-status:not(:empty) { flex-basis: 100%; }
+.code-content { position: relative; isolation: isolate; display: flex; align-items: stretch; font: .85rem/1.7 var(--font-label); tab-size: 4; }
+.code-listing pre { position: relative; z-index: 1; flex: 1; min-width: 0; margin: 0; padding: 18px 20px; border-radius: 0; background: transparent; font: inherit; white-space: pre; overflow-wrap: normal; }
+.code-caption { flex: 1 1 220px; color: var(--ink); }
+.code-gutter { flex: none; padding: 18px 0; min-width: 3.2em; background: #f5f6f1; border-right: 1px solid #e5e8dc; user-select: none; }
+.code-gutter a { display: block; height: 1.7em; padding: 0 .8em; text-align: right; color: #697367; text-decoration: none; scroll-margin-top: 100px; }
+.code-gutter a::before { content: attr(data-line); }
+.code-gutter a:hover, .code-gutter a:target { background: #dce6c8; color: #30482b; }
+.code-gutter a:target { box-shadow: inset 3px 0 var(--moss-ink); }
+.code-line-reference { display: flex; justify-content: flex-start; height: 1.7em; scroll-margin-top: 100px; }
+.code-line-reference > a[data-line] { flex: none; width: 3.2em; box-sizing: border-box; }
+.code-line-reference:target { background: #dce6c8; box-shadow: inset 3px 0 var(--moss-ink); }
+.code-line-reference > a { position: relative; z-index: 1; }
+/* Overlay the full visible code row without splitting syntax spans or copied text. */
+.code-line-reference.is-highlighted::after,
+.code-line-reference:target::after,
+.code-line-reference:has(> a[data-line]:target)::after {
+  content: ""; position: absolute; z-index: 0; pointer-events: none;
+  left: 0; right: 0; top: calc(18px + var(--line-offset) * 1.7em); height: 1.7em;
+  background: #f6edcc;
+}
+.code-line-reference:target::after,
+.code-line-reference:has(> a[data-line]:target)::after { background: #dce9cc; box-shadow: inset 3px 0 var(--moss-ink); }
+.code-gutter .code-note-link { font-family: var(--font-interface); font-size: .75rem; height: auto; line-height: inherit; padding: 0 .5em; text-decoration: underline; }
+.code-reference { padding: .08em .25em; border-radius: 3px; background: var(--moss); text-decoration-style: dotted; scroll-margin-top: 100px; }
+.code-reference:target { outline: 2px solid var(--moss-ink); outline-offset: 3px; }
+.json-explorer { margin: 2em 0; padding: 24px; border: 1px solid #b6c9d0; border-radius: 6px 18px 6px 6px; background: var(--sky); font: .95rem/1.65 var(--font-interface); }
+.json-explorer h3 { margin-top: 0; }
+.json-explorer :focus-visible { outline: 2px solid var(--sky-ink); outline-offset: 3px; }
+.json-explorer details { border-top: 1px solid #b6c9d0; padding-top: 12px; margin-top: 12px; }
+.json-explorer summary { font-weight: 600; margin-bottom: 12px; }
+.json-explorer pre { background: var(--surface); color: var(--ink); max-height: 24em; overflow: auto; font-size: .8rem; }
+@media (max-width: 600px) { .json-explorer { padding: 16px; } }
+@media print { .json-explorer pre { max-height: none; white-space: pre-wrap; } }
+.code-listing :focus-visible { outline: 2px solid var(--sky-ink); outline-offset: -2px; }
+.src-block-caption { margin-top: -1em; margin-bottom: 2em; font: .85rem/1.6 var(--font-interface); color: var(--muted); }
+@media print {
+  .code-listing { box-shadow: none; overflow: visible; }
+  .code-actions, .code-status { display: none; }
+  .code-listing pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .code-gutter { display: none; }
+}

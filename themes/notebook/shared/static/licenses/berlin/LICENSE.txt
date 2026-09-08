@@ -1,0 +1,588 @@
+Berlin Noncommercial Source Available License 1.0
+SPDX-License-Identifier: LicenseRef-Berlin-NC-1.0
+
+Copyright (c) 2026 Sebastian Kaiser
+
+This Berlin Noncommercial Source Available License 1.0 (the "License") governs
+the software, source code, object code, documentation, examples, tests, fixtures,
+configuration files, build files, scripts, templates, and other materials
+distributed with Berlin (collectively, the "Licensed Work"), to the extent
+Licensor holds the rights necessary to license them on these terms. Third-party
+materials and previously granted rights are addressed in Section 10.
+
+This License is source-available. It is not an open source license. Rights not
+expressly granted are reserved by Licensor.
+
+1. Acceptance
+
+By exercising any right granted under this License, You accept this License.
+If You do not accept it, You may not use, copy, modify, build, run, or distribute
+the Licensed Work under this License. This does not limit rights available to
+You independently under another applicable license or mandatory law.
+Merely viewing publicly available information does not, by itself, constitute
+acceptance or require business approval under this License.
+
+2. Definitions
+
+"Licensor" means Sebastian Kaiser.
+
+"You" means the individual or legal entity exercising rights under this License.
+
+"Your Organization" means You and any entity that You control, that controls
+You, or that is under common control with You. "Control" means ownership of more
+than fifty percent of voting interests or the legal power to direct management.
+
+"Business Use" means use of the Licensed Work for conducting, supporting,
+promoting, or facilitating a business, trade, profession, or commercial
+activity, whether directly or indirectly and whether or not the Licensed Work
+itself is sold or made available to customers. Business Use includes:
+
+(a) publishing or managing company websites, commercial blogs, business wikis,
+    product documentation, marketing material, or business social-media posts;
+
+(b) using the Licensed Work for internal business operations, employee
+    workflows, internal documentation, commercial research or development,
+    testing, CI/CD, or evaluation for a prospective business deployment;
+
+(c) using the Licensed Work in agency, freelance, consulting, client-delivery,
+    or managed-publishing work; and
+
+(d) using the Licensed Work for advertising-funded, subscription-funded,
+    sponsored, affiliate-marketing, sales, or lead-generation activities.
+
+Business Use does not depend on charging a fee, earning a profit, or exposing
+the Licensed Work to third parties. A nonprofit organizational form does not
+by itself exempt an activity that otherwise constitutes Business Use.
+
+"Permitted Noncommercial Use" means use solely for personal, educational,
+research, community, or other noncommercial purposes that does not constitute
+Business Use and is not otherwise restricted by this License. Examples include
+an unmonetized personal blog, a private personal wiki, and noncommercial study
+or experimentation not carried out to support a business.
+
+An unmonetized personal technical blog remains permitted when it incidentally
+improves the author's professional reputation or skills. Deliberately using it
+to advertise professional services, solicit clients, or promote a business is
+Business Use. Incidental professional benefit alone is not Business Use.
+
+Paying for generally available hosting, storage, or CI infrastructure does not,
+by itself, make an otherwise noncommercial project Business Use. This allowance
+does not authorize a provider to offer Berlin's publishing functionality as a
+service or to perform client-publishing work without authorization.
+
+"Written Approval" means explicit written permission from Licensor identifying
+the person or entity authorized and the use permitted. Silence, public source
+availability, acceptance of an issue or contribution, and permission granted to
+someone else do not constitute Written Approval.
+Electronic text is sufficient, including email from Licensor or an explicit
+message from Licensor's sekaiser repository account, provided the sender,
+authorized party, and scope are identifiable in a reproducible record.
+
+"Commercial License" means a separate written commercial license from Licensor.
+
+"Service Provider" means a third party acting solely on Your behalf to supply
+generally available hosting, storage, CI infrastructure, or similar supporting
+infrastructure for Your Permitted Noncommercial Use.
+
+"External Offering" means a product, service, hosted platform, managed service,
+SaaS offering, API, developer tool, consulting deliverable, or similar offering
+made available to a third party that includes the Licensed Work or its
+publishing functionality. Publishing permitted Output under Section 4 is not,
+by itself, an External Offering.
+
+"Product Embedding" means including, bundling, embedding, integrating, linking,
+packaging, or shipping the Licensed Work as part of an External Offering. The
+express permission for Output in Section 4 is not Product Embedding.
+
+"Commercial Redistribution" means selling, renting, leasing, sublicensing,
+distributing, or otherwise providing the Licensed Work to a third party for
+payment, commercial advantage, or in support of Business Use.
+
+"Implementation Materials" means source code, object code, internal APIs,
+configuration formats, templates, tests, fixtures, examples, documentation,
+build files, and scripts copied or adapted from the Licensed Work.
+
+"Berlin Publishing Functionality" means the Licensed Work's functionality
+for loading, parsing, modeling, transforming, assembling, rendering, deploying,
+managing, or observing content, documents, feeds, websites, or channel-specific
+publications, including constructing and executing publishing pipelines.
+
+"AI System" means a machine-learning system, foundation model, language model,
+code-generation model, embedding model, or automated software-engineering
+system.
+
+"AI Training Use" means using the Licensed Work or associated materials that
+Licensor has the right to license, including documentation, examples, tests,
+fixtures, repository history, and contributions, for:
+
+(a) training, pre-training, fine-tuning, retraining, distilling, adapting, or
+    improving an AI System;
+
+(b) creating, curating, validating, or benchmarking datasets for an AI System;
+
+(c) evaluating, ranking, scoring, red-teaming, reinforcement-learning, or
+    preference-training of an AI System;
+
+(d) generating synthetic training data or evaluation material for an AI System;
+
+(e) indexing or embedding the Licensed Work into a reusable corpus intended to
+    reproduce or substitute for the Licensed Work or substantially similar
+    software; or
+
+(f) enabling an AI provider to retain the Licensed Work for model improvement
+    or to reproduce it for other customers.
+
+Transient inference solely to provide the developer assistance expressly
+permitted by Section 6 is not AI Training Use.
+
+"Your Materials" means content, data, software, configuration, and other
+materials that You supply and have rights to use independently of this License.
+
+"Output" means a website, HTML page, article, post, feed, draft, manifest,
+receipt, report, log, generated file, or other result produced by running the
+Licensed Work in accordance with this License or separate authorization,
+including on supplied examples and fixtures. This definition does not itself
+grant rights in incorporated materials; those rights are addressed below.
+
+"Output Support Materials" means rendered template markup and client-side CSS,
+JavaScript, or other presentation assets included in the Licensed Work and
+intended for incorporation into Output so that readers can view or interact
+with Your Materials. This includes the code-copy script supplied under
+support/web/. It does not include the Berlin executable, Rust libraries, Rhai
+engine, pipeline executor, source-code collection, or development tooling.
+For Section 4, it also includes supplied example content and presentation
+templates intended to be adapted and published through the documented quick
+start, but not test assertions, implementation code, or developer documentation.
+
+3. Grant of Rights
+
+Subject to this License, Licensor grants You a non-exclusive, worldwide,
+royalty-free, non-transferable, non-sublicensable license to:
+
+(a) read, inspect, and evaluate the Licensed Work for Permitted Noncommercial
+    Use;
+
+(b) copy, build, run, and modify the Licensed Work for Permitted Noncommercial
+    Use, including reasonably necessary private development and backup copies;
+
+(c) allow Service Providers to make copies and run the Licensed Work solely
+    as necessary to provide supporting infrastructure for Your Permitted
+    Noncommercial Use, subject to these terms and without offering Berlin
+    itself as a service;
+
+(d) publish and distribute Output as expressly permitted by Section 4; and
+
+(e) maintain public forks and submit contributions as permitted by Section 7.
+
+Business Use requires Written Approval or a Commercial License before it begins.
+There is no general exception for internal business use, unpaid business use,
+or business evaluation. The limited permission to submit a contribution under
+Section 7 does not authorize a separate business deployment.
+
+4. Your Materials and Publishing Output
+
+Licensor claims no ownership of Your Materials or of original expression that
+You create in Output. Merely processing Your Materials with Berlin does not
+place Your Materials under this License. This License does not limit rights
+You have independently in Your Materials.
+
+For Output lawfully generated under this License or separate authorization,
+You may publish, display, host, copy, and distribute Output, including on
+public websites, GitHub Pages, blogs, wikis,
+feeds, and social platforms.
+
+To make that permission usable, Licensor also permits You to copy, adapt,
+include, and distribute Output Support Materials as part of such Output.
+Licensor directly grants each recipient, including publishers, hosting
+providers, content-delivery networks, publication platforms, and readers, a
+worldwide, royalty-free permission to store, copy, cache, transmit, display,
+execute, and preserve those portions as needed to deliver, view, interact with,
+and archive that Output. No sublicense from the publisher is required.
+These permissions override the non-transferability, non-sublicensing,
+redistribution, service, and embedding restrictions elsewhere in this License
+solely for this purpose.
+
+These permissions include maintaining, editing, and republishing that Output
+and its incorporated Output Support Materials, including generated HTML, CSS,
+and client-side assets. They do not permit extracting a standalone theme,
+library, or replacement publishing tool, or otherwise operating Berlin for
+Business Use without authorization.
+
+These output permissions survive termination of permission to operate Berlin.
+They also permit continued hosting, distribution, and use of lawfully generated
+Output if it later becomes monetized or otherwise commercial, without running
+Berlin again. Further Business Use of Berlin still requires authorization.
+Recipients do not lose these permissions because another party breaches this
+License. Each recipient must comply with the output-specific conditions below;
+remediable notice errors are subject to the cure provision in Section 14.
+
+You must preserve existing copyright and license notices in Output Support
+Materials. Include a copy of this License and NOTICE with distributed support
+assets or provide them at an accessible location alongside the hosted Output.
+No visible Berlin branding or attribution is required in the page design.
+
+Publishing Output does not grant permission to distribute Berlin itself, offer
+its publishing engine as a service, or extract and redistribute Output Support
+Materials as a standalone library, theme, SDK, or developer tool.
+
+Other protectable expression copied from the Licensed Work remains subject to
+its applicable license. This Section does not authorize copying repository
+source, tests, or documentation into Output to evade the restrictions.
+
+Using Berlin for business publishing or other Business Use requires Written
+Approval or a Commercial License. Section 4 does not grant that permission.
+However, it does not assert ownership or impose new copyright restrictions on
+Your independently owned content merely because Berlin processed it.
+
+Third-party assets incorporated into Output remain subject to their own terms.
+
+5. Restrictions
+
+Except as expressly permitted by Sections 3, 4, 6, and 7, You may not do any of the
+following without Written Approval or a Commercial License expressly covering
+the relevant activity:
+
+(a) use the Licensed Work for Business Use;
+
+(b) Commercially Redistribute the Licensed Work;
+
+(c) distribute or make available source code, binaries, packages, container
+    images, modified versions, or other copies of the Licensed Work to third
+    parties;
+
+(d) provide the Licensed Work or its Berlin Publishing Functionality as an
+    External Offering, including hosted or managed publishing services;
+
+(e) perform Product Embedding;
+
+(f) use the Licensed Work or Implementation Materials to build or operate an
+    External Offering providing Berlin Publishing Functionality; or
+
+(g) use systematic output capture or other analysis to copy protectable
+    expression from the Licensed Work for an External Offering, except where
+    mandatory law permits it.
+
+These restrictions do not apply to independently developed software that was
+not copied or derived from the Licensed Work or Implementation Materials.
+This License asserts no exclusive rights over abstract functionality, ideas,
+principles, or interfaces as such. It does not restrict observation, study,
+testing, or interoperability activities permitted by mandatory law.
+
+You must not remove or misrepresent legal notices, misrepresent Berlin as open
+source or OSI-approved software, circumvent licensing controls, use Licensor's
+branding other than for truthful reference, or use the Licensed Work in
+violation of applicable law. You must not authorize or assist others in
+activities prohibited by this License.
+
+6. Artificial Intelligence, Machine Learning, and Text-and-Data Mining
+
+This License does not grant permission for AI Training Use. AI Training Use
+requires a separate written authorization from Licensor expressly covering
+that activity; ordinary approval for Business Use is not sufficient.
+
+You may not provide the Licensed Work to an AI provider that may use it for AI
+Training Use or make it available to other customers.
+
+AI-assisted developer tools may be used for an otherwise permitted use only
+if the provider is contractually or technically prohibited from using the
+Licensed Work for training, evaluation, dataset creation, or model improvement.
+Retention must be limited to transient processing or Your private account or
+tenant, with no training or service-improvement use. The assistance must not
+result in redistribution or disclosure except as expressly allowed by this
+License.
+
+To the extent permitted by applicable law, Licensor expressly reserves rights
+for text-and-data mining, AI training, AI evaluation, and related dataset or
+model development, including under Article 4(3) of Directive (EU) 2019/790.
+This reservation is limited to rights Licensor controls and does not override
+mandatory exceptions, third-party rights, or Your rights in Your Materials.
+It does not prohibit the transient developer assistance expressly allowed above.
+
+Permitted assistance includes self-hosted inference, private project-local
+search indexes, and running Berlin's tests to validate a proposed change.
+Testing Berlin is not AI-system evaluation merely because an AI tool helped
+prepare the change. Benchmarking or training the AI system itself remains
+restricted. Necessary processing copies and transfers to a provider meeting
+the conditions above are expressly permitted solely for that assistance.
+Private project indexes must not become shared training or substitute corpora.
+
+This Section does not revoke independent permissions granted through a hosting
+agreement or another applicable license. It is not a representation that the
+hosting platform is prohibited from training AI systems.
+
+Authorized repository hosting, public forking, and contribution submission
+under Section 7 are not prohibited merely because the repository host also
+offers AI services. This exception permits the repository workflow only; it
+grants no additional AI Training Use rights and does not authorize separate
+submission to an AI service under incompatible processing terms.
+
+7. Public Forks and Contributions
+
+You may create and maintain public source forks using the normal forking
+functionality of the repository hosting service used by Licensor, provided
+You preserve the license and notices. This permission includes sharing source
+modifications through those forks and submitting patches or pull requests
+back to Licensor.
+
+A fork must not be used to distribute binaries, packages, or container images,
+or to operate a hosted or managed publishing service for third parties or other
+External Offering. Running a permitted personal fork on rented infrastructure
+is not prohibited by this restriction.
+Forking does not grant permission for Business Use, Product Embedding, or AI
+Training Use.
+
+You may submit issues, bug reports, suggestions, patches, and other
+contributions to Licensor. This submission permission also applies to
+contributions made on behalf of an organization, but does not authorize
+otherwise restricted use of the Licensed Work.
+
+Individuals and organizations may copy, modify, build, run, and test Berlin,
+including in private CI, solely to prepare or validate a proposed contribution
+to Berlin. This permission does not authorize production deployment, client
+work, unrelated business evaluation, or AI Training Use. A contribution need
+not ultimately be accepted or submitted for good-faith preparation to qualify.
+
+When sharing Your modifications through a permitted public fork or submission,
+You directly grant each recipient rights in Your copyrightable modifications
+under the permissions and conditions of this License. For those modifications,
+You are the grantor of the permissions, including the direct and surviving
+output permissions in Section 4 for modified templates and client-side assets.
+This grant applies whether or not You submit the modifications to Licensor.
+It is not dependent on Licensor owning or receiving rights in them.
+Sebastian Kaiser remains the named Licensor and approval authority for rights
+he controls; this grant does not authorize him to grant additional permissions
+in Your modifications unless You separately grant that authority, including
+through the submission grant below.
+You must have authority to do so and must identify third-party materials and
+preserve their applicable notices. This does not change their licenses.
+
+By submitting a contribution, You grant Licensor a perpetual, worldwide,
+irrevocable, royalty-free, fully paid-up, transferable, sublicensable, and
+re-licensable license to use, copy, modify, distribute, commercially license,
+and otherwise exploit it as part of or in connection with the Licensed Work.
+You represent that You have authority to grant these rights. Licensor is not
+required to accept or use any contribution.
+
+For submitted contributions, You also grant Licensor a perpetual, worldwide,
+royalty-free patent license, transferable and sublicensable with the Licensed
+Work, to make, have made, use, offer to sell, sell, and import the contribution
+alone or combined with the Licensed Work as submitted. It covers only patent
+claims You control that are necessarily infringed by that contribution or
+combination. By publicly sharing modifications, whether or not submitted to
+Licensor, You directly grant recipients the same patent permission for claims
+You control necessarily infringed by those modifications alone or combined
+with the Licensed Work as shared, limited to activities permitted under this
+License and subject to Section 9.
+You represent that You have authority to grant both copyright and patent
+permissions, including any necessary employer authorization.
+
+8. No Implied Rights
+
+Licensor retains rights not expressly granted. No ownership, trademark,
+endorsement, or other rights are granted by implication. The permissions in
+this License are subject to mandatory law and Section 10.
+
+9. Patent Rights
+
+Licensor grants a non-exclusive, worldwide, royalty-free patent license under
+claims Licensor can license and necessarily infringed by exercising the rights
+expressly granted in this License. The patent permissions in Sections 7 and 9
+extend to expressly permitted activities, including Section 4 output uses and
+Section 7 contribution preparation, even where those activities would otherwise
+constitute Business Use. They do not authorize activities that remain restricted.
+Patent permissions necessary for surviving Section 4 output uses also survive
+termination of permission to operate Berlin, subject to the patent-litigation
+rule below.
+
+If You or Your Organization bring a patent claim alleging that the Licensed
+Work or a contribution infringes a patent, patent licenses granted to You under
+this License terminate when the claim is filed, subject to mandatory law.
+That filing alone terminates patent permissions, not copyright permissions.
+
+10. Third-Party Materials and Existing Rights
+
+Third-party software, dependencies, assets, and third-party-derived portions
+remain governed by their applicable licenses. This License does not replace,
+reduce, or expand rights or obligations under those licenses. Preserve their
+required copyright, license, and attribution notices.
+
+This License applies only to rights Licensor has authority to grant. It does
+not revoke or retroactively restrict rights already granted under another
+license for copies or portions received under that license, including MIT.
+It does not relicense third-party contributions without the required authority.
+
+11. No Open Source Conversion
+
+This License does not require conversion to an open source license. Licensor
+may offer other licenses for rights Licensor controls.
+
+12. Written Approval and Commercial Licensing
+
+Business Use and other restricted activities require Written Approval or a
+Commercial License expressly covering the activity. Written Approval can be
+granted without payment and need not be a Commercial License. A Commercial
+License may set fees and additional terms.
+
+Authorization applies only to the identified party, use, scope, duration, and
+conditions stated by Licensor. Individually agreed terms take priority over
+these standard terms where applicable, including under Section 305b BGB.
+No permission is implied for other persons, uses, or restricted activities.
+
+Requests may be submitted at:
+https://github.com/sekaiser/berlin/issues
+
+Do not begin the restricted activity before obtaining the required permission.
+
+13. License Updates
+
+Licensor may publish revised licenses. A revision does not automatically
+replace the terms under which You received a copy. Rights already granted
+remain subject to their applicable terms.
+
+14. Termination
+
+If You violate this License, rights granted under it terminate automatically,
+subject to mandatory law.
+
+For a first-time, non-willful violation that can be remedied, including an
+accidentally omitted notice, rights are automatically reinstated if You cure
+the violation within thirty days after becoming aware of it. Deliberate
+unauthorized exploitation, repeated violations, or violations not cured within
+that period require Licensor's consent for reinstatement. Reinstatement does
+not erase liability for the violation, subject to applicable law.
+
+For purposes of Section 4, Output generated during a first-time, non-willful
+violation subsequently cured in accordance with this Section is treated as
+lawfully generated. This clarification does not erase liability arising before
+cure or grant permission to continue operating Berlin during termination.
+
+On termination, stop uses requiring rights under this License and remove
+copies made solely under those rights, except legally required records and
+bona fide archival backups. Such retained copies must not be used beyond the
+required purpose. This does not require destruction of Your Materials or
+copies You may retain under independent rights or third-party licenses.
+Section 4 permissions for lawfully generated Output survive, subject to their
+own conditions. Termination does not revoke rights granted by a contributor
+to Licensor or compliant recipients. Sections 10, 15 through 23, and provisions
+necessary to interpret surviving rights continue to apply. Patent litigation
+has the specific consequence stated in Section 9.
+
+15. Disclaimer of Warranty
+
+The Licensed Work is provided "as is" and "as available". To the maximum extent
+permitted by applicable law, Licensor disclaims all warranties, conditions,
+representations, and guarantees of any kind, whether express, implied,
+statutory, or otherwise, including warranties of merchantability, fitness for a
+particular purpose, title, non-infringement, accuracy, completeness,
+reliability, availability, security, compatibility, error-free operation, and
+absence of defects.
+
+Licensor does not warrant that the Licensed Work or any Output will be correct,
+complete, accurate, secure, uninterrupted, reproducible, compliant with any law,
+regulation, standard, certification, or contract, or suitable for any particular
+use.
+
+16. User Responsibility and Assumption of Risk
+
+You are responsible for choosing and reviewing Your use of the Licensed Work,
+subject to applicable law and Licensor's responsibility under Section 18.
+
+You are solely responsible for:
+
+(a) determining whether the Licensed Work is appropriate for Your intended use;
+
+(b) validating the correctness, completeness, reliability, reproducibility,
+    security, and suitability of the Licensed Work and any Output;
+
+(c) reviewing and validating any Output before relying on it in development,
+    testing, validation, deployment, certification, compliance, operational,
+    business, or legal decisions;
+
+(d) maintaining appropriate backups, recovery procedures, security controls,
+    monitoring, fallback procedures, and operational safeguards;
+
+(e) complying with applicable laws, regulations, contractual obligations,
+    industry standards, certification requirements, security requirements, and
+    third-party rights; and
+
+(f) consequences legally attributable to Your actions or omissions.
+
+This Section creates no indemnity and does not transfer responsibility for
+losses legally attributable to Licensor.
+
+The Licensed Work is not a substitute for independent engineering judgment,
+security review, legal review, compliance review, certification review,
+operational review, or professional advice.
+
+17. Suitability for Safety-Critical Systems
+
+The Licensed Work is provided as a content processing and publishing tool.
+
+The Licensed Work is not designed or certified as a safety-critical control
+system. This is a suitability warning, not a separate prohibition on ordinary
+publishing about medical, industrial, or other regulated subjects. It does not
+exclude liability or replace the obligations imposed by applicable law.
+
+18. Limitation of Liability
+
+Liability is governed by applicable law, including statutory rules applicable
+to the gratuitous grant of rights where their conditions are met. This License
+sets no contractual monetary cap and does not exclude liability for breach of
+essential contractual obligations. Sections 15 through 17 do not override
+this Section.
+
+A separately agreed paid commercial license may address warranties, service
+obligations, and liability for that arrangement, subject to applicable law.
+
+Nothing in this License excludes or limits liability to the extent such
+exclusion or limitation is prohibited by applicable law, including liability for
+intentional misconduct, gross negligence, fraud, injury to life, body, or
+health, liability under mandatory product-liability law, or any other liability
+that cannot lawfully be excluded or limited.
+
+19. Export Control and Sanctions
+
+You are solely responsible for compliance with all applicable export-control,
+import-control, sanctions, embargo, customs, and trade laws and regulations.
+
+You may not use, export, re-export, transfer, provide, or otherwise make
+available the Licensed Work in violation of applicable law.
+
+Licensor assumes no responsibility for Your compliance with such laws and
+regulations.
+
+20. Governing Law and Venue
+
+This License is governed by the laws of the Federal Republic of Germany,
+excluding conflict-of-law rules. The United Nations Convention on Contracts for
+the International Sale of Goods does not apply.
+
+This choice does not deprive consumers of mandatory protections applicable
+under Article 6 of Regulation (EC) No 593/2008 (Rome I), where its conditions
+are met. Jurisdiction is determined by applicable statutory rules. This
+License does not impose an exclusive venue on consumers or other recipients.
+Any separate jurisdiction agreement must satisfy applicable legal requirements.
+
+21. Severability
+
+If a provision is invalid or unenforceable, the consequences are governed by
+applicable law. Where Section 306 BGB applies, the remaining contract remains
+effective subject to that provision, and applicable statutory rules govern in
+place of the invalid term.
+
+22. Entire Agreement
+
+This License is the entire agreement between You and Licensor for the Licensed
+Work, except to the extent Written Approval or a Commercial License expressly
+provides otherwise, and subject to Section 10 and mandatory law.
+Individually agreed terms take priority where applicable, including under
+Section 305b BGB, without requiring prescribed override wording.
+
+23. Notices
+
+Notices, inquiries, and requests relating to this License may be submitted via:
+
+https://github.com/sekaiser/berlin/issues
+
+Licensor may update contact information in the repository, documentation, or
+official project website.

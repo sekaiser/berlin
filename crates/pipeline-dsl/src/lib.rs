@@ -37,6 +37,8 @@ use syntax::register_pipeline_syntax;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CompileError {
+    #[error("SOURCE_ROOTS must be a map of simple names to nonempty directory strings")]
+    InvalidSourceRoots,
     #[error("DSL parsing failed: {0}")]
     Parsing(#[from] rhai::ParseError),
     #[error("DSL evaluation failed: {0}")]
@@ -63,6 +65,7 @@ pub enum CompileError {
 
 pub struct RhaiPipelineLoader {
     plans: HashMap<String, PipelinePlan>,
+    source_roots: std::collections::BTreeMap<String, String>,
     engine: Engine,
     ast: AST,
 }
@@ -71,10 +74,20 @@ impl RhaiPipelineLoader {
     pub fn new(source: &str) -> Result<Self, CompileError> {
         let registry = PipelineRegistry::default();
         let engine = configured_engine(&registry);
-        let mut ast = compile_and_evaluate(&engine, source)?;
+        let (mut ast, source_roots) = compile_and_evaluate(&engine, source)?;
         let plans = registry.validated_plans(&ast)?;
         retain_function_definitions(&mut ast);
-        Ok(Self { plans, engine, ast })
+        Ok(Self {
+            plans,
+            source_roots,
+            engine,
+            ast,
+        })
+    }
+
+    /// Explicit read-only source locations, relative to the publishing project.
+    pub fn source_roots(&self) -> &std::collections::BTreeMap<String, String> {
+        &self.source_roots
     }
 
     pub fn map_documents(
@@ -146,10 +159,34 @@ fn constrain_engine(engine: &mut Engine) {
     engine.disable_symbol("debug");
 }
 
-fn compile_and_evaluate(engine: &Engine, source: &str) -> Result<AST, CompileError> {
+fn compile_and_evaluate(
+    engine: &Engine,
+    source: &str,
+) -> Result<(AST, std::collections::BTreeMap<String, String>), CompileError> {
     let ast = engine.compile(source)?;
-    engine.eval_ast::<()>(&ast)?;
-    Ok(ast)
+    let mut scope = Scope::new();
+    engine.eval_ast_with_scope::<()>(&mut scope, &ast)?;
+    let mut roots = std::collections::BTreeMap::new();
+    if scope.contains("SOURCE_ROOTS") {
+        let map = scope
+            .get_value::<rhai::Map>("SOURCE_ROOTS")
+            .ok_or(CompileError::InvalidSourceRoots)?;
+        for (name, value) in map {
+            let path = value
+                .try_cast::<rhai::ImmutableString>()
+                .ok_or(CompileError::InvalidSourceRoots)?;
+            if name.is_empty()
+                || !name
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+                || path.trim().is_empty()
+            {
+                return Err(CompileError::InvalidSourceRoots);
+            }
+            roots.insert(name.into(), path.into());
+        }
+    }
+    Ok((ast, roots))
 }
 
 fn validate_document_mappers(plan: &PipelinePlan, ast: &AST) -> Result<(), CompileError> {

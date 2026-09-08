@@ -1,0 +1,31 @@
+Berlin
+Copyright (c) 2026 Sebastian Kaiser
+
+Berlin Noncommercial Source Available License 1.0
+Identifier: LicenseRef-Berlin-NC-1.0
+
+See LICENSE for the full terms. This is a source-available license, not an
+open source license. Except as expressly permitted by LICENSE, Business Use,
+including internal business use and work supporting a business, requires
+explicit Written Approval from Sebastian Kaiser or a Commercial License.
+Section 4 permits continued use of lawfully generated Output, including later
+monetization without running Berlin again, subject to its output-specific
+conditions. Section 7 permits narrowly scoped contribution preparation and
+testing.
+
+Third-party software, dependencies, assets, and third-party-derived portions
+retain their applicable licenses and notices. Berlin's license does not replace
+those terms or revoke rights previously granted under another license,
+including MIT. The copyright statement above does not claim ownership of
+third-party materials.
+
+The copyright and MIT permission notice for retained Deno-derived CLI code
+is in cli/THIRD_PARTY_NOTICES.txt (THIRD_PARTY_NOTICES.txt in the CLI package).
+
+The Berlin revision 93f6ce2aad234afe58577dd5e5ba29341223fb54 and earlier
+revisions declared MIT in package metadata. This licensing change does not
+withdraw valid prior grants, including rights to redistribute those portions
+under their applicable terms. It is not an exclusive relicensing of Berlin's
+history.
+
+Permission requests: https://github.com/sekaiser/berlin/issues

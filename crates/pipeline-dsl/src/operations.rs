@@ -151,6 +151,9 @@ pub(super) fn register_operations(engine: &mut Engine) {
     engine.register_type_with_name::<WebsiteConfig>("WebsiteConfig");
     engine.register_fn("website_config", website_config);
     engine.register_fn("render_website", render_website);
+    engine.register_type_with_name::<berlin_core::DeploymentTarget>("DeploymentTarget");
+    engine.register_fn("github_pages", github_pages);
+    engine.register_fn("deploy_to", deploy_website_to);
     engine.register_fn("render_linkedin", render_linkedin);
     engine.register_fn("load_css", load_css);
     engine.register_fn("compile_css", compile_css);
@@ -183,11 +186,13 @@ fn export_org(
     source: OrgSources,
     backend: ImmutableString,
     output: ImmutableString,
+    section: ImmutableString,
 ) -> MarkdownSources {
     MarkdownSources(source.0.transform(
         "exported_markdown",
         Operation::ExportOrg {
             backend: backend.into(),
+            section: section.into(),
         },
         Some(output.as_str()),
     ))
@@ -265,6 +270,35 @@ fn render_linkedin(documents: Documents, output: ImmutableString) -> LinkedInDra
         Operation::RenderLinkedIn,
         Some(output.as_str()),
     ))
+}
+
+fn github_pages(
+    repository: ImmutableString,
+) -> Result<berlin_core::DeploymentTarget, Box<rhai::EvalAltResult>> {
+    let target = berlin_core::DeploymentTarget::GitHubPages {
+        repository: repository.into(),
+    };
+    target
+        .validate()
+        .map_err(Box::<rhai::EvalAltResult>::from)?;
+    Ok(target)
+}
+
+fn deploy_website_to(
+    mut website: Website,
+    target: berlin_core::DeploymentTarget,
+) -> Result<Website, Box<rhai::EvalAltResult>> {
+    let output = website
+        .0
+        .nodes
+        .iter_mut()
+        .find(|node| node.id == website.0.output)
+        .expect("website output refers to a node");
+    if output.deployment.is_some() {
+        return Err("website already has a deployment target".into());
+    }
+    output.deployment = Some(target);
+    Ok(website)
 }
 
 fn load_css(pattern: ImmutableString) -> CssSources {

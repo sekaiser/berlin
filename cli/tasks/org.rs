@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -8,6 +9,14 @@ use anyhow::Error;
 use anyhow::bail;
 
 use super::{SourceFile, origins};
+
+const DEFAULT_EXPORTER: &str = include_str!("../../support/ox-hugo/export.el");
+
+/// Existing project overrides remain supported; ordinary projects use the bundled adapter.
+pub(super) fn exporter_override(project_root: &Path) -> Option<PathBuf> {
+    let path = project_root.join("support/ox-hugo/export.el");
+    path.exists().then_some(path)
+}
 
 #[derive(Debug, Eq, PartialEq)]
 struct Export {
@@ -19,29 +28,33 @@ struct Export {
 }
 
 pub(super) fn export(
-    project_root: &Path,
+    project: &crate::project::Project,
     output_root: &Path,
     sources: &[PathBuf],
     backend: &str,
     output_directory: &Path,
+    section: &str,
     dry_run: bool,
 ) -> Result<Vec<SourceFile>, Error> {
+    let project_root = project.root();
     if backend != "ox-hugo" {
         bail!("Unsupported Org export backend '{backend}'");
     }
 
-    let section = hugo_section(output_directory)?;
+    validate_section(section)?;
+    let workspace = output_root.join(output_directory);
+    let content = Path::new("content").join(section);
     let exports = plan_exports(
         sources,
-        &output_root.join(output_directory),
-        &project_root.join(output_directory),
+        &workspace.join(&content),
+        &project_root.join(output_directory).join(&content),
     )?;
     report_exports(project_root, &exports, dry_run);
     if dry_run {
         return Ok(Vec::new());
     }
 
-    run_ox_hugo(project_root, output_root, section, &exports)?;
+    run_ox_hugo(project, &workspace, section, &exports)?;
     read_exported_sources(exports)
 }
 
@@ -89,21 +102,20 @@ fn report_exports(project_root: &Path, exports: &[Export], dry_run: bool) {
     }
 }
 
-fn hugo_section(output_directory: &Path) -> Result<&str, Error> {
-    let section = output_directory
-        .strip_prefix("content")
-        .context("Ox-Hugo output must be within the content directory")?;
-    let section = section
-        .to_str()
-        .context("Ox-Hugo section is not valid UTF-8")?;
-    if section.is_empty() {
-        bail!("Ox-Hugo output must name a section below the content directory");
+fn validate_section(section: &str) -> Result<(), Error> {
+    if section.is_empty()
+        || section
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+        || section.contains(['\\', ':'])
+    {
+        bail!("Ox-Hugo section must be a confined relative path");
     }
-    Ok(section)
+    Ok(())
 }
 
 fn run_ox_hugo(
-    project_root: &Path,
+    project: &crate::project::Project,
     output_root: &Path,
     section: &str,
     exports: &[Export],
@@ -112,7 +124,14 @@ fn run_ox_hugo(
     std::fs::create_dir_all(output_root.join("static"))?;
 
     let emacs = std::env::var("BERLIN_EMACS").unwrap_or_else(|_| "emacs".into());
-    let script = project_root.join("support/ox-hugo/export.el");
+    let mut bundled = tempfile::Builder::new().suffix(".el").tempfile()?;
+    let script = match exporter_override(project.root()) {
+        Some(path) => path,
+        None => {
+            bundled.write_all(DEFAULT_EXPORTER.as_bytes())?;
+            bundled.path().to_path_buf()
+        }
+    };
     let source_map = tempfile::NamedTempFile::new()?;
     let mut command = Command::new(&emacs);
     command
@@ -133,13 +152,17 @@ fn run_ox_hugo(
     }
     // Navigation is optional and local. A missing/old adapter must not prevent
     // publication; exact export hashes keep a failed transaction's maps inert.
-    if let Err(error) = store_origins(project_root, exports, source_map.path()) {
+    if let Err(error) = store_origins(project, exports, source_map.path()) {
         log::warn!("Exported Markdown, but could not store Org navigation: {error:#}");
     }
     Ok(())
 }
 
-fn store_origins(project_root: &Path, exports: &[Export], file: &Path) -> Result<(), Error> {
+fn store_origins(
+    project: &crate::project::Project,
+    exports: &[Export],
+    file: &Path,
+) -> Result<(), Error> {
     let origins: origins::ExportOrigins = serde_json::from_slice(&std::fs::read(file)?)?;
     if origins.schema_version != 1 {
         bail!("Unsupported Org origin schema");
@@ -166,7 +189,7 @@ fn store_origins(project_root: &Path, exports: &[Export], file: &Path) -> Result
             bail!("Org or Markdown changed while exporting source navigation");
         }
         origin.source = export.source.clone();
-        origins::store(project_root, &export.published_path, origin)?;
+        origins::store(project, &export.published_path, origin)?;
     }
     Ok(())
 }
@@ -240,11 +263,12 @@ mod tests {
     fn dry_run_does_not_require_emacs_or_existing_outputs() {
         let sources = vec![PathBuf::from("/project/data/article.org")];
         let result = export(
-            Path::new("/project"),
+            &crate::project::Project::new("/project".into(), vec![]),
             Path::new("/staging"),
             &sources,
             "ox-hugo",
             Path::new("content/notes"),
+            "notes",
             true,
         )
         .unwrap();
@@ -304,28 +328,32 @@ mod tests {
     }
 
     #[test]
-    fn dry_run_rejects_invalid_hugo_output_directories() {
-        for (directory, expected) in [
-            (
-                "notes",
-                "Ox-Hugo output must be within the content directory",
-            ),
-            (
-                "content",
-                "Ox-Hugo output must name a section below the content directory",
-            ),
+    fn dry_run_rejects_unsafe_hugo_sections() {
+        for section in [
+            "",
+            ".",
+            "..",
+            "../notes",
+            "/notes",
+            "notes/../../escape",
+            "notes\\escape",
+            "notes//child",
         ] {
             let error = export(
-                Path::new("/project"),
+                &crate::project::Project::new("/project".into(), vec![]),
                 Path::new("/staging"),
                 &[PathBuf::from("/project/data/article.org")],
                 "ox-hugo",
-                Path::new(directory),
+                Path::new(".berlin/generated/org"),
+                section,
                 true,
             )
             .unwrap_err();
 
-            assert_eq!(error.to_string(), expected);
+            assert_eq!(
+                error.to_string(),
+                "Ox-Hugo section must be a confined relative path"
+            );
         }
     }
 
@@ -337,11 +365,12 @@ mod tests {
         ];
 
         let error = export(
-            Path::new("/project"),
+            &crate::project::Project::new("/project".into(), vec![]),
             Path::new("/staging"),
             &sources,
             "ox-hugo",
             Path::new("content/notes"),
+            "notes",
             true,
         )
         .unwrap_err();

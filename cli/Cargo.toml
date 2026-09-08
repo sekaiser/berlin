@@ -41,3 +41,4 @@ warp.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+warp = { workspace = true, features = ["test"] }

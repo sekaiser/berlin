@@ -1,0 +1,11 @@
+{% if guides | length > 0 %}
+<nav class="journal-guides" aria-labelledby="guides-title">
+  <h2 id="guides-title">Start here</h2>
+  <p>Guides through connected notes.</p>
+  <ul>
+    {% for guide in guides %}
+    <li><a href="{{config_site_url}}{{guide.target}}">{{guide.title}}</a></li>
+    {% endfor %}
+  </ul>
+</nav>
+{% endif %}

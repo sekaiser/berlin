@@ -60,7 +60,7 @@ Findings include the document ID and its actual parsed source URI. Unresolved
 references also include the generated passage anchor and authored plain-text
 excerpt. For an Org workflow, that URI normally points to exported Markdown.
 The batch exporter also writes a local navigation sidecar in
-`_berlin/org-origins/`. When a matching sidecar exists, `check` adds an optional
+`.berlin/org-origins/`. When a matching sidecar exists, `check` adds an optional
 `location.origin`: the Org file URI, its exported `source_hash`, an optional
 `heading` (Org `id` and `outline` path), and a `stale` boolean. Reference findings
 use their enclosing exported section; document-level observations open the file.
@@ -71,8 +71,9 @@ They store project-relative Org paths, not workstation paths, and are separate
 from Markdown, semantic documents and published HTML. They are disposable local
 cache files; older export hashes may coexist. A missing or invalid sidecar does
 not prevent checking Markdown. Export-map failures produce a warning rather than
-failing publication. Existing projects must update their copy of
-`support/ox-hugo/export.el` and explicitly export to enable source navigation.
+failing publication. Berlin bundles the adapter; explicitly export to enable
+source navigation. Projects with a custom `support/ox-hugo/export.el` override
+must keep that adapter compatible with the origin-map contract.
 
 If the Org bytes changed since export, the origin is marked stale and heading
 navigation is omitted. Missing sources fall back to Markdown; ambiguous heading

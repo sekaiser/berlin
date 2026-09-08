@@ -1,0 +1,28 @@
+{% extends "_notebook.tera" %}
+{% import "macros/notebook_entry.tera" as notes %}
+{% import "macros/tag.tera" as tags %}
+{% import "macros/notebook_bookmark.tera" as reading %}
+{% block page_styles %}{{super()}}<link rel="stylesheet" href="{{config_site_url}}/assets/css/overview.css">{% endblock page_styles %}
+{% block content %}
+<div class="notebook-page notebook-home">
+  <section class="journal-entrance"><div class="journal-welcome">
+    <p class="journal-label">{{author}}</p>
+    <h1>{{title}}</h1><p class="journal-lead">{{description}}</p>
+    <a class="journal-link" href="{{config_site_url}}/about.html">About this notebook</a>
+  </div><figure class="journal-desk">{% include "partials/engineering-desk.tera" %}</figure></section>
+  <div class="journal-content"><div class="journal-spread">
+    <section class="journal-writing"><header class="journal-section-heading"><h2>From the notebook</h2></header>
+    {% for a in articles %}{{notes::entry(title=a.title, description=a.description, date=a.date, target=a.target, topics=a.tags, kind=a.kind, preview=a.preview)}}
+    {% else %}<p>No notes yet.</p>{% endfor %}
+    <a class="journal-link journal-more" href="{{config_site_url}}/notes.html">All notes</a></section>
+    <aside class="journal-margin">{% include "partials/guides.tera" %}
+    {% if tags | length > 0 %}<section class="journal-threads"><h2>Follow a thread</h2><div class="journal-topics">
+    {% for tag in tags %}{{tags::tag(label=tag.name, target=tag.target)}}{% endfor %}
+    </div></section>{% endif %}</aside>
+  </div>
+  {% if feed | length > 0 %}<section class="journal-reading"><header class="journal-section-heading"><h2>Reading</h2><a href="{{config_site_url}}/feed.html">Reading list</a></header><div class="journal-reading-grid">
+  {% for f in feed %}{{reading::bookmark(title=f.title, date=f.date_added, target=f.url, host=f.host, topics=f.tags, annotation=f.annotation | default(value=""))}}{% endfor %}
+  </div></section>{% endif %}
+  </div>
+</div>
+{% endblock content %}

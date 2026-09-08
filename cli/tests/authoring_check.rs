@@ -74,8 +74,8 @@ fn reports_all_broken_links_in_json_and_text_without_touching_outputs() {
     );
     fs::create_dir(root.path().join("_site")).unwrap();
     fs::write(root.path().join("_site/index.html"), "existing website").unwrap();
-    fs::create_dir(root.path().join("_berlin")).unwrap();
-    fs::write(root.path().join("_berlin/keep"), "existing receipt").unwrap();
+    fs::create_dir(root.path().join(".berlin")).unwrap();
+    fs::write(root.path().join(".berlin/keep"), "existing receipt").unwrap();
     let before = snapshot(root.path());
     let output = check(root.path(), &["--json"]);
     assert_eq!(output.status.code(), Some(1));
@@ -200,7 +200,7 @@ fn incomplete_checks_are_structured_failures_not_empty_successes() {
 fn refuses_org_execution_and_ambiguous_publication_scopes() {
     let inline_org = PIPELINE.replace(
         "parse_markdown(load_markdown(\"content/*.md\"))",
-        "parse_markdown(export_org(load_org(\"data/*.org\"), \"ox-hugo\", \"content\"))",
+        "parse_markdown(export_org(load_org(\"data/*.org\"), \"ox-hugo\", \".berlin/generated/org\", \"notes\"))",
     );
     let root = project(&inline_org);
     let before = snapshot(root.path());

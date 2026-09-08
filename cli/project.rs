@@ -3,14 +3,35 @@ use std::path::PathBuf;
 
 use anyhow::Error;
 
+#[derive(Clone)]
 pub struct Project {
     root: PathBuf,
+    pipeline_files: Vec<PathBuf>,
 }
 
 impl Project {
-    pub fn load() -> Result<Self, Error> {
+    pub fn load(pipeline_files: Vec<PathBuf>) -> Result<Self, Error> {
         let root = root_from_environment()?;
-        Ok(Self { root })
+        Ok(Self::new(root, pipeline_files))
+    }
+
+    pub fn new(root: PathBuf, pipeline_files: Vec<PathBuf>) -> Self {
+        let pipeline_files = if pipeline_files.is_empty() {
+            vec![root.join("berlin.pipeline.rhai")]
+        } else {
+            pipeline_files
+                .into_iter()
+                .map(|path| root.join(path))
+                .collect()
+        };
+        Self {
+            root,
+            pipeline_files,
+        }
+    }
+
+    pub fn pipeline_files(&self) -> &[PathBuf] {
+        &self.pipeline_files
     }
 
     pub fn root(&self) -> &Path {

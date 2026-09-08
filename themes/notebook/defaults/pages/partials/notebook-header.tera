@@ -1,0 +1,12 @@
+<header class="study-masthead">
+  <a class="study-signature" href="{{config_site_url}}/">
+    <span class="study-bookmark" aria-hidden="true">n.</span>
+    <span class="study-identity"><span class="study-name">{{author}}</span><small>Engineering notebook</small></span>
+  </a>
+  <nav aria-label="Main navigation">
+    <a href="{{config_site_url}}/notes.html"{% if page_path == "/notes.html" %} aria-current="page"{% elif page_id %} aria-current="true"{% endif %}>Notes</a>
+    <a href="{{config_site_url}}/feed.html"{% if page_path == "/feed.html" %} aria-current="page"{% endif %}>Reading</a>
+    <a href="{{config_site_url}}/about.html"{% if page_path == "/about.html" %} aria-current="page"{% endif %}>About</a>
+    {% if has_search %}<a href="{{config_site_url}}/search.html"{% if page_path == "/search.html" %} aria-current="page"{% endif %}>Search</a>{% endif %}
+  </nav>
+</header>

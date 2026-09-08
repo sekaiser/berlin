@@ -19,8 +19,11 @@ mod feed;
 mod org;
 mod origins;
 mod output;
+pub(crate) mod publication;
 mod receipt;
+pub(crate) mod release;
 mod run;
+pub(crate) mod theme;
 mod website;
 
 #[derive(Clone, Debug)]
@@ -99,15 +102,25 @@ fn pattern_base(root: &Path, pattern: &str) -> PathBuf {
     }
 }
 
-fn load_runtime_sources(root: &Path, pattern: &str) -> Result<Vec<SourceFile>, Error> {
-    load_files(root, pattern)?
-        .into_iter()
-        .map(SourceFile::read)
-        .collect()
+fn load_runtime_sources(project: &Project, pattern: &str) -> Result<Vec<SourceFile>, Error> {
+    let files = load_files(project, pattern)?;
+    if files.is_empty() && pattern.starts_with(".berlin/generated/") {
+        anyhow::bail!(
+            "Generated input '{pattern}' matched no files; build its producer pipeline first"
+        );
+    }
+    files.into_iter().map(SourceFile::read).collect()
 }
 
 pub fn run_pipeline(project: &Project, pipeline: &str) -> Result<(), Error> {
     run_pipeline_with_options(project, pipeline, ExecutionOptions::default())
+}
+
+pub(crate) fn prepare_release(
+    project: &Project,
+    pipeline: &str,
+) -> Result<release::WebsiteRelease, Error> {
+    run::PipelineRun::new(project, pipeline, ExecutionOptions::default()).release()
 }
 
 pub fn run_pipeline_with_options(
@@ -121,6 +134,29 @@ pub fn run_pipeline_with_options(
 #[cfg(test)]
 mod runtime_tests {
     use super::*;
+
+    #[test]
+    fn missing_generated_sources_require_an_explicit_producer_build() {
+        let root = tempfile::tempdir().unwrap();
+        let error = load_runtime_sources(
+            &Project::new(root.path().to_owned(), vec![]),
+            ".berlin/generated/org/content/notes/*.md",
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("build its producer pipeline first")
+        );
+        assert!(
+            load_runtime_sources(
+                &Project::new(root.path().to_owned(), vec![]),
+                "optional/*.md"
+            )
+            .unwrap()
+            .is_empty()
+        );
+    }
 
     #[test]
     fn runtime_artifacts_report_their_plan_kinds() {

@@ -1,0 +1,11 @@
+<section class="article-backlinks" aria-labelledby="backlinks-title">
+  <h2 id="backlinks-title">Referenced in</h2>
+  <ul>
+    {% for reference in page_backlinks %}
+    <li>
+      <a class="backlink-title" href="{{config_site_url}}{{reference.path}}">{{reference.title}}</a>
+      {% if reference.excerpt %}<blockquote>{{reference.excerpt}}</blockquote>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>

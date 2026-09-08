@@ -23,9 +23,9 @@ enum Outcome {
     Incomplete { message: String },
 }
 
-pub fn check(flags: CheckFlags) -> Result<(), Error> {
-    let result =
-        Project::load().and_then(|project| crate::tasks::check::inspect(&project, &flags.pipeline));
+pub fn check(flags: CheckFlags, pipeline_files: Vec<std::path::PathBuf>) -> Result<(), Error> {
+    let result = Project::load(pipeline_files)
+        .and_then(|project| crate::tasks::check::inspect(&project, &flags.pipeline));
     let outcome = match result {
         Ok(report) => Outcome::Complete { report },
         Err(error) => Outcome::Incomplete {

@@ -1,0 +1,2 @@
+{# Optional project-owned editorial connections. #}
+{% macro connection(subject, to_reading=false) %}{% endmacro connection %}

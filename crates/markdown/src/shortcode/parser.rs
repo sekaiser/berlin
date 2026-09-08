@@ -139,7 +139,7 @@ fn handle_figure(
     let src = get_string("src", &value).context("figure shortcode requires a 'src' argument")?;
     let template = if let Some(caption) = get_string("caption", &value) {
         format!(
-            r#"<figure><img style="max-width:100%;" src="/static{src}"><figcaption>{caption}</figcaption></figure>"#,
+            r#"<figure><img style="max-width:100%;" src="{src}"><figcaption>{caption}</figcaption></figure>"#,
         )
     } else {
         format!(r#"<img style="width:456px;margin-top:5px;margin-bottom:5px;" src="{src}">"#)

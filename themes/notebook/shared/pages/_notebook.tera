@@ -1,0 +1,5 @@
+{% extends "_base.tera" %}
+{# Publication identity shared by the entrance, index, and reading layouts. #}
+{% block navbar %}
+{% include "partials/notebook-header.tera" %}
+{% endblock navbar %}

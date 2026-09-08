@@ -37,17 +37,17 @@ impl<'a> NodeExecutor<'a> {
         }
         match &node.operation {
             Operation::LoadOrg { pattern } => Ok(Some(RuntimeArtifact::OrgSources(load_files(
-                self.project.root(),
+                self.project,
                 pattern,
             )?))),
             Operation::LoadMarkdown { pattern } => Ok(Some(RuntimeArtifact::MarkdownSources(
-                load_runtime_sources(self.project.root(), pattern)?,
+                load_runtime_sources(self.project, pattern)?,
             ))),
             Operation::LoadData { pattern } => Ok(Some(RuntimeArtifact::DataSources(
-                load_runtime_sources(self.project.root(), pattern)?,
+                load_runtime_sources(self.project, pattern)?,
             ))),
             Operation::LoadCss { pattern } => Ok(Some(RuntimeArtifact::CssSources(
-                load_runtime_sources(self.project.root(), pattern)?,
+                load_runtime_sources(self.project, pattern)?,
             ))),
             Operation::ParseMarkdown => self.parse_markdown(node),
             Operation::ParseFeed => self.parse_feed(node),
@@ -58,7 +58,7 @@ impl<'a> NodeExecutor<'a> {
             Operation::CompileCss => self.compile_css(node),
             Operation::LoadAssets { pattern } => self.load_assets(pattern),
             Operation::CopyAssets => self.copy_assets(node),
-            Operation::ExportOrg { backend } => self.export_org(node, backend),
+            Operation::ExportOrg { backend, section } => self.export_org(node, backend, section),
         }
     }
 
@@ -189,10 +189,19 @@ impl<'a> NodeExecutor<'a> {
     }
 
     fn load_assets(&self, pattern: &str) -> Result<Option<RuntimeArtifact>, Error> {
-        let root = self.project.root().to_path_buf();
+        let (source_root, relative) = crate::util::fs::source_location(self.project, pattern)?;
+        let source_root = pattern_base(
+            &source_root,
+            relative.to_str().context("Asset pattern is not UTF-8")?,
+        );
+        let source_root = if pattern.starts_with('@') {
+            source_root.canonicalize()?
+        } else {
+            source_root
+        };
         Ok(Some(RuntimeArtifact::StaticSources {
-            source_root: pattern_base(&root, pattern),
-            files: load_files(&root, pattern)?
+            source_root,
+            files: load_files(self.project, pattern)?
                 .into_iter()
                 .filter(|path| {
                     path.is_file()
@@ -220,6 +229,7 @@ impl<'a> NodeExecutor<'a> {
         &self,
         node: &PipelineNode,
         backend: &str,
+        section: &str,
     ) -> Result<Option<RuntimeArtifact>, Error> {
         let sources = self.input(node, 0, |artifact| match artifact {
             RuntimeArtifact::OrgSources(sources) => Some(sources),
@@ -227,11 +237,12 @@ impl<'a> NodeExecutor<'a> {
         })?;
         let output = output_path(node)?;
         Ok(Some(RuntimeArtifact::MarkdownSources(org::export(
-            self.project.root(),
+            self.project,
             self.output_root,
             sources,
             backend,
             output,
+            section,
             self.options.dry_run,
         )?)))
     }

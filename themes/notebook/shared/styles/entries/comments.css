@@ -1,0 +1,15 @@
+/* The host section shares the notebook surface; the cross-origin widget owns its theme. */
+.article-discussion { margin-top: 32px; padding-top: 28px; border-top: 1px solid var(--rule); }
+.study-end .article-discussion h2 { margin-bottom: 16px; font-style: normal; color: var(--ink); }
+.article-discussion p { max-width: 64ch; font: 1rem/1.7 var(--font-reading); }
+.article-discussion .discussion-privacy { font-size: .85rem; color: var(--muted); }
+.discussion-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; }
+.discussion-actions button { min-height: 44px; padding: 8px 16px; font: .9rem/1.5 var(--font-reading); color: var(--accent); background: var(--surface); border: 1px solid var(--accent-rule); border-radius: 3px; cursor: pointer; }
+.discussion-actions button[hidden] { display: none; }
+.discussion-actions button:disabled { cursor: wait; }
+.discussion-actions a { padding-block: 12px; font: .85rem/1.5 var(--font-reading); overflow-wrap: anywhere; }
+.discussion-actions :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.article-discussion .discussion-status { color: var(--muted); font-size: .85rem; }
+.discussion-status:empty { display: none; }
+.article-discussion .giscus { margin-top: 20px; }
+@media print { .article-discussion { display: none; } }

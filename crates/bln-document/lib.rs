@@ -68,6 +68,10 @@ fn validate_identifier(field: &'static str, value: &str) -> Result<(), DocumentV
 }
 
 fn validate_metadata(metadata: &Metadata) -> Result<(), DocumentValidationError> {
+    if let Some(preview) = &metadata.preview {
+        validate_identifier("preview source", &preview.source)?;
+        validate_non_empty("preview alternative text", &preview.alt)?;
+    }
     metadata
         .tags
         .iter()
@@ -176,6 +180,9 @@ pub struct Relation {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Metadata {
+    /// Optional content-owned artwork used when presenting this document in collections.
+    #[serde(default)]
+    pub preview: Option<Preview>,
     pub title: Option<String>,
     /// Optional stable website slug; independent of the title and content ID.
     #[serde(default)]
@@ -192,6 +199,14 @@ pub struct Metadata {
     /// Author opt-in to a discussion; provider configuration belongs to the website.
     #[serde(default)]
     pub comments: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Preview {
+    pub source: String,
+    pub alt: String,
+    pub width: std::num::NonZeroU32,
+    pub height: std::num::NonZeroU32,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

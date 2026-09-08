@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="{{config_site_url}}/assets/css/vendor.css" media="screen">
+  <link rel="stylesheet" href="{{config_site_url}}/assets/css/notebook.css">
+  {% block page_styles %}{% endblock page_styles %}
+  <link rel="stylesheet" href="{{config_site_url}}/assets/css/plain.css">
+  <link rel="stylesheet" href="{{config_site_url}}/assets/css/project.css">
+  <script src="{{config_site_url}}/static/js/main.js" defer></script>
+
+  {% block head %}
+  {% include "partials/page-metadata.tera" %}
+  {% endblock head %}
+</head>
+<body class="theme-plain">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="root" class="site-shell">
+        {% block navbar %}
+        {% include "partials/notebook-header.tera" %}
+        {% endblock navbar %}
+
+        <main id="main" tabindex="-1">
+          {% block hero %} {% endblock hero %}
+
+          {% block content %} {% endblock content %}
+        </main>
+
+        {% block footer %}
+            {% include "partials/footer.tera" %}
+        {% endblock footer %}
+
+  </div>
+</body>
+</html>

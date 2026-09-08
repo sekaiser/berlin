@@ -45,6 +45,7 @@ fn route_component(value: &str, kind: &str) -> Result<String, Error> {
 
 #[derive(Debug, Serialize)]
 struct Article {
+    preview: Option<berlin_document::Preview>,
     kind: DocumentKind,
     title: String,
     description: String,
@@ -85,6 +86,7 @@ impl Article {
 
         Ok(Self {
             kind: document.kind.clone(),
+            preview: metadata.preview.clone(),
             title,
             description,
             author,
@@ -380,7 +382,16 @@ pub fn render(
     if let Some(giscus) = &config.giscus {
         giscus.validate().map_err(anyhow::Error::msg)?;
     }
-    let mut session = RenderSession::new(project, website, config, output_root)?;
+    let templates = match &config.theme {
+        Some(selected) => {
+            let theme = super::theme::Theme::load(project.root(), selected)?;
+            let templates = theme.templates()?;
+            theme.write_assets(output_root)?;
+            templates
+        }
+        None => Templates::load(project.root().join("pages"))?,
+    };
+    let mut session = RenderSession::new(website, config, output_root, templates)?;
 
     session.render_index()?;
     session.render_notes_index()?;
@@ -403,10 +414,10 @@ struct RenderSession<'a> {
 
 impl<'a> RenderSession<'a> {
     fn new(
-        project: &Project,
         website: &'a WebsiteAssembly,
         config: &WebsiteConfig,
         output_root: &'a Path,
+        mut templates: Templates,
     ) -> Result<Self, Error> {
         let mut base = base_context(config);
         let site_url = base
@@ -424,7 +435,6 @@ impl<'a> RenderSession<'a> {
                 ))
             })
             .collect::<Result<HashMap<_, _>, Error>>()?;
-        let mut templates = Templates::load(project.root().join("pages"))?;
         base.insert("has_search", &templates.contains("search.tera"));
         templates.set_document_routes(routes);
         Ok(Self {
@@ -1026,6 +1036,7 @@ mod tests {
         let document = document(
             r#"---
 title: "Typed publishing"
+preview: {source: /attachments/diagram.svg, alt: A diagram, width: 320, height: 224}
 author: ["Ada", "Grace"]
 description: "A **semantic** description."
 date: 2026-09-05
@@ -1040,6 +1051,8 @@ The article body.
         let article = Article::from_document(&document).expect("projection should succeed");
 
         assert_eq!(article.title, "Typed publishing");
+        assert_eq!(article.preview, document.metadata.preview);
+        assert_eq!(article.preview.as_ref().unwrap().width.get(), 320);
         assert_eq!(article.author, "Ada, Grace");
         assert_eq!(article.date, "2026-09-05");
         assert_eq!(article.target, "/notes/typed-publishing.html");

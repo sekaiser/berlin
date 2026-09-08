@@ -1,0 +1,17 @@
+{% extends "_notebook.tera" %}
+{# Overview pages share the illustrated opening and ivory surface, not their contents.
+   Home and long-form articles intentionally retain their own compositions. #}
+{% block page_styles %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{config_site_url}}/assets/css/overview.css">
+{% endblock page_styles %}
+{% block content %}
+<div class="notebook-page notebook-overview {% block overview_kind %}{% endblock overview_kind %}">
+  <header class="journal-index-opening">
+    {% block overview_opening %}{% endblock overview_opening %}
+  </header>
+  <div class="notebook-surface">
+    {% block overview_body %}{% endblock overview_body %}
+  </div>
+</div>
+{% endblock content %}

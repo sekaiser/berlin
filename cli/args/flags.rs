@@ -45,7 +45,27 @@ pub struct ServeFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReleaseFlags {
+    pub pipeline: String,
+    pub from_directory: Option<std::path::PathBuf>,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PublishFlags {
+    pub release: String,
+    pub confirm: String,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PublicationFlags {
+    pub release: String,
+    pub refresh: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BerlinSubcommand {
+    Release(ReleaseFlags),
+    ReleasePlan(String),
+    Publish(PublishFlags),
+    Publication(PublicationFlags),
     Build(BuildFlags),
     Plan(PlanFlags),
     Check(CheckFlags),
@@ -54,6 +74,7 @@ pub enum BerlinSubcommand {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Flags {
+    pub pipeline_files: Vec<std::path::PathBuf>,
     pub subcommand: BerlinSubcommand,
     pub log_level: Option<Level>,
 }
@@ -67,6 +88,7 @@ fn clap_root() -> Command {
         .long_version(LONG_VERSION.as_str())
         .subcommand_required(true)
         .arg_required_else_help(true)
+        .arg(pipeline_file_arg())
         .arg(
             Arg::new("log-level")
                 .short('L')
@@ -88,10 +110,56 @@ fn clap_root() -> Command {
         .subcommand(plan_subcommand())
         .subcommand(check_subcommand())
         .subcommand(serve_subcommand())
+        .subcommand(
+            Command::new("release")
+                .about("Build and seal a website release without replacing preview output")
+                .arg(pipeline_file_arg())
+                .arg(pipeline_arg("Select a website pipeline"))
+                .arg(
+                    Arg::new("from-directory")
+                        .long("from-directory")
+                        .value_name("DIRECTORY")
+                        .value_parser(clap::value_parser!(std::path::PathBuf))
+                        .help(
+                            "Seal prepared website files without building; relative to the project",
+                        ),
+                ),
+        )
+        .subcommand(
+            Command::new("release-plan")
+                .about("Verify a sealed release and show its files and destination; no network")
+                .arg(release_arg()),
+        )
+        .subcommand(
+            Command::new("publish")
+                .about("Publish a reviewed release to its declared GitHub Pages branch")
+                .arg(release_arg())
+                .arg(
+                    Arg::new("confirm")
+                        .long("confirm")
+                        .value_name("RELEASE_ID")
+                        .required(true),
+                ),
+        )
+        .subcommand(
+            Command::new("publication")
+                .about("Show a release's publication record; optionally refresh from GitHub")
+                .arg(release_arg())
+                .arg(
+                    Arg::new("refresh")
+                        .long("refresh")
+                        .action(ArgAction::SetTrue),
+                ),
+        )
+}
+
+fn release_arg() -> Arg {
+    Arg::new("release").value_name("RELEASE_ID").required(true)
 }
 
 fn build_subcommand() -> Command {
     Command::new("build")
+        .arg(pipeline_file_arg())
         .about("Execute a content pipeline")
         .arg(pipeline_arg("Select the pipeline to execute"))
         .arg(
@@ -104,6 +172,7 @@ fn build_subcommand() -> Command {
 
 fn plan_subcommand() -> Command {
     Command::new("plan")
+        .arg(pipeline_file_arg())
         .about("Show the content pipeline without executing it")
         .arg(pipeline_arg("Select a named pipeline"))
         .arg(
@@ -116,6 +185,7 @@ fn plan_subcommand() -> Command {
 
 fn serve_subcommand() -> Command {
     Command::new("serve")
+        .arg(pipeline_file_arg())
         .about("Build and serve the website")
         .arg(
             Arg::new("port")
@@ -137,6 +207,7 @@ fn serve_subcommand() -> Command {
 
 fn check_subcommand() -> Command {
     Command::new("check")
+        .arg(pipeline_file_arg())
         .about("Inspect authored document connections without publishing")
         .long_about("Check the documents of one website output after parsing and mappings. Reads existing Markdown; never exports Org or writes build outputs. Editorial observations do not fail the check. This is not a full site or rendered-link validation.")
         .arg(pipeline_arg("Select a pipeline with one website output"))
@@ -144,6 +215,17 @@ fn check_subcommand() -> Command {
             .long("json")
             .help("Print a structured authoring report")
             .action(ArgAction::SetTrue))
+}
+
+// Register separately at both levels: Clap's global propagation replaces rather
+// than appends values when the option occurs before AND after the subcommand.
+fn pipeline_file_arg() -> Arg {
+    Arg::new("pipeline-file")
+        .long("pipeline-file")
+        .value_name("FILE")
+        .value_parser(clap::value_parser!(std::path::PathBuf))
+        .action(ArgAction::Append)
+        .help("Rhai program file; repeat to combine files in order (default: berlin.pipeline.rhai)")
 }
 
 fn pipeline_arg(help: &'static str) -> Arg {
@@ -167,6 +249,23 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
     };
 
     let subcommand = match matches.subcommand().expect("subcommand is required") {
+        ("release", args) => BerlinSubcommand::Release(ReleaseFlags {
+            pipeline: selected_pipeline(args),
+            from_directory: args
+                .get_one::<std::path::PathBuf>("from-directory")
+                .cloned(),
+        }),
+        ("release-plan", args) => {
+            BerlinSubcommand::ReleasePlan(args.get_one::<String>("release").unwrap().clone())
+        }
+        ("publish", args) => BerlinSubcommand::Publish(PublishFlags {
+            release: args.get_one::<String>("release").unwrap().clone(),
+            confirm: args.get_one::<String>("confirm").unwrap().clone(),
+        }),
+        ("publication", args) => BerlinSubcommand::Publication(PublicationFlags {
+            release: args.get_one::<String>("release").unwrap().clone(),
+            refresh: args.get_flag("refresh"),
+        }),
         ("build", args) => BerlinSubcommand::Build(BuildFlags {
             dry_run: args.get_flag("dry-run"),
             pipeline: selected_pipeline(args),
@@ -187,6 +286,20 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
     };
 
     Ok(Flags {
+        pipeline_files: [
+            &matches,
+            matches.subcommand().expect("subcommand is required").1,
+        ]
+        .into_iter()
+        .flat_map(|args| {
+            args.try_get_many::<std::path::PathBuf>("pipeline-file")
+                .ok()
+                .flatten()
+                .into_iter()
+                .flatten()
+        })
+        .cloned()
+        .collect(),
         subcommand,
         log_level,
     })
@@ -201,6 +314,51 @@ fn selected_pipeline(args: &clap::ArgMatches) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pipeline_files_are_optional_repeatable_and_global() {
+        assert!(
+            flags_from_vec(vec!["bln".into(), "plan".into()])
+                .unwrap()
+                .pipeline_files
+                .is_empty()
+        );
+        for args in [
+            vec![
+                "bln",
+                "--pipeline-file",
+                "shared.rhai",
+                "plan",
+                "--pipeline-file",
+                "site.rhai",
+            ],
+            vec![
+                "bln",
+                "--pipeline-file",
+                "shared.rhai",
+                "--pipeline-file",
+                "site.rhai",
+                "plan",
+            ],
+            vec![
+                "bln",
+                "plan",
+                "--pipeline-file",
+                "shared.rhai",
+                "--pipeline-file",
+                "site.rhai",
+            ],
+        ] {
+            let flags = flags_from_vec(args.into_iter().map(String::from).collect()).unwrap();
+            assert_eq!(
+                flags.pipeline_files,
+                vec![std::path::PathBuf::from("shared.rhai"), "site.rhai".into()]
+            );
+        }
+        assert!(
+            flags_from_vec(vec!["bln".into(), "plan".into(), "--pipeline-file".into()]).is_err()
+        );
+    }
 
     #[test]
     fn check_defaults_to_site_and_accepts_json_and_pipeline() {

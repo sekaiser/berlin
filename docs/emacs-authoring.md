@@ -23,8 +23,9 @@ BERLIN_DIR=/path/to/project bln build --pipeline org
 BERLIN_DIR=/path/to/project bln check
 ```
 
-Use the current `support/ox-hugo/export.el` in the project's export adapter.
-Exports record local-only origins in `_berlin/org-origins/`; these files are not
+Berlin bundles the default Ox-Hugo adapter. An optional project-local
+`support/ox-hugo/export.el` overrides it; keep any intentional override updated.
+Exports record local-only origins in `.berlin/org-origins/`; these files are not
 needed for the deployed website. The report links to the original Org file and,
 for a reference finding, its nearest mapped heading. A heading's Org ID takes
 precedence over its outline path. Only unique matches are followed.
@@ -37,3 +38,36 @@ TRAMP or exact source lines.
 
 See [the check's scope and JSON contract](authoring-check.md). Optional editorial
 observations are suggestions, not requirements to connect every note.
+
+## Article previews
+
+Preview artwork belongs with the article's attachments, not with the theme.
+Declare it at file level in the Org source:
+
+```org
+#+BERLIN_PREVIEW: ../attachments/my-article/preview.svg
+#+BERLIN_PREVIEW_ALT: A description of what the illustration conveys
+#+BERLIN_PREVIEW_SIZE: 320 224
+```
+
+The path is relative to the Org file. Supply the image's intrinsic width and
+height as positive integers; all three keywords are required when using a preview.
+The exporter copies the asset through the same content-addressed attachment
+pipeline as body images. Missing files fail the export. Preview metadata does
+not insert an image into the article body or generate new artwork.
+
+The site pipeline must publish the exported `static/attachments` directory to
+`_site/attachments`, as in the publishing fixture. After exporting and rebuilding,
+the notebook theme shows the declared preview on the homepage, notes index and
+tag pages. Articles without previews remain text-only.
+
+Markdown authors can supply the equivalent typed front matter directly (and
+must arrange publication of the referenced asset):
+
+```yaml
+preview:
+  source: /attachments/my-preview.svg
+  alt: A description of the illustration
+  width: 320
+  height: 224
+```

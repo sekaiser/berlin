@@ -10,8 +10,9 @@ should be processed, and publish it in more than one place without maintaining a
 separate authoring workflow for every channel.
 
 **Status:** experimental and actively evolving. Today Berlin builds static websites
-and local LinkedIn drafts. It does not yet publish through LinkedIn, X, or Substack
-APIs, synchronize remote content, or monitor live publications.
+and local LinkedIn drafts, and supports explicit sealed website releases to an
+existing GitHub Pages publishing branch. It does not yet publish through LinkedIn,
+X, or Substack APIs, synchronize remote articles, or collect audience metrics.
 
 ## How it works
 
@@ -39,9 +40,14 @@ Current capabilities include:
 - LinkedIn draft text and manifests, with character-limit diagnostics.
 - Local build receipts recording input/output hashes, provenance, and diagnostics.
 - Staged output replacement with recovery support, plus a local preview server.
+- [Sealed website releases and explicit GitHub Pages publishing](docs/website-releases.md), with integrity verification and recoverable publication records.
 
 The website renderer currently uses a fixed set of page families and template
-names. It is not yet a general-purpose theme or component framework. Content and
+names. The [notebook theme](themes/notebook/README.md) provides reusable Tera/CSS
+layouts and a synthetic component specimen within that contract. Select a local
+theme with `website_config(#{theme: "themes/notebook"})`; project templates
+and assets override its defaults without an installation step. It is not a
+general-purpose theme or component framework. Content and
 templates are trusted inputs; raw HTML is supported, not sanitized.
 
 ## Try it
@@ -67,6 +73,7 @@ mkdir -p "$berlin_project/support"
 cp -R support/ox-hugo "$berlin_project/support/"
 
 BERLIN_DIR="$berlin_project" target/debug/bln plan --pipeline site
+nix develop --command env BERLIN_DIR="$berlin_project" target/debug/bln build --pipeline org
 BERLIN_DIR="$berlin_project" target/debug/bln check --pipeline site
 BERLIN_DIR="$berlin_project" target/debug/bln build --pipeline site
 BERLIN_DIR="$berlin_project" target/debug/bln serve --port 8081
@@ -83,8 +90,19 @@ BERLIN_DIR="$berlin_project" target/debug/bln build --pipeline linkedin
 ```
 
 Website files are written to `$berlin_project/_site`, LinkedIn drafts to
-`$berlin_project/_berlin/linkedin`, and receipts to `$berlin_project/_berlin/receipts`.
+`$berlin_project/.berlin/linkedin`, and receipts to `$berlin_project/.berlin/receipts`.
 Hosting the resulting website is a separate deployment step.
+
+Org intermediates live under `.berlin/generated/org/`. The export operation takes
+an output workspace and an explicit Hugo section:
+`export_org(sources, "ox-hugo", ".berlin/generated/org", "notes")`.
+Markdown goes to `content/notes/` inside that workspace; copied source assets go
+to `static/attachments/<content-hash>/<filename>`. The site copies that attachment
+tree to `_site/attachments/`, matching the exported URLs for images and downloads.
+The complete workspace is replaced atomically after a successful
+export. Run `org` before `site` or `linkedin`, and again after changing Org sources;
+consumer pipelines read explicit generated paths and do not automatically refresh
+exports.
 
 To try the Org authoring path with Nix:
 
@@ -106,12 +124,48 @@ the original Org source when a matching local export map is available.
 
 ## A pipeline in practice
 
-A project defines its pipelines in `berlin.pipeline.rhai`. This configuration
+Authoring sources may live outside the publishing project. Declare named roots
+explicitly in `berlin.pipeline.rhai`:
+
+```rhai
+const SOURCE_ROOTS = #{data: "../data"};
+// Use load_org("@data/notes/*.org") or load_data("@data/feed.csv").
+```
+
+Root locations are relative to the project (absolute directories also work).
+Named input paths reject traversal and symlinks escaping their configured root.
+Unprefixed patterns remain project-relative; output paths remain confined to the
+project. Org navigation resolves named references against the current declaration,
+so a cached origin cannot grant access to a removed root.
+
+A project defines its pipelines in `berlin.pipeline.rhai` by default. To select
+another file, or combine several files, repeat `--pipeline-file`:
+
+```sh
+bln build --pipeline-file shared.rhai --pipeline-file website.rhai --pipeline site
+bln plan --pipeline-file shared.rhai --pipeline-file website.rhai --json
+bln check --pipeline-file shared.rhai --pipeline-file website.rhai
+bln serve --pipeline-file shared.rhai --pipeline-file website.rhai --watch
+```
+
+Explicit files **replace** the default; include `berlin.pipeline.rhai` explicitly
+if it should participate. Files form one Rhai program in the supplied order,
+sharing functions, constants, and a single `SOURCE_ROOTS` declaration. Define each
+pipeline name once; duplicate pipeline names and repeated files are errors.
+File arguments may be absolute or relative to the project directory (`BERLIN_DIR`,
+or the working directory when unset). Source roots, input patterns, and output
+paths remain project-relative, not relative to the selected scripts. All selected
+files are included in build receipts and watched by `serve --watch`.
+`--pipeline` still selects which named pipeline to execute; selecting more files
+does not execute every pipeline they define. Combined-program errors include
+the starting line of each source file.
+
+This configuration
 uses the same Markdown sources for a website and LinkedIn drafts:
 
 ```rhai
 fn documents() {
-    parse_markdown(load_markdown("content/notes/*.md"))
+    parse_markdown(load_markdown(".berlin/generated/org/content/notes/*.md"))
 }
 
 pipeline site {
@@ -128,15 +182,19 @@ pipeline site {
     output render_website(website, "_site", presentation);
     output compile_css(load_css("css/styles.css"), "_site/css/styles.css");
     output copy_assets(load_assets("static/**/*"), "_site/static");
+    output copy_assets(
+        load_assets(".berlin/generated/org/static/attachments/**/*").named("org_assets"),
+        "_site/attachments"
+    ).named("published_org_assets");
 }
 
 pipeline linkedin {
-    output render_linkedin(documents(), "_berlin/linkedin");
+    output render_linkedin(documents(), ".berlin/linkedin");
 }
 
-// Optional authoring step: export Org before running either publishing pipeline.
+// Export Org before running either publishing pipeline.
 pipeline org {
-    output export_org(load_org("data/*.org"), "ox-hugo", "content/notes");
+    output export_org(load_org("data/*.org"), "ox-hugo", ".berlin/generated/org", "notes");
 }
 ```
 
@@ -177,9 +235,8 @@ generation in a temporary synthetic project:
 nix develop --command support/check
 ```
 
-UnoCSS is optional project-level styling tooling, separate from Berlin's Rust
-renderer. Keep its configuration, Node manifest, and lockfile in the publishing
-project and run its CSS commands there. The minimal fixture does not require it.
+Berlin bundles and minifies CSS through Lightning CSS in its Rust build pipeline.
+No npm installation is required. Node.js runs the JavaScript regression tests.
 
 ## Further reading
 

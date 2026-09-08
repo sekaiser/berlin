@@ -1,0 +1,30 @@
+{% extends "_overview.tera" %}
+{% import "macros/notebook_entry.tera" as notes %}
+{% import "macros/notebook_bookmark.tera" as reading %}
+{% block overview_kind %}notebook-thread{% endblock overview_kind %}
+{% block overview_opening %}
+    <p class="journal-label">Follow a thread</p>
+    <h1>{{tag_name}}</h1>
+    <p class="journal-lead">Writing and references connected by a shared subject.</p>
+{% endblock overview_opening %}
+{% block overview_body %}
+  {% if articles | length > 0 %}
+  <section class="journal-thread-notes" aria-labelledby="thread-notes-title">
+    <header class="journal-section-heading"><h2 id="thread-notes-title">From the notebook</h2></header>
+    {% for a in articles %}
+      {{ notes::entry(title=a.title, description=a.description, date=a.date, target=a.target, topics=a.tags, kind=a.kind, preview=a.preview) }}
+    {% endfor %}
+  </section>
+  {% endif %}
+  {% if feed | length > 0 %}
+  <section class="journal-thread-reading" aria-labelledby="thread-reading-title">
+    <header class="journal-section-heading"><h2 id="thread-reading-title">Related reading</h2></header>
+    <div class="journal-library">
+      {% for f in feed %}
+        {{ reading::bookmark(title=f.title, date=f.date_added, target=f.url, host=f.host, topics=f.tags, annotation=f.annotation | default(value=""), show_connection=false) }}
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+  <a class="journal-link journal-more" href="{{config_site_url}}/notes.html">Back to all notes</a>
+{% endblock overview_body %}

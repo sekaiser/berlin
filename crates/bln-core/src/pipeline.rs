@@ -80,7 +80,7 @@ pub enum Operation {
     LoadData { pattern: String },
     LoadCss { pattern: String },
     LoadAssets { pattern: String },
-    ExportOrg { backend: String },
+    ExportOrg { backend: String, section: String },
     ParseMarkdown,
     ParseFeed,
     MapDocuments { mapper: FunctionRef },
@@ -195,6 +195,8 @@ pub struct PipelineNode {
     #[serde(default)]
     pub dependencies: Vec<NodeId>,
     pub output_path: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deployment: Option<crate::DeploymentTarget>,
 }
 
 impl PipelineNode {
@@ -204,6 +206,7 @@ impl PipelineNode {
             operation,
             dependencies: Vec::new(),
             output_path: None,
+            deployment: None,
         }
     }
 
@@ -261,6 +264,17 @@ impl PipelinePlan {
 
             validate_source_pattern(node)?;
             validate_output(node, &mut output_paths)?;
+            if let Some(target) = &node.deployment {
+                let validation = if matches!(node.operation, Operation::RenderWebsite { .. }) {
+                    target.validate()
+                } else {
+                    Err("only website outputs support deployment")
+                };
+                validation.map_err(|message| PipelineValidationError::InvalidDeployment {
+                    node: node.id.clone(),
+                    message,
+                })?;
+            }
         }
 
         Ok(nodes_by_id)
@@ -456,6 +470,10 @@ impl<'a> TopologicalTraversal<'a> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PipelineValidationError {
+    InvalidDeployment {
+        node: NodeId,
+        message: &'static str,
+    },
     DuplicateNode(NodeId),
     DuplicateOutput {
         path: PathBuf,
@@ -492,6 +510,9 @@ pub enum PipelineValidationError {
 impl fmt::Display for PipelineValidationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidDeployment { node, message } => {
+                write!(f, "pipeline deployment '{node}': {message}")
+            }
             Self::DuplicateNode(node) => write!(f, "pipeline node '{node}' is defined twice"),
             Self::DuplicateOutput {
                 path,
@@ -558,6 +579,7 @@ mod tests {
                     "markdown",
                     Operation::ExportOrg {
                         backend: "hugo".into(),
+                        section: "notes".into(),
                     },
                 )
                 .depends_on("org_sources")

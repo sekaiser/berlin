@@ -13,13 +13,76 @@ use berlin_pipeline_dsl::compile;
 const SCRIPT: &str = include_str!("../../../support/fixtures/publishing/berlin.pipeline.rhai");
 
 #[test]
+fn deployment_is_typed_metadata_not_an_executed_operation() {
+    let source = SCRIPT.replace("render_website(website, \"_site\", presentation)",
+        "render_website(website, \"_site\", presentation).deploy_to(github_pages(\"owner/notebook\"))");
+    let plans = compile(&source).unwrap();
+    assert_eq!(plans["site"].nodes().len(), 12);
+    let target = plans["site"]
+        .nodes()
+        .iter()
+        .find_map(|node| node.deployment.as_ref())
+        .unwrap();
+    assert_eq!(
+        target,
+        &berlin_core::DeploymentTarget::GitHubPages {
+            repository: "owner/notebook".into()
+        }
+    );
+    for repo in [
+        "../outside",
+        "https://github.com/owner/site",
+        "owner/repo.git",
+        "owner/repo/extra",
+        "owner/--bad;command",
+    ] {
+        assert!(compile(&format!("let target = github_pages({repo:?});")).is_err());
+    }
+    assert!(compile(r#"pipeline bad { output load_markdown("*.md").deploy_to(github_pages("owner/repo")); }"#).is_err());
+    assert!(
+        compile(&source.replace(
+            ".deploy_to(github_pages(\"owner/notebook\"))",
+            ".deploy_to(github_pages(\"owner/notebook\")).deploy_to(github_pages(\"other/repo\"))"
+        ))
+        .is_err()
+    );
+}
+
+#[test]
+fn source_roots_are_explicit_typed_configuration_not_path_traversal() {
+    let loader = RhaiPipelineLoader::new("const SOURCE_ROOTS = #{data: \"../data\"};").unwrap();
+    assert_eq!(loader.source_roots()["data"], "../data");
+    for invalid in [
+        "42",
+        "#{data: 1}",
+        "#{data: \"\"}",
+        "#{\"../data\": \"../data\"}",
+    ] {
+        assert!(RhaiPipelineLoader::new(&format!("const SOURCE_ROOTS = {invalid};")).is_err());
+    }
+    assert!(
+        compile(r#"pipeline bad { output copy_assets(load_assets("../data/*"), "out"); }"#)
+            .is_err()
+    );
+    assert!(compile(r#"const SOURCE_ROOTS = #{data: "../data"}; pipeline bad { output copy_assets(load_assets("@data/*"), "../outside"); }"#).is_err());
+}
+
+#[test]
 fn compiles_lisp_inspired_pipeline_forms() {
     let pipelines = compile(SCRIPT).unwrap();
 
     assert_eq!(pipelines["org"].nodes().len(), 2);
-    assert_eq!(pipelines["site"].nodes().len(), 10);
+    assert_eq!(pipelines["site"].nodes().len(), 12);
     assert_eq!(pipelines["linkedin"].nodes().len(), 3);
     assert_eq!(pipelines["site"].validate(), Ok(()));
+    let export = &pipelines["org"].nodes()[1];
+    assert_eq!(
+        export.output_path.as_deref(),
+        Some(std::path::Path::new(".berlin/generated/org"))
+    );
+    assert!(matches!(&export.operation,
+        berlin_core::Operation::ExportOrg { backend, section }
+        if backend == "ox-hugo" && section == "notes"));
 }
 
 #[test]
@@ -27,7 +90,7 @@ fn website_settings_are_typed_and_scoped_to_render_nodes() {
     let plans = compile(r#"
         pipeline first {
             let website = assemble_website(parse_markdown(load_markdown("*.md")), parse_feed(load_data("feed.csv")));
-            output render_website(website, "_first", website_config(#{title: "First", url: "https://first.example", profiles: #{github: "https://github.com/first"}}));
+            output render_website(website, "_first", website_config(#{title: "First", theme: "../themes/notebook", url: "https://first.example", profiles: #{github: "https://github.com/first"}}));
         }
         pipeline second {
             let website = assemble_website(parse_markdown(load_markdown("*.md")), parse_feed(load_data("feed.csv")));
@@ -49,6 +112,10 @@ fn website_settings_are_typed_and_scoped_to_render_nodes() {
         assert_eq!(config.title.as_deref(), Some(title));
         if name == "first" {
             assert_eq!(
+                config.theme.as_deref(),
+                Some(std::path::Path::new("../themes/notebook"))
+            );
+            assert_eq!(
                 config.url.as_ref().unwrap().host_str(),
                 Some("first.example")
             );
@@ -57,6 +124,7 @@ fn website_settings_are_typed_and_scoped_to_render_nodes() {
                 "https://github.com/first"
             );
         } else {
+            assert!(config.theme.is_none());
             assert!(config.url.is_none());
             assert!(config.profiles.github.is_none());
         }
@@ -74,6 +142,7 @@ fn website_settings_reject_unknown_fields_wrong_types_and_invalid_urls() {
     for settings in [
         "#{titel: \"Typo\"}",
         "#{title: 42}",
+        "#{theme: 42}",
         "#{url: \"not an absolute URL\"}",
         "#{profiles: #{gitub: \"https://github.com/example\"}}",
         "#{profiles: #{github: \"not a URL\"}}",

@@ -10,7 +10,7 @@ use super::{ExecutionOptions, RuntimeArtifact, executor::NodeExecutor};
 use crate::project::Project;
 
 pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<AuthoringReport, Error> {
-    let program = crate::pipeline::load_pipeline_program(project.root())?;
+    let program = crate::pipeline::load_pipeline_program(project)?;
     let plan = program
         .load(pipeline)
         .map_err(|error| anyhow::anyhow!(error.to_string()))?;
@@ -52,7 +52,7 @@ pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<AuthoringRepo
         bail!("Website input '{document_root}' did not produce documents");
     };
     let mut report = AuthoringReport::analyze(documents)?;
-    super::origins::enrich(project.root(), documents, &mut report);
+    super::origins::enrich(project, documents, &mut report);
     Ok(report)
 }
 

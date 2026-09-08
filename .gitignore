@@ -8,7 +8,7 @@ tmp/
 debug/
 target/
 _site/
-_berlin/
+.berlin/
 /local/
 
 # Local publishing project: never include personal content or presentation.
@@ -19,7 +19,6 @@ _berlin/
 /sass/
 /static/
 /berlin.pipeline.rhai
-/unocss.config.ts
 # Article-specific browser tests remain with the local website.
 /tests/json-explorer.test.mjs
 /tests/code-controls.test.cjs
@@ -42,8 +41,11 @@ bln/
 node_modules/
 filters/
 example/
+!/themes/notebook/example/
+!/themes/notebook/example/**
 test/
-themes/
+/themes/*
+!/themes/notebook/
 raw_assets/
 notes.md
 test.md

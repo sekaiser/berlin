@@ -1,0 +1,3 @@
+{% macro tag(label, target) %}
+<a class="paper-tag" data-tag="{{label | lower}}" href="{{config_site_url}}{{target}}"><span>{{label}}</span></a>
+{% endmacro tag %}

@@ -9,7 +9,9 @@ cargo clippy --workspace --all-targets -- -D warnings
 node --test support/web/code-controls.test.cjs
 node --test support/web/search.test.cjs
 node --test support/web/redirect.test.cjs
+node --test cli/tools/serve/live.test.cjs
 cargo build --quiet --bin bln
+node --test themes/notebook/test.cjs themes/notebook/tests/*.test.cjs
 BERLIN_TEST_BINARY="$repository/target/debug/bln" BERLIN_TEST_REPOSITORY="$repository" \
     emacs --batch --load support/ox-hugo/tests.el --load support/emacs/tests.el \
     --funcall ert-run-tests-batch-and-exit
@@ -24,6 +26,11 @@ export BERLIN_DIR="$check_project"
 
 cargo run --quiet --manifest-path "$repository/Cargo.toml" --bin bln -- build --pipeline org --dry-run
 cargo run --quiet --manifest-path "$repository/Cargo.toml" --bin bln -- build --pipeline org
+test -s "$check_project/.berlin/generated/org/content/notes/article.md"
+test -d "$check_project/.berlin/generated/org/static/attachments"
+touch "$check_project/.berlin/generated/org/stale-export"
+cargo run --quiet --manifest-path "$repository/Cargo.toml" --bin bln -- build --pipeline org
+test ! -e "$check_project/.berlin/generated/org/stale-export"
 cargo run --quiet --manifest-path "$repository/Cargo.toml" --bin bln -- check --pipeline site
 cargo run --quiet --manifest-path "$repository/Cargo.toml" --bin bln -- check --pipeline site --json
 cargo run --quiet --manifest-path "$repository/Cargo.toml" --bin bln -- build --pipeline site
@@ -36,10 +43,11 @@ test -s "$check_project/_site/search/client.js"
 test -s "$check_project/_site/notes/example-article.html"
 test -s "$check_project/_site/notes/former-example-article.html"
 test -s "$check_project/_site/static/example.txt"
+node "$repository/support/check-attachments.cjs" "$check_project"
 test -s "$check_project/_site/css/styles.css"
-test -s "$check_project/_berlin/linkedin/manifest.json"
+test -s "$check_project/.berlin/linkedin/manifest.json"
 for pipeline in org site linkedin; do
-    test -s "$check_project/_berlin/receipts/$pipeline.json"
+    test -s "$check_project/.berlin/receipts/$pipeline.json"
 done
 # Leave this temporary project available for inspecting exported content and receipts.
 echo "Acceptance passed; artifacts retained at $check_project"

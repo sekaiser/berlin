@@ -7,6 +7,9 @@ use url::Url;
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct WebsiteConfig {
+    /// Local theme directory, absolute or relative to the publishing project.
+    /// No implicit registry lookup or download is performed.
+    pub theme: Option<std::path::PathBuf>,
     pub url: Option<Url>,
     pub title: Option<String>,
     pub author: Option<String>,

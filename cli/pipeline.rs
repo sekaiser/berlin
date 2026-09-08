@@ -1,5 +1,5 @@
+use crate::project::Project;
 use std::fs;
-use std::path::Path;
 
 use anyhow::Context;
 use anyhow::Error;
@@ -9,18 +9,33 @@ use berlin_core::PipelineLoader as _;
 use crate::args::PlanFlags;
 
 pub fn load_pipeline_program(
-    root: &Path,
+    project: &Project,
 ) -> Result<berlin_pipeline_dsl::RhaiPipelineLoader, Error> {
-    let path = root.join("berlin.pipeline.rhai");
-    let source = fs::read_to_string(&path)
-        .with_context(|| format!("Failed reading Rhai pipeline '{}'", path.display()))?;
+    let mut source = String::new();
+    let mut locations = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut line = 1;
+    for path in project.pipeline_files() {
+        let text = fs::read_to_string(path)
+            .with_context(|| format!("Failed reading Rhai pipeline '{}'", path.display()))?;
+        if !seen.insert(path.canonicalize()?) {
+            anyhow::bail!("Pipeline file selected more than once: {}", path.display());
+        }
+        locations.push(format!("{} starts at line {line}", path.display()));
+        line += text.bytes().filter(|byte| *byte == b'\n').count() + 1;
+        source.push_str(&text);
+        source.push('\n');
+    }
     berlin_pipeline_dsl::RhaiPipelineLoader::new(&source)
-        .map_err(|error| anyhow::anyhow!(error.to_string()))
+        .map_err(|error| anyhow::anyhow!("{}\nProgram sources: {}", error, locations.join("; ")))
 }
 
-pub fn print_current_plan(flags: PlanFlags) -> Result<(), Error> {
-    let root = crate::project::root_from_environment()?;
-    let plan = load_pipeline_program(&root)?
+pub fn print_current_plan(
+    flags: PlanFlags,
+    pipeline_files: Vec<std::path::PathBuf>,
+) -> Result<(), Error> {
+    let project = Project::load(pipeline_files)?;
+    let plan = load_pipeline_program(&project)?
         .load(&flags.pipeline)
         .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     plan.validate()?;
@@ -54,6 +69,12 @@ pub fn print_current_plan(flags: PlanFlags) -> Result<(), Error> {
             node.operation.output_kind(),
             output,
         );
+        if let Some(destination) = &node.deployment {
+            println!(
+                "  deployment (explicit release/publish only): {}",
+                serde_json::to_string(destination)?
+            );
+        }
     }
 
     Ok(())
@@ -66,7 +87,7 @@ fn operation_name(operation: &Operation) -> String {
         Operation::LoadData { pattern } => format!("load data {pattern}"),
         Operation::LoadCss { pattern } => format!("load css {pattern}"),
         Operation::LoadAssets { pattern } => format!("load assets {pattern}"),
-        Operation::ExportOrg { backend } => format!("export org ({backend})"),
+        Operation::ExportOrg { backend, section } => format!("export org ({backend}, {section})"),
         Operation::ParseMarkdown => "parse markdown".into(),
         Operation::ParseFeed => "parse feed".into(),
         Operation::MapDocuments { mapper } => format!("map documents ({})", mapper.as_str()),

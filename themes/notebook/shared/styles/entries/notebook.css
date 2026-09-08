@@ -1,0 +1,8 @@
+/* Foundation previously loaded with media=screen; retain its print boundary. */
+@import "../tokens.css" screen;
+@import "../base.css" screen;
+@import "../components/code.css" screen;
+@import "../content.css" screen;
+@import "../components/tags.css" screen;
+@import "../layouts/study.css";
+@import "../layouts/environment.css";

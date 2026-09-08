@@ -1,0 +1,10 @@
+.article-backlinks { margin: 0 0 2.25rem; }
+.article-backlinks h2 { margin: 0 0 1.2rem; font-size: 1.45rem; color: #273b32; }
+.article-backlinks ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 1.5rem; }
+.article-backlinks li { border-inline-start: 2px solid #b77d59; padding-inline-start: 1.15rem; max-width: 70ch; }
+.backlink-title { font-size: 1.1rem; color: #954829; text-decoration-thickness: 1px; text-underline-offset: .2em; }
+.article-backlinks blockquote { margin: .5rem 0 0; padding: 0; border: 0; font-size: .95rem; line-height: 1.65; color: #4c5b4b; }
+.document-reference { scroll-margin-top: 7rem; }
+.document-reference:target { background: #f3e3c9; outline: 2px solid #b77d59; outline-offset: 3px; }
+.backlink-title:focus-visible { outline: 2px solid #954829; outline-offset: 4px; }
+@media (max-width: 600px) { .article-backlinks li { padding-inline-start: .85rem; } }

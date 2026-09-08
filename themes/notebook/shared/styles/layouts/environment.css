@@ -1,0 +1,293 @@
+/* The illustrated world belongs to articles and shared overview openings.
+   Home retains its continuous ivory sheet and foreground desk illustration.
+   These are image-only paintings, never screenshots or repeating textures. */
+/* The full-width stage begins after the masthead in normal document flow.
+   Artwork cannot drift behind navigation as the viewport or font size changes. */
+body:has(.study-page, .notebook-overview) main {
+  position: relative; isolation: isolate;
+  overflow: clip; /* Keep the sticky painting inside its stage, above the footer. */
+}
+body:has(.study-page, .notebook-overview) main::before {
+  content: ""; position: absolute; inset: 0 0 auto auto; height: var(--scene-height);
+  width: min(100%, calc(var(--scene-height) * var(--scene-ratio)));
+  z-index: -1; pointer-events: none;
+  background: var(--scene-image) right top / auto var(--scene-height) no-repeat;
+  mask-image: linear-gradient(90deg, transparent, #000 18%),
+    linear-gradient(transparent, #000 32px, #000 80%, transparent);
+  mask-composite: intersect;
+}
+body:has(.study-page) main {
+  --scene-image: var(--art-article-small, none);
+  --scene-ratio: 1.5;
+  --scene-height: 360px;
+  padding-top: 240px;
+}
+body:has(.notebook-overview) main {
+  --scene-image: var(--art-collection-wide, none);
+  --scene-ratio: 1.777;
+  --scene-height: 600px;
+}
+/* A localized wash leaves clear space for type, without fading the tower.
+   Feather its lower edge so it never becomes another visible rectangle. */
+body:has(.notebook-overview) main::after {
+  content: ""; position: absolute; inset: 0 0 auto; height: var(--scene-height);
+  z-index: -1; pointer-events: none;
+  background: linear-gradient(90deg, #e4e9dff5, #e4e9dfdb 35%, #e4e9df00 75%);
+  mask-image: linear-gradient(#000 66%, transparent);
+}
+body:has(.notebook-overview) main { flex: 0 0 auto; }
+
+/* A document and its navigation margin form one continuous sheet. */
+.study-page {
+  --reading-width: 44rem;
+  padding: 40px 38px 38px; border-radius: 3px;
+  display: grid; grid-template-columns: minmax(0, 1fr) 220px;
+  column-gap: 38px; box-shadow: 0 4px 30px #344f4220;
+}
+.study-opening { display: block; grid-column: 1; grid-row: 1; }
+.study-context { margin-bottom: 28px; font: .9rem/1.5 var(--font-reading); }
+.study-context span { padding-inline: 6px; }
+.study-heading h1 {
+  margin-bottom: 18px; font: 400 3rem/1.12 var(--font-display);
+  letter-spacing: -.045em; text-wrap: balance;
+}
+.study-metadata { display: grid; gap: 14px; margin: 0 0 26px; }
+.study-dates div { display: flex; align-items: baseline; gap: 8px; }
+.study-dates dt { font-size: .65rem; }
+.study-dates dd { margin: 0; color: var(--muted); font: var(--metadata-font); }
+.study-topics .paper-tag { font-family: var(--font-reading); }
+.study-introduction:not(:empty) { border-top: 1px solid var(--rule); padding-top: 28px; }
+.study-introduction { padding-bottom: 36px; }
+/* Group the complete introduction through a quiet rule and spacing, rather
+   than headline typography. Apply equally before and after JS relocation. */
+.study-introduction .abstract, .study-prose .frontmatter .abstract {
+  font: 400 1.1875rem/1.65 var(--font-reading); color: var(--ink);
+  border-inline-start: 2px solid var(--accent-rule); padding-inline-start: 20px;
+}
+.study-introduction .abstract::before, .study-prose .frontmatter .abstract::before { display: none; }
+.study-introduction .abstract p, .study-prose .frontmatter .abstract p { max-width: none; margin-bottom: 20px; }
+.study-introduction .abstract p + p, .study-prose .frontmatter .abstract p + p {
+  font: inherit; color: inherit; max-width: none; margin-top: 0;
+}
+/* Prose has a reading measure; code, tables, and figures keep the wider working
+   column. This does not narrow the page surface or change its shared edges. */
+.study-introduction .abstract p,
+.study-introduction .abstract p + p,
+.study-prose :is(p, ul, ol, blockquote),
+.study-prose .frontmatter .abstract p,
+.study-prose .frontmatter .abstract p + p { max-width: var(--reading-width); }
+.study-layout { display: contents; }
+.study-prose { grid-column: 1; grid-row: 2; font-size: 1.125rem; line-height: 1.65; }
+.study-prose > p { margin-bottom: 1.2em; }
+.study-prose h2 { font-size: 1.95rem; margin: 1.1em 0 .5em; }
+.study-margin { grid-column: 2; grid-row: 1 / span 2; border-left: 1px solid var(--rule); padding-left: 24px; }
+.study-margin-content { padding-top: 18px; top: 28px; max-height: calc(100vh - 56px); }
+.study-contents > summary { font: 400 1.05rem/1.5 var(--font-reading); color: var(--ink); }
+.study-contents a { font: .9rem/1.55 var(--font-reading); color: #52624f; }
+.study-contents[open] > summary { list-style: none; }
+.study-contents[open] > summary::-webkit-details-marker { display: none; }
+.study-observation { border-top: 1px solid var(--rule); margin-top: 38px; padding-top: 28px; }
+.study-observation h2 { font: 400 1.05rem/1.4 var(--font-reading); color: var(--ink); }
+.study-observation p { font: .9rem/1.6 var(--font-reading); }
+.study-end { grid-column: 1 / -1; margin-top: 48px; }
+.study-prose .code-listing {
+  margin: 28px 0; background: #f7f6ef; border: 1px solid #e0e2d4; border-radius: 3px;
+}
+.study-prose .code-toolbar { padding: 9px 14px; background: #eeeee3; border-bottom: 1px solid #e0e2d4; }
+.study-prose .code-listing:has(.language-nil) {
+  display: block; background: #f7f6ef; border: 1px solid #e0e2d4;
+}
+.study-prose .code-listing:has(.language-nil) .code-toolbar { padding: 9px 14px; align-items: center; }
+.study-prose .code-listing:has(.language-nil) .code-caption { flex-basis: auto; font: inherit; }
+.study-prose .code-listing:has(.language-nil) .code-language { display: block; }
+
+/* Overview pages share the opening, type hierarchy and warm content surface. */
+.notebook-page.notebook-overview { padding: 0; background: none; }
+.notebook-overview .journal-index-opening {
+  min-height: 356px; padding: 42px 0 52px; max-width: 650px;
+}
+.notebook-overview .journal-index-opening .journal-label { margin-bottom: 10px; font: 1rem/1.5 var(--font-reading); }
+.notebook-overview .journal-index-opening h1 {
+  font-size: 5rem; line-height: .95; letter-spacing: -.035em; margin-bottom: 20px;
+}
+.notebook-overview .journal-index-opening h1 em { display: block; }
+.notebook-overview .journal-index-opening .journal-lead { max-width: 43ch; font-size: 1.45rem; line-height: 1.4; }
+.notebook-surface {
+  width: 100%; padding: 28px 52px 36px;
+  border-radius: 5px; background: var(--surface); box-shadow: 0 4px 30px #344f421a;
+}
+body:has(.notebook-overview) .site-footer { padding-inline: 52px; }
+.notebook-overview .journal-library { display: block; }
+.notebook-overview .journal-library .journal-bookmark {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px;
+  padding: 28px 0; border: 0; border-bottom: 1px solid var(--rule);
+}
+.notebook-overview .journal-library .journal-bookmark .journal-label { grid-column: 1; margin: 0 0 10px; font: var(--metadata-font); }
+.notebook-overview .journal-library .journal-bookmark :is(h2, h3) { grid-column: 1 / -1; grid-row: 2; margin: 0; color: var(--ink); font-size: 1.6rem; }
+.notebook-overview .journal-library .journal-bookmark:nth-child(even) { border-color: var(--rule); }
+.notebook-overview .journal-library .journal-bookmark:nth-child(even) :is(h2, h3) { color: var(--ink); }
+.notebook-overview .journal-bookmark .journal-saved { grid-column: 2; grid-row: 1; }
+.notebook-overview .journal-bookmark .journal-topics { grid-column: 1 / -1; margin-top: 16px; }
+.notebook-overview .journal-bookmark > .journal-annotation,
+.notebook-overview .journal-bookmark > .journal-summary,
+.notebook-overview .journal-bookmark > .notebook-connection { grid-column: 1 / -1; }
+.notebook-overview .journal-more { margin-top: 22px; }
+
+@media (max-width: 1399px) and (min-width: 1000px) {
+  .study-page { padding-inline: 30px; grid-template-columns: minmax(0, 1fr) 180px; column-gap: 28px; }
+  .study-heading h1 { font-size: 2.65rem; }
+  .notebook-surface { padding-inline: 38px; }
+  body:has(.notebook-overview) .site-footer { padding-inline: 38px; }
+}
+/* Ordinary desktops share one illustrated title row. The reading column and
+   navigation begin beneath it; long titles grow the row instead of overlapping. */
+@media (min-width: 1200px) and (max-width: 1839px) {
+  body:has(.study-page) main { padding-top: 0; }
+  body:has(.study-page) main::before {
+    content: none; display: none; background: none;
+  }
+  .study-opening, .study-heading { display: contents; }
+  .study-title {
+    grid-column: 1 / -1; grid-row: 1;
+    position: relative; isolation: isolate;
+    display: grid; grid-template-columns: minmax(0, 1fr) 36%; column-gap: 38px;
+    align-content: center; min-height: 320px; padding-block: 12px 36px;
+  }
+  .study-title > * { grid-column: 1; min-width: 0; }
+  .study-title h1 { text-wrap: balance; overflow-wrap: anywhere; }
+  .study-title::after {
+    content: ""; position: absolute; inset: 50% 0 auto auto; width: 36%;
+    aspect-ratio: 3 / 2; transform: translateY(calc(-50% - 14px));
+    z-index: -1; pointer-events: none;
+    background: var(--scene-image) right center / contain no-repeat;
+    mask-image: linear-gradient(90deg, transparent, #000 18%, #000 96%, transparent),
+      linear-gradient(transparent, #000 12px, #000 76%, transparent);
+    mask-composite: intersect;
+  }
+  .study-title .study-metadata { margin-bottom: 0; }
+  .study-introduction { grid-column: 1; grid-row: 2; }
+  .study-prose { grid-row: 3; }
+  .study-margin { grid-row: 2 / span 2; }
+}
+
+/* Only keep a scene beside the document when each outer margin is at least
+   280 px. Its sticky start remains below the masthead, even without JS. */
+@media (min-width: 1840px) {
+  /* End the painted stage softly at the colophon, independent of scroll
+     position. This wash sits above scenery but below the document surface. */
+  body:has(.study-page) main::after {
+    content: ""; position: absolute; inset: auto 0 0; height: 160px;
+    z-index: -1; pointer-events: none;
+    background: linear-gradient(transparent, var(--surroundings));
+  }
+  body:has(.study-page) main {
+    --scene-image: var(--art-article-wide, none);
+    padding-top: 0;
+  }
+  body:has(.study-page) main::before {
+    display: block; position: sticky; top: 0;
+    width: 100%; height: 100vh; margin-bottom: -100vh;
+    background-size: cover;
+    mask-image: linear-gradient(transparent, #000 32px);
+  }
+}
+/* Give the document priority before the side margin can squeeze its content.
+   Reading retains its separate collection-page breakpoint. */
+@media (max-width: 1199px) {
+  .study-page { display: block; padding: 38px; }
+  .study-heading h1 { max-width: 20ch; font-size: 2.8rem; text-wrap: initial; }
+  .study-layout { display: flex; margin-top: 26px; }
+  .study-margin { border: 0; padding: 0; }
+  .study-margin-content { padding: 0; max-height: none; }
+  .study-contents { margin-bottom: 12px; }
+  .study-contents[open] > summary { list-style: disclosure-open; }
+}
+@media (max-width: 999px) {
+  body:has(.notebook-overview) main {
+    --scene-image: var(--art-collection-small, none);
+    --scene-height: 540px;
+  }
+  body:has(.notebook-overview) main::after { background: linear-gradient(90deg, #e4e9dff5, #e4e9dfdb 40%, #e4e9df00 76%); }
+  .notebook-overview .journal-index-opening { min-height: 380px; padding-top: 60px; max-width: 58%; }
+  .notebook-overview .journal-index-opening h1 { font-size: 3.65rem; }
+  .notebook-overview .journal-index-opening .journal-lead { font-size: 1.15rem; }
+  .notebook-surface { padding: 20px 38px 30px; }
+  body:has(.notebook-overview) .site-footer { padding-inline: 38px; }
+}
+
+/* On tablets, compose the actual title beside the tower instead of reserving
+   an empty image band. Introductory prose, navigation, and examples stay on
+   one full-width ivory surface. No content needs moving or copying with JS. */
+@media (min-width: 601px) and (max-width: 1199px) {
+  body:has(.study-page) main { --scene-height: 460px; padding-top: 0; }
+  body:has(.study-page) main::before {
+    right: var(--notebook-gutter);
+    mask-image: linear-gradient(90deg, transparent, #000 18%, #000 94%, transparent),
+      linear-gradient(transparent, #000 32px, #000 80%, transparent);
+  }
+  body:has(.study-page) main::after {
+    content: ""; position: absolute; inset: 0 0 auto; height: var(--scene-height);
+    z-index: -1; pointer-events: none;
+    background: linear-gradient(90deg, var(--surroundings), #dfe7dfe8 42%, #dfe7df00 75%);
+    mask-image: linear-gradient(#000 66%, transparent);
+  }
+  .study-page { padding: 0; background: none; box-shadow: none; }
+  .study-title { min-height: 376px; padding: 38px; }
+  .study-title > * { max-width: 60%; }
+  .study-title h1 { max-width: 60%; font-size: clamp(2.35rem, 4.5vw, 2.8rem); text-wrap: balance; }
+  .study-title .study-metadata { margin-bottom: 0; }
+  .study-introduction { padding: 32px 38px 36px; background: var(--surface); border-radius: 3px 3px 0 0; }
+  .study-introduction:not(:empty) { border-top: 0; }
+  .study-layout { margin-top: 0; padding: 0 38px; background: var(--surface); }
+  .study-end { margin-top: 0; padding: 32px 38px 38px; background: var(--surface); }
+}
+
+/* Width alone misses phones rotated to landscape. Short touch-screen layouts
+   also omit scenery, its wash, and its reserved opening space. */
+@media (max-width: 600px), (max-height: 600px) and (hover: none) and (pointer: coarse) {
+  body:has(.study-page, .notebook-overview) main { --scene-image: none; padding-top: 0; }
+  body:has(.study-page, .notebook-overview) main::before,
+  body:has(.study-page, .notebook-overview) main::after {
+    content: none; display: none; background: none;
+  }
+  .study-title { min-height: 0; grid-template-columns: minmax(0, 1fr); }
+  .study-title::after { content: none; display: none; background: none; }
+  .study-title > *, .study-title h1 { max-width: none; }
+  .notebook-overview .journal-index-opening { padding: 24px 24px 28px; max-width: none; min-height: 0; }
+  .notebook-overview .journal-index-opening h1,
+  .notebook-overview .journal-index-opening .journal-lead { max-width: none; }
+}
+
+@media (max-width: 600px) {
+  .study-page { padding: 28px 22px; }
+  .study-context { font-size: .78rem; margin-bottom: 24px; }
+  .study-heading h1 { font-size: clamp(2rem, 8.1vw, 2.8rem); }
+  .study-prose { font-size: 1.05rem; line-height: 1.75; }
+  .study-introduction .abstract, .study-prose .frontmatter .abstract { font-size: 1.125rem; line-height: 1.7; padding-inline-start: 14px; }
+  .study-prose h2 { font-size: 1.7rem; }
+  .study-prose .code-toolbar { padding-inline: 10px; }
+  .study-end { margin-top: 36px; }
+  .notebook-overview .journal-index-opening h1 { font-size: 3.2rem; }
+  .notebook-overview .journal-index-opening .journal-lead { font-size: 1.05rem; }
+  .notebook-surface { padding: 8px 24px 28px; }
+  .notebook-overview .journal-library .journal-bookmark { display: flex; flex-direction: column; }
+  .notebook-overview .journal-library .journal-bookmark :is(h2, h3) { font-size: 1.45rem; }
+  .notebook-overview .journal-bookmark .journal-saved { order: -1; margin-bottom: 8px; }
+  .notebook-overview .journal-bookmark .journal-label { order: 1; margin-top: 12px; }
+  .notebook-overview .journal-bookmark > .journal-annotation { order: 2; }
+  .notebook-overview .journal-bookmark > .journal-summary { order: 2; }
+  .notebook-overview .journal-bookmark .journal-topics { order: 3; }
+  .notebook-overview .journal-bookmark > .notebook-connection { order: 4; }
+  body:has(.study-page, .notebook-overview) .site-footer { margin-top: 0; padding: 28px 22px; }
+  body:has(.notebook-overview) .site-footer { padding-inline: 24px; }
+}
+@media print {
+  .study-title { display: block; min-height: 0; }
+  .study-title::after { display: none; }
+  body:has(.study-page, .notebook-overview) main::before, body:has(.study-page, .notebook-overview) main::after { display: none; }
+  body:has(.study-page) main { padding-top: 0; }
+  body:has(.study-page, .notebook-overview) .site-shell { max-width: none; margin: 0; padding: 0; }
+  .study-page, .notebook-surface { display: block; width: auto; max-width: none; margin: 0; padding: 0; box-shadow: none; background: white; }
+  .study-layout { display: block; }
+  .notebook-overview .journal-index-opening { min-height: 0; max-width: none; padding: 0 0 24px; }
+}

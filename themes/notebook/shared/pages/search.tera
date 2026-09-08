@@ -1,0 +1,24 @@
+{% extends "_overview.tera" %}
+{% block page_styles %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{config_site_url}}/assets/css/search.css">
+{% endblock page_styles %}
+{% block overview_kind %}notebook-search{% endblock overview_kind %}
+{% block overview_opening %}
+  <p class="journal-label">Find an explanation</p>
+  <h1>Return to <em>an idea.</em></h1>
+  <p class="journal-lead">Search the notes and guides by a phrase, a tag, or something you remember.</p>
+{% endblock overview_opening %}
+{% block overview_body %}
+  <section class="notebook-search-tool" data-search-index="{{config_site_url}}/search/index.json?v={{search_index_version}}" aria-label="Notebook search">
+    <form role="search" hidden>
+      <label for="notebook-query">Search the notebook</label>
+      <div class="notebook-query-row"><input id="notebook-query" type="search" name="q" maxlength="200" placeholder="For example, Rust JSON" autocomplete="off" aria-controls="notebook-results" aria-describedby="notebook-search-status"><button type="submit">Search</button></div>
+    </form>
+    <p id="notebook-search-status" data-search-status role="status" aria-live="polite"></p>
+    <noscript>Search needs JavaScript. You can still browse all notes using the link below.</noscript>
+    <ol id="notebook-results" data-search-results></ol>
+  </section>
+  <a class="journal-link journal-more" href="{{config_site_url}}/notes.html">Browse all notes and guides</a>
+  <script src="{{config_site_url}}/search/client.js" defer></script>
+{% endblock overview_body %}

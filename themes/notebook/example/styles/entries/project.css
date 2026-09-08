@@ -1,0 +1,4 @@
+/* Specimen-only additions, not theme defaults or personal editorial content. */
+.theme-swatches { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 16px; }
+.theme-swatches li::before { content: ""; display: block; height: 64px; background: var(--swatch); border: 1px solid var(--rule-strong); margin-bottom: 8px; }
+.paper-tag[data-tag="systems"] { --tag-paper: var(--sky); --tag-ink: var(--sky-ink); }

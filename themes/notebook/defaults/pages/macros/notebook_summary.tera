@@ -1,0 +1,2 @@
+{# Optional project-owned summaries. Authored annotations take precedence. #}
+{% macro summary(target) %}{% endmacro summary %}

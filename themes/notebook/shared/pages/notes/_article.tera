@@ -1,0 +1,51 @@
+{% extends "_notebook.tera" %}
+{% import "macros/tag.tera" as tags %}
+{# Shared reading layout. Editorial overrides belong in notes/[slug].tera;
+   introductions and contents lists are authored in the Org document. #}
+{% block page_styles %}
+  {{ super() }}
+  <script src="{{config_site_url}}/static/js/study.js?v=6" defer></script>
+  <link rel="stylesheet" href="{{config_site_url}}/assets/css/article.css">
+  {% if page_comments %}
+  <link rel="stylesheet" href="{{config_site_url}}/assets/css/comments.css">
+  <script src="{{config_site_url}}/static/js/comments.js?v=1" defer></script>
+  {% endif %}
+{% endblock page_styles %}
+{% block content %}
+<article class="study-page">
+  <header class="study-opening">
+    <div class="study-heading">
+      <div class="study-title">
+        <p class="study-context"><a href="{{config_site_url}}/notes.html">The notebook</a>{% block article_subject %}{% endblock article_subject %}</p>
+        <h1>{% block article_title %}{{page_title}}{% endblock article_title %}</h1>
+        <div class="study-metadata">
+          <dl class="study-dates">
+            {% if page_published %}<div><dt>Published</dt><dd><time datetime="{{page_published}}">{{page_published | date(format="%d %b %Y")}}</time></dd></div>{% endif %}
+            {% if page_modified and page_modified != page_published %}<div><dt>Updated</dt><dd><time datetime="{{page_modified}}">{{page_modified | date(format="%d %b %Y")}}</time></dd></div>{% endif %}
+          </dl>
+          {% if page_tags | length > 0 %}<nav class="study-topics" aria-label="Article topics">{% for tag in page_tags %}{{ tags::tag(label=tag.name, target=tag.target) }}{% endfor %}</nav>{% endif %}
+        </div>
+      </div>
+      <div class="study-introduction"></div>
+    </div>
+  </header>
+  <div class="study-layout">
+    <aside class="study-margin" aria-label="Article navigation and reading notes">
+      <div class="study-margin-content">
+        <details class="study-contents" hidden>
+          <summary>On this page</summary>
+          <nav aria-label="On this page"></nav>
+        </details>
+        {% block article_observation %}{% endblock article_observation %}
+      </div>
+    </aside>
+    <div class="document-body study-prose">{{ render() }}</div>
+  </div>
+  <footer class="study-end">
+    {% if page_backlinks | length > 0 %}{% include "partials/backlinks.tera" %}{% endif %}
+    {% block article_continuation %}{% endblock article_continuation %}
+    {% if page_comments %}{% include "partials/comments.tera" %}{% endif %}
+    <a class="study-return" href="{{config_site_url}}/notes.html">Back to all notes</a>
+  </footer>
+</article>
+{% endblock content %}

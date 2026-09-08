@@ -15,7 +15,7 @@ use log::info;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
-use notify::event::EventKind;
+use notify::event::{EventKind, ModifyKind};
 use tokio::select;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -81,7 +81,7 @@ impl PrintConfig {
 }
 
 pub async fn watch_recv<O, F>(
-    paths_to_watch: Vec<PathBuf>,
+    paths_to_watch: impl Fn() -> Result<Vec<PathBuf>, Error>,
     print_config: PrintConfig,
     mut operation: O,
 ) -> Result<(), Error>
@@ -92,7 +92,7 @@ where
     let (event_tx, mut events) = DebouncedReceiver::new_with_sender();
     let mut watcher = new_watcher(event_tx)?;
     let mut watched_paths = HashSet::new();
-    add_paths_to_watcher(&mut watcher, &paths_to_watch, &mut watched_paths)?;
+    add_paths_to_watcher(&mut watcher, &paths_to_watch()?, &mut watched_paths)?;
     let mut changed_paths: Option<Vec<PathBuf>> = None;
 
     info!(
@@ -102,6 +102,12 @@ where
     );
 
     loop {
+        // Refresh theme dependencies after configuration edits. Keep previous
+        // watches on invalid edits so fixing the pipeline still triggers a build.
+        match paths_to_watch() {
+            Ok(paths) => add_paths_to_watcher(&mut watcher, &paths, &mut watched_paths)?,
+            Err(error) => log::warn!("Unable to refresh watch paths: {error}"),
+        }
         if let Some(paths) = &changed_paths {
             let message = paths
                 .first()
@@ -153,14 +159,7 @@ fn new_watcher(
     Ok(Watcher::new(
         move |result: notify::Result<notify::Event>| {
             let paths = match result {
-                Ok(event)
-                    if matches!(
-                        event.kind,
-                        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
-                    ) =>
-                {
-                    Some(Ok(event.paths))
-                }
+                Ok(event) if changes_source(event.kind) => Some(Ok(event.paths)),
                 Ok(_) => None,
                 Err(error) => Some(Err(error)),
             };
@@ -170,6 +169,16 @@ fn new_watcher(
         },
         Default::default(),
     )?)
+}
+
+fn changes_source(kind: EventKind) -> bool {
+    // Access and metadata notifications are not edits to publishing inputs.
+    matches!(
+        kind,
+        EventKind::Create(_)
+            | EventKind::Remove(_)
+            | EventKind::Modify(ModifyKind::Data(_) | ModifyKind::Name(_) | ModifyKind::Any)
+    )
 }
 
 fn add_paths_to_watcher(
@@ -187,4 +196,29 @@ fn add_paths_to_watcher(
     }
     log::debug!("Watching paths: {:?}", watched_paths);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use notify::event::{AccessKind, CreateKind, DataChange, MetadataKind, RemoveKind, RenameMode};
+
+    #[test]
+    fn source_edits_trigger_builds_but_asset_access_and_metadata_do_not() {
+        for kind in [
+            EventKind::Create(CreateKind::File),
+            EventKind::Remove(RemoveKind::File),
+            EventKind::Modify(ModifyKind::Data(DataChange::Content)),
+            EventKind::Modify(ModifyKind::Name(RenameMode::Any)),
+        ] {
+            assert!(changes_source(kind));
+        }
+        for kind in [
+            EventKind::Access(AccessKind::Read),
+            EventKind::Modify(ModifyKind::Metadata(MetadataKind::AccessTime)),
+            EventKind::Modify(ModifyKind::Metadata(MetadataKind::Extended)),
+        ] {
+            assert!(!changes_source(kind));
+        }
+    }
 }

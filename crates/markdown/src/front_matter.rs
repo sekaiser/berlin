@@ -11,6 +11,7 @@ pub(super) const DELIMITER: &str = "---";
 
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct FrontMatter {
+    pub(crate) preview: Option<berlin_document::Preview>,
     #[serde(default)]
     pub(crate) kind: berlin_document::DocumentKind,
     pub(crate) title: Option<String>,
@@ -100,6 +101,35 @@ fn deserialize(contents: &str, source_uri: &str) -> Result<FrontMatter, Error> {
 #[cfg(test)]
 mod tests {
     use super::deserialize;
+
+    #[test]
+    fn parses_optional_typed_preview() {
+        let parsed = deserialize(
+            "preview:\n  source: /attachments/example.svg\n  alt: 'A diagram: input to output'\n  width: 320\n  height: 224\n",
+            "file:///article.md",
+        ).unwrap();
+        let preview = parsed.preview.unwrap();
+        assert_eq!(preview.source, "/attachments/example.svg");
+        assert_eq!(preview.alt, "A diagram: input to output");
+        assert_eq!(preview.width.get(), 320);
+        assert_eq!(preview.height.get(), 224);
+        assert!(
+            deserialize("title: Plain", "file:///plain.md")
+                .unwrap()
+                .preview
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn rejects_incomplete_or_zero_sized_previews() {
+        for value in [
+            "preview: {source: /image.svg}",
+            "preview: {source: /image.svg, alt: Diagram, width: 0, height: 224}",
+        ] {
+            assert!(deserialize(value, "file:///article.md").is_err());
+        }
+    }
 
     #[test]
     fn rejects_multiple_yaml_documents() {

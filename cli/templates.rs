@@ -15,6 +15,23 @@ pub struct Templates {
 }
 
 impl Templates {
+    /// Parse the effective template set together, after resolving overrides.
+    /// Loading each layer separately would reject cross-layer inheritance.
+    pub fn from_sources(
+        sources: impl IntoIterator<Item = (String, String)>,
+    ) -> Result<Self, Error> {
+        let mut tera = Tera::default();
+        tera.autoescape_on(vec![".tera"]);
+        tera.add_raw_templates(sources)?;
+        if tera.templates.is_empty() {
+            return Err(anyhow!("No templates found"));
+        }
+        Ok(Self {
+            tera,
+            document_renderer: berlin_document_html::Renderer::default(),
+        })
+    }
+
     pub fn contains(&self, name: &str) -> bool {
         self.tera.templates.contains_key(name)
     }

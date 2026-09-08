@@ -1,0 +1,26 @@
+/* Functional browsing controls share the collection's warm surface. */
+.reading-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px 24px; padding: 12px 0 20px; border-bottom: 1px solid var(--rule); font: .9rem/1.5 var(--font-reading); }
+.reading-tools[hidden], .reading-no-results[hidden], .notebook-reading .journal-bookmark[hidden] { display: none; }
+.reading-tools label { display: grid; gap: 6px; color: var(--muted); }
+.reading-tools .reading-query { grid-column: 1 / -1; }
+.reading-tools input[type="search"], .reading-tools button[type="reset"] { font: inherit; min-height: 44px; border: 1px solid var(--rule-strong); border-radius: 3px; padding: 8px 12px; color: var(--ink); background: var(--surface); }
+.reading-tools input[type="search"] { width: 100%; min-width: 0; }
+.reading-tools input::placeholder { color: var(--muted); }
+.reading-tools button { cursor: pointer; }
+.reading-tools button[type="reset"] { color: var(--accent); }
+.reading-tools button:disabled { cursor: default; color: var(--muted); }
+.reading-tools :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.reading-tools output { color: var(--muted); }
+.reading-tags { grid-column: 1 / -1; min-width: 0; margin: 0; padding: 0; border: 0; }
+.reading-tags legend { padding: 0; color: var(--ink); }
+.reading-tags p { margin: 4px 0; color: var(--muted); font-size: .85rem; }
+.reading-tag-options { display: flex; flex-wrap: wrap; gap: 0 8px; }
+.reading-tag-count { margin-inline-start: 7px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.reading-tag-description { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.reading-tag-options .paper-tag { min-height: 44px; padding: 4px 12px 4px 23px; border: 0; background: transparent; font-family: var(--font-reading); font-size: .73rem; }
+/* A 30px paper tag inside a 44px touch target, using the shared tag palette. */
+.reading-tag-options .paper-tag::before { inset-block: 7px; }
+.reading-tag-options .paper-tag[aria-pressed="false"] { --tag-paper: transparent; --tag-ink: var(--muted); --tag-edge: var(--rule-strong); }
+.reading-no-results { padding: 28px 0; font: 1rem/1.7 var(--font-reading); }
+@media (max-width: 600px) { .reading-tools { gap: 8px 12px; padding-block: 0 16px; } .reading-tools input[type="search"] { font-size: 16px; } }
+@media print { .reading-tools, .reading-no-results { display: none; } .notebook-reading .journal-bookmark[hidden] { display: flex; } }
