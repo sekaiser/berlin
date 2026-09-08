@@ -2,6 +2,8 @@
 :ID: example-article
 :END:
 #+TITLE: Example article
+#+HUGO_SLUG: example-article
+#+HUGO_CUSTOM_FRONT_MATTER: :previous_slugs '("former-example-article")
 #+AUTHOR: Example Author
 #+DATE: 2026-01-01
 #+DESCRIPTION: A synthetic article for publishing checks.

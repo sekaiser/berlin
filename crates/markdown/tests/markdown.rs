@@ -34,6 +34,54 @@ Body
 }
 
 #[test]
+fn document_kind_is_authored_and_defaults_to_article() {
+    use berlin_document::DocumentKind;
+
+    for (field, expected) in [
+        ("", DocumentKind::Article),
+        ("kind: guide\n", DocumentKind::Guide),
+        ("kind: note\n", DocumentKind::Note),
+    ] {
+        let text = format!("---\ntitle: Example\n{field}---\nBody");
+        let document = Parser::new().parse(&Source::in_memory(&text)).unwrap();
+        assert_eq!(document.kind, expected);
+    }
+    for value in ["guied", "null", "true"] {
+        let text = format!("---\nkind: {value}\n---\nBody");
+        assert!(matches!(
+            Parser::new().parse(&Source::in_memory(&text)),
+            Err(Error::InvalidFrontMatter { .. })
+        ));
+    }
+}
+
+#[test]
+fn comments_are_explicit_boolean_metadata() {
+    for (field, expected) in [
+        ("", false),
+        ("comments: false\n", false),
+        ("comments: true\n", true),
+    ] {
+        let text = format!("---\ntitle: Example\n{field}---\nBody");
+        assert_eq!(
+            Parser::new()
+                .parse(&Source::in_memory(&text))
+                .unwrap()
+                .metadata
+                .comments,
+            expected
+        );
+    }
+    for value in ["\"true\"", "null", "[]", "1"] {
+        let text = format!("---\ncomments: {value}\n---\nBody");
+        assert!(matches!(
+            Parser::new().parse(&Source::in_memory(&text)),
+            Err(Error::InvalidFrontMatter { .. })
+        ));
+    }
+}
+
+#[test]
 fn rejects_invalid_dates_at_the_front_matter_boundary() {
     for field in ["date", "lastmod"] {
         for value in ["2025-02-29", "2026-09-05T12:00:00Z"] {
@@ -258,4 +306,39 @@ fn resolves_relrefs_before_building_the_semantic_document() {
                     if destination == "/notes/target-article.html"
             )
     )));
+}
+#[test]
+fn preserves_explicit_slugs_without_reinterpreting_them_as_titles() {
+    let source = markdown::Source::in_memory(
+        "---\nid: stable-id\ntitle: Editable title\nslug: stable-slug\nprevious_slugs: [old-title, older-title]\n---\nBody",
+    );
+    let document = markdown::Parser::new().parse(&source).unwrap();
+    assert_eq!(document.metadata.slug.as_deref(), Some("stable-slug"));
+    assert_eq!(
+        document.metadata.previous_slugs,
+        ["old-title", "older-title"]
+    );
+    let source = markdown::Source::in_memory("---\ntitle: Legacy\n---\nBody");
+    let document = markdown::Parser::new().parse(&source).unwrap();
+    assert!(document.metadata.slug.is_none());
+    assert!(document.metadata.previous_slugs.is_empty());
+    // The YAML adapter treats a null sequence as empty, as with other collections.
+    let source = markdown::Source::in_memory("---\nprevious_slugs: null\n---\nBody");
+    assert!(
+        markdown::Parser::new()
+            .parse(&source)
+            .unwrap()
+            .metadata
+            .previous_slugs
+            .is_empty()
+    );
+    for fields in ["slug: [invalid]", "previous_slugs: old"] {
+        let text = format!("---\ntitle: Invalid\n{fields}\n---\nBody");
+        assert!(
+            markdown::Parser::new()
+                .parse(&markdown::Source::in_memory(&text))
+                .is_err(),
+            "unexpectedly accepted {fields}"
+        );
+    }
 }

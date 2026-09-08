@@ -1,0 +1,103 @@
+;;; tests.el --- Berlin editor contract tests -*- lexical-binding: t; -*-
+
+(require 'ert)
+(load (expand-file-name "berlin.el" (file-name-directory load-file-name)))
+
+(ert-deftest berlin-heading-navigation-requires-a-unique-identity ()
+  (with-temp-buffer
+    (org-mode)
+    (insert "* First\n** Details\n:PROPERTIES:\n:ID: stable-id\n:END:\nText.\n* Second\n** Details\n")
+    (goto-char (point-min))
+    (let ((by-id (berlin-check--heading-position '((id . "stable-id") (outline "Old name")))))
+      (should by-id)
+      (should (= by-id (berlin-check--heading-position '((outline "First" "Details"))))))
+    (should-not (berlin-check--heading-position '((outline "Details"))))
+    (goto-char (point-max))
+    (insert "* First\n** Details\n:PROPERTIES:\n:ID: stable-id\n:END:\n")
+    (should-not (berlin-check--heading-position '((id . "stable-id"))))
+    (should-not (berlin-check--heading-position '((outline "First" "Details"))))))
+
+(ert-deftest berlin-report-renders-errors-as-clickable-findings-not-process-failure ()
+  (with-temp-buffer
+    (berlin-check-mode)
+    (setq berlin-check--project default-directory)
+    (berlin-check--render
+     '((schema_version . 1) (status . "complete") (pipeline . "site")
+       (report (published_documents . 1) (guides . 0) (excluded_drafts . 0)
+               (findings ((severity . "error") (code . "unresolved_reference")
+                          (target . "missing")
+                          (location (document . "note") (source . "file:///note.md")
+                                    (excerpt . "Read this.")))))) 1)
+    (should (text-property-search-forward 'button))
+    (should (string-match-p "unresolved_reference" (buffer-string)))
+    (berlin-check--render '((schema_version . 1) (status . "incomplete") (message . "No export")) 1)
+    (should (string-match-p "incomplete" (buffer-string)))
+    (should-not (string-match-p "No findings" (buffer-string)))))
+
+(ert-deftest berlin-visit-checks-files-and-unsaved-buffers-before-heading-navigation ()
+  (let* ((project (make-temp-file "berlin-editor-" t))
+         (file (expand-file-name "note with space.org" project))
+         (uri (concat "file://" (replace-regexp-in-string " " "%20" file))))
+    (unwind-protect
+        (progn
+          (with-temp-file file (insert "#+TITLE: Note\n\n* Details\nBody.\n"))
+          (should (equal file (berlin-check--local-file uri project)))
+          (should-error (berlin-check--local-file "https://example.com/note.org" project))
+          (should-error (berlin-check--local-file uri (expand-file-name "other" project)))
+          (let ((location `((source . "file:///unused.md")
+                            (origin (source . ,uri) (source_hash . ,(berlin-check--file-hash file))
+                                    (heading (outline "Details"))))))
+            (save-window-excursion
+              (berlin-check--visit project location)
+              (should (org-at-heading-p))
+              (insert "Unsaved ")
+              (berlin-check--visit project location)
+              (should (= (point) (point-min)))
+              (should (buffer-modified-p))
+              (set-buffer-modified-p nil))))
+      (when-let* ((buffer (get-file-buffer file))) (kill-buffer buffer))
+      (delete-directory project t))))
+
+;; Run from support/check after building bln. The export and the check use the
+;; real CLI; only the temporary fixture is modified, never a user's Org file.
+(ert-deftest berlin-org-export-to-cli-to-clickable-emacs-heading ()
+  (skip-unless (getenv "BERLIN_TEST_BINARY"))
+  (let* ((project (make-temp-file "berlin-editor-integration-" t))
+         (repository (getenv "BERLIN_TEST_REPOSITORY"))
+         (berlin-executable (getenv "BERLIN_TEST_BINARY"))
+         (process-environment (copy-sequence process-environment))
+         (source (expand-file-name "data/navigation.org" project))
+         (default-directory project)
+         report)
+    (unwind-protect
+        (progn
+          (copy-directory (expand-file-name "support/fixtures/publishing" repository) project nil t t)
+          (make-directory (expand-file-name "support" project) t)
+          (copy-directory (expand-file-name "support/ox-hugo" repository)
+                          (expand-file-name "support/ox-hugo" project))
+          (with-temp-file source
+            (insert ":PROPERTIES:\n:ID: navigation\n:END:\n#+TITLE: Navigation\n\n* Parent\n** Details\n:PROPERTIES:\n:ID: navigation-heading\n:CUSTOM_ID: details\n:END:\nSee [[id:not-published][missing note]].\n"))
+          (setenv "BERLIN_DIR" project)
+          (with-temp-buffer
+            (should (= 0 (process-file berlin-executable nil t nil "build" "--pipeline" "org"))))
+          (let ((original (berlin-check--file-hash source)))
+            (save-window-excursion
+              (berlin-check project)
+              (setq report (current-buffer))
+              (let ((deadline (+ (float-time) 30)))
+                (while (and berlin-check--process (< (float-time) deadline))
+                  (accept-process-output nil 0.1)))
+              (should-not berlin-check--process)
+              (should (string-match-p "unresolved_reference" (buffer-string)))
+              (goto-char (point-min))
+              (search-forward "unresolved_reference")
+              (let ((button (next-button (point))))
+                (should button)
+                (button-activate button))
+              (should (file-equal-p (buffer-file-name) source))
+              (should (equal "navigation-heading" (org-entry-get nil "ID")))
+              (should-not (buffer-modified-p)))
+            (should (equal original (berlin-check--file-hash source)))))
+      (when-let* ((buffer (get-file-buffer source))) (kill-buffer buffer))
+      (when (buffer-live-p report) (kill-buffer report))
+      (delete-directory project t))))

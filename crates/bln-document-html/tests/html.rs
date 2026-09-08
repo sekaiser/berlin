@@ -242,6 +242,72 @@ fn author_assigned_listing_identity_survives_code_edits() {
 }
 
 #[test]
+fn reference_led_notes_render_once_inside_native_line_disclosures() {
+    let source = markdown::Source::in_memory(
+        "```rust { id=example, lineanchors=ref }\nlet x = 1;\nx\n```\n\n1. [First](#ref-1) with **emphasis**.\n2. [Second](#ref-1) and `code`.\n",
+    );
+    let document = markdown::Parser::new().parse(&source).unwrap();
+    let html = Renderer::default().render(&document);
+    let html = html.as_str();
+    assert_eq!(html.matches("<details class=\"code-note\">").count(), 1);
+    assert!(!html.contains("<ol"));
+    for id in [
+        "ref-1-note-1",
+        "ref-1-note-2",
+        "ref-1",
+        "example-L1",
+        "example-L2",
+    ] {
+        assert_eq!(html.matches(&format!("id=\"{id}\"")).count(), 1);
+    }
+    assert!(html.contains("<strong>emphasis</strong>"));
+    assert!(html.contains("and <code>code</code>"));
+}
+
+#[test]
+fn annotated_source_preserves_exact_bytes_and_cannot_end_its_data_element() {
+    let source = markdown::Source::in_memory(
+        "```text { id=example, lineanchors=ref }\none\n```\n\n- [Explain](#ref-1) this line.\n",
+    );
+    let mut document = markdown::Parser::new().parse(&source).unwrap();
+    let original = "\r\n</script><script>alert(1)</script>&\t\r\nlast";
+    let Block::Code(code) = &mut document.blocks[0] else {
+        panic!("code fixture");
+    };
+    code.value = original.into();
+    let html = Renderer::default().render(&document);
+    let data = html
+        .as_str()
+        .split("class=\"code-source\">")
+        .nth(1)
+        .unwrap()
+        .split("</script>")
+        .next()
+        .unwrap();
+    assert_eq!(serde_json::from_str::<String>(data).unwrap(), original);
+    assert!(!data.contains('<'));
+    assert!(!html.as_str().contains("<script>alert(1)</script>"));
+}
+
+#[test]
+fn mixed_lists_and_task_lists_remain_in_the_prose() {
+    for notes in [
+        "1. [Explain](#ref-1) this.\n2. Ordinary item.",
+        "1. [Explain](#ref-1) this.\n2. [External](https://example.com) context.",
+        "- [ ] [Explain](#ref-1) this.",
+    ] {
+        let markdown = format!("```text {{ lineanchors=ref }}\none\n```\n\n{notes}\n");
+        let document = markdown::Parser::new()
+            .parse(&markdown::Source::in_memory(&markdown))
+            .unwrap();
+        let html = Renderer::default().render(&document);
+        assert!(!html.as_str().contains("class=\"code-note\""));
+        assert!(html.as_str().contains("this."));
+        assert!(html.as_str().contains("<li>"));
+    }
+}
+
+#[test]
 fn renders_caption_inside_the_figure_and_highlights_by_source_offset() {
     let source = markdown::Source::in_memory(
         "```rust { linenostart=20, hl_lines=[\"2\"] }\n/* first\nsecond */\n```\n<div class=\"src-block-caption\">\n<span class=\"src-block-number\">Code Snippet 1:</span>\nA <em>multiline</em> comment.\n</div>\n",
@@ -266,4 +332,27 @@ fn renders_caption_inside_the_figure_and_highlights_by_source_offset() {
             .unwrap()
             .contains("--line-offset")
     );
+}
+#[test]
+fn document_links_use_current_routes_and_keep_source_anchors() {
+    let source =
+        markdown::Source::new("[Earlier work](id:target#details)", "file:///source.md").unwrap();
+    let document = markdown::Parser::new().parse(&source).unwrap();
+    let renderer = berlin_document_html::Renderer::default().with_document_routes(
+        [(
+            berlin_document::ContentId("target".into()),
+            "https://example.com/notebook/notes/renamed.html".into(),
+        )]
+        .into(),
+    );
+    let html = renderer.render(&document);
+    assert!(html.as_str().contains("id=\"bln-ref-1\""));
+    assert!(
+        html.as_str()
+            .contains("href=\"https://example.com/notebook/notes/renamed.html#details\"")
+    );
+    let standalone = berlin_document_html::Renderer::default().render(&document);
+    assert!(standalone.as_str().contains("Earlier work"));
+    assert!(!standalone.as_str().contains("href="));
+    assert!(!standalone.as_str().contains("id:target"));
 }

@@ -235,6 +235,7 @@ fn inline_plain_text(inlines: &[Inline]) -> String {
             | Inline::Strong { content }
             | Inline::Strikethrough { content }
             | Inline::Link { content, .. } => text.push_str(&inline_plain_text(content)),
+            Inline::DocumentLink(link) => text.push_str(&inline_plain_text(&link.content)),
             Inline::Image { description, .. } => text.push_str(&inline_plain_text(description)),
             Inline::SoftBreak | Inline::LineBreak => text.push(' '),
             Inline::FootnoteReference { name } => text.push_str(name),

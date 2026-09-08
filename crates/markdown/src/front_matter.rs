@@ -11,7 +11,12 @@ pub(super) const DELIMITER: &str = "---";
 
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct FrontMatter {
+    #[serde(default)]
+    pub(crate) kind: berlin_document::DocumentKind,
     pub(crate) title: Option<String>,
+    pub(crate) slug: Option<String>,
+    #[serde(default)]
+    pub(crate) previous_slugs: Vec<String>,
     #[serde(rename = "date")]
     pub(crate) published: Option<PublicationDate>,
     pub(crate) author: Option<Vec<String>>,
@@ -20,8 +25,27 @@ pub(crate) struct FrontMatter {
     pub(crate) id: Option<String>,
     #[serde(default)]
     pub(crate) draft: bool,
+    #[serde(default, deserialize_with = "deserialize_comments")]
+    pub(crate) comments: bool,
     #[serde(rename = "lastmod")]
     pub(crate) modified: Option<PublicationDate>,
+}
+
+// Comments are an explicit author opt-in, not a truthy string or null value.
+fn deserialize_comments<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<bool, D::Error> {
+    struct Boolean;
+    impl serde::de::Visitor<'_> for Boolean {
+        type Value = bool;
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("a boolean comments flag")
+        }
+        fn visit_bool<E: serde::de::Error>(self, value: bool) -> Result<bool, E> {
+            Ok(value)
+        }
+    }
+    deserializer.deserialize_any(Boolean)
 }
 
 pub(crate) fn parse<'a>(

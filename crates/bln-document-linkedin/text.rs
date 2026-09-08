@@ -155,6 +155,7 @@ fn render_inline(text: &mut String, inline: &Inline) {
             content,
             ..
         } => render_link(text, destination, content),
+        Inline::DocumentLink(link) => text.push_str(&render_inlines(&link.content)),
         Inline::Image {
             source,
             description,

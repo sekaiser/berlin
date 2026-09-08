@@ -7,7 +7,12 @@ repository=$PWD
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 node --test support/web/code-controls.test.cjs
+node --test support/web/search.test.cjs
+node --test support/web/redirect.test.cjs
 cargo build --quiet --bin bln
+BERLIN_TEST_BINARY="$repository/target/debug/bln" BERLIN_TEST_REPOSITORY="$repository" \
+    emacs --batch --load support/ox-hugo/tests.el --load support/emacs/tests.el \
+    --funcall ert-run-tests-batch-and-exit
 
 # Acceptance checks never read or regenerate the author's local website.
 check_project=$(mktemp -d "${TMPDIR:-/tmp}/berlin-check.XXXXXX")
@@ -19,11 +24,17 @@ export BERLIN_DIR="$check_project"
 
 cargo run --quiet --manifest-path "$repository/Cargo.toml" --bin bln -- build --pipeline org --dry-run
 cargo run --quiet --manifest-path "$repository/Cargo.toml" --bin bln -- build --pipeline org
+cargo run --quiet --manifest-path "$repository/Cargo.toml" --bin bln -- check --pipeline site
+cargo run --quiet --manifest-path "$repository/Cargo.toml" --bin bln -- check --pipeline site --json
 cargo run --quiet --manifest-path "$repository/Cargo.toml" --bin bln -- build --pipeline site
 cargo run --quiet --manifest-path "$repository/Cargo.toml" --bin bln -- build --pipeline linkedin
 
 test -s "$check_project/_site/index.html"
+test -s "$check_project/_site/search.html"
+test -s "$check_project/_site/search/index.json"
+test -s "$check_project/_site/search/client.js"
 test -s "$check_project/_site/notes/example-article.html"
+test -s "$check_project/_site/notes/former-example-article.html"
 test -s "$check_project/_site/static/example.txt"
 test -s "$check_project/_site/css/styles.css"
 test -s "$check_project/_berlin/linkedin/manifest.json"

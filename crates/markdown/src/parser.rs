@@ -44,6 +44,7 @@ impl Parser {
                 }
             })?;
         restore_figures(&mut document.blocks, &figures);
+        document::assign_reference_anchors(&mut document.blocks);
         validate(document, source)
     }
 }
@@ -68,7 +69,7 @@ fn normalize_shortcodes(source: &Source<'_>) -> Result<(String, HashMap<String, 
 
         match shortcode.name.as_str() {
             "relref" => {
-                if let Some(destination) = shortcode.body {
+                if let Some(destination) = shortcode.document_link.or(shortcode.body) {
                     normalized.replace_range(shortcode.span, &destination);
                 }
             }

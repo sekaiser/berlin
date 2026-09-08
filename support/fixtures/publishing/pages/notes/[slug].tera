@@ -1,2 +1,15 @@
 {% extends "_base.tera" %}
-{% block content %}<article><h1>{{ page_title }}</h1>{{ render() }}</article>{% endblock content %}
+{% block content %}
+<article>
+  <h1>{{ page_title }}</h1>{{ render() }}
+  {% if page_backlinks | length > 0 %}
+  <section aria-labelledby="backlinks-title">
+    <h2 id="backlinks-title">Referenced in</h2>
+    <ul>{% for reference in page_backlinks %}
+      <li><a href="{{config_site_url}}{{reference.path}}">{{reference.title}}</a>
+        <blockquote>{{reference.excerpt}}</blockquote></li>
+    {% endfor %}</ul>
+  </section>
+  {% endif %}
+</article>
+{% endblock content %}

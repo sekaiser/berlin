@@ -34,6 +34,7 @@ Current capabilities include:
 - Org export through Emacs and ox-hugo, without executing source-code examples.
 - Markdown parsing, CSV feeds, and website assembly with shared tag indexes.
 - Static HTML through Tera templates, CSS compilation, and asset copying.
+- [Stable article URLs](docs/stable-urls.md), with optional static redirects from previous slugs.
 - Syntax-highlighted code with named listings, line references, captions, and highlights.
 - LinkedIn draft text and manifests, with character-limit diagnostics.
 - Local build receipts recording input/output hashes, provenance, and diagnostics.
@@ -66,6 +67,7 @@ mkdir -p "$berlin_project/support"
 cp -R support/ox-hugo "$berlin_project/support/"
 
 BERLIN_DIR="$berlin_project" target/debug/bln plan --pipeline site
+BERLIN_DIR="$berlin_project" target/debug/bln check --pipeline site
 BERLIN_DIR="$berlin_project" target/debug/bln build --pipeline site
 BERLIN_DIR="$berlin_project" target/debug/bln serve --port 8081
 ```
@@ -93,6 +95,14 @@ BERLIN_DIR="$berlin_project" target/debug/bln build --pipeline site
 
 Org export is a separate pipeline: watching the website does not automatically
 re-export Org sources.
+
+`bln check` inspects the existing Markdown after document mappings, without
+publishing. It reports all unresolved document references and optional
+observations about disconnected notes and guide coverage. Add `--json` for
+structured output. See [Local authoring check](docs/authoring-check.md) for its
+scope, source locations, and exit behavior.
+An optional [Emacs adapter](docs/emacs-authoring.md) makes findings clickable in
+the original Org source when a matching local export map is available.
 
 ## A pipeline in practice
 
@@ -176,6 +186,8 @@ project and run its CSS commands there. The minimal fixture does not require it.
 - [Architecture and design boundaries](ARCHITECTURE.md)
 - [Local publishing projects](docs/local-publishing.md)
 - [Code listings and Org references](docs/code-listings.md)
+- [Local authoring check](docs/authoring-check.md)
+- [Publication search](docs/notebook-search.md)
 
 ## License
 

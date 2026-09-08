@@ -4,6 +4,7 @@
 #![deny(clippy::print_stdout)]
 
 mod code;
+mod highlight;
 mod html;
 mod renderer;
 

@@ -11,11 +11,13 @@ use berlin_core::ArtifactKind;
 use crate::project::Project;
 use crate::util::fs::load_files;
 
+pub(crate) mod check;
 mod copy_static;
 mod css;
 mod executor;
 mod feed;
 mod org;
+mod origins;
 mod output;
 mod receipt;
 mod run;

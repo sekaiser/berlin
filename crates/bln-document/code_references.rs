@@ -3,7 +3,7 @@
 use crate::{Block, DocumentValidationError, Inline};
 use std::collections::HashSet;
 
-pub(super) fn validate(blocks: &[Block]) -> Result<(), DocumentValidationError> {
+pub(super) fn validate(blocks: &[Block]) -> Result<HashSet<String>, DocumentValidationError> {
     let mut ids = HashSet::new();
     let mut prefixes = Vec::new();
     let mut links = Vec::new();
@@ -19,7 +19,7 @@ pub(super) fn validate(blocks: &[Block]) -> Result<(), DocumentValidationError> 
             return Err(invalid(format!("unknown line anchor '{target}'")));
         }
     }
-    Ok(())
+    Ok(ids)
 }
 
 fn invalid(message: String) -> DocumentValidationError {

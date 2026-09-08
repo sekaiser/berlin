@@ -13,6 +13,15 @@ use berlin_document::Document;
 use serde::Deserialize;
 use serde::Serialize;
 
+mod references;
+pub use references::{Backlink, ReferenceAnalysis, ReferenceIndex, UnresolvedReference};
+
+mod authoring;
+pub use authoring::{
+    AuthoringFinding, AuthoringIssue, AuthoringLocation, AuthoringOrigin, AuthoringReport,
+    OriginHeading, Severity,
+};
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Collection<T> {
@@ -160,6 +169,9 @@ pub struct FeedItem {
     pub url: String,
     pub host: String,
     pub tags: Vec<String>,
+    /// The curator's own plain-text note, distinct from the linked work's abstract.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation: Option<String>,
     pub source: String,
 }
 
@@ -205,12 +217,21 @@ pub struct WebsiteAssembly {
     feed: Feed,
     documents_by_published: Collection<DocumentRef>,
     tags: TagIndex,
+    references: ReferenceIndex,
 }
 
 impl WebsiteAssembly {
     pub fn new(documents: DocumentCollection, feed: Feed) -> Result<Self, CollectionError> {
         documents.validate()?;
         feed.validate()?;
+        // Publication scope is fixed before deriving views or inspecting links.
+        let documents = DocumentCollection::new(
+            documents
+                .into_iter()
+                .filter(|document| !document.metadata.draft)
+                .collect::<Vec<_>>(),
+        );
+        let references = ReferenceIndex::new(&documents)?;
         let documents_by_published = documents.references_by_published_desc();
         let tags = TagIndex::from_content(&documents, &feed);
         Ok(Self {
@@ -218,6 +239,7 @@ impl WebsiteAssembly {
             feed,
             documents_by_published,
             tags,
+            references,
         })
     }
 
@@ -235,6 +257,10 @@ impl WebsiteAssembly {
 
     pub fn tags(&self) -> &TagIndex {
         &self.tags
+    }
+
+    pub fn references(&self) -> &ReferenceIndex {
+        &self.references
     }
 }
 
@@ -325,14 +351,30 @@ fn effective_tags(tags: &[String]) -> impl Iterator<Item = &str> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CollectionError {
     InvalidDocument(berlin_document::DocumentValidationError),
-    MissingDocumentId { source: String },
+    MissingDocumentId {
+        source: String,
+    },
     DuplicateDocument(ContentId),
     DuplicateFeedItem(FeedItemId),
+    UnresolvedReference {
+        source: String,
+        anchor: String,
+        target: ContentId,
+    },
 }
 
 impl fmt::Display for CollectionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnresolvedReference {
+                source,
+                anchor,
+                target,
+            } => write!(
+                formatter,
+                "unresolved document reference in '{source}#{anchor}': target '{}' is not in the published collection",
+                target.0
+            ),
             Self::InvalidDocument(error) => error.fmt(formatter),
             Self::MissingDocumentId { source } => {
                 write!(formatter, "document '{source}' has no stable content ID")
@@ -465,6 +507,7 @@ mod tests {
             url: "https://example.com/item".into(),
             host: "example.com".into(),
             tags: vec!["berlin".into()],
+            annotation: None,
             source: "file:///data/feed.csv".into(),
         }]);
 
@@ -494,6 +537,7 @@ mod tests {
             url: "https://example.com/item".into(),
             host: "example.com".into(),
             tags: vec!["berlin".into()],
+            annotation: None,
             source: "file:///data/feed.csv".into(),
         }]);
 

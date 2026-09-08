@@ -29,6 +29,7 @@ fn run_local<F: std::future::Future>(future: F) -> F::Output {
 fn run_subcommand(flags: Flags) -> Result<(), Error> {
     match flags.subcommand.clone() {
         BerlinSubcommand::Plan(plan_flags) => pipeline::print_current_plan(plan_flags),
+        BerlinSubcommand::Check(check_flags) => tools::check::check(check_flags),
         BerlinSubcommand::Build(build_flags) => tools::build::build(build_flags),
         BerlinSubcommand::Serve(serve_flags) => run_local(tools::serve::serve(serve_flags)),
     }

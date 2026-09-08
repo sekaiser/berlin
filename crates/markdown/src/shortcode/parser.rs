@@ -25,6 +25,7 @@ pub(crate) struct Shortcode {
     pub(crate) args: tera::Value,
     pub(crate) span: Range<usize>,
     pub(crate) body: Option<String>,
+    pub(crate) document_link: Option<String>,
 }
 
 fn parse_kwarg_value(pair: Pair<Rule>) -> tera::Value {
@@ -149,6 +150,7 @@ fn handle_figure(
         args: value,
         span: span.start()..span.end(),
         body: Some(template),
+        document_link: None,
     });
     Ok(())
 }
@@ -165,15 +167,26 @@ fn handle_relref(
         .map_err(|_| anyhow!("relref source is not a file URL: {specifier}"))?;
     let file_name =
         get_string("relref", &value).context("relref shortcode requires a target path")?;
+    let (file_name, fragment) = file_name
+        .split_once('#')
+        .map_or((file_name, ""), |(file, fragment)| (file, fragment));
     let target = join(path, file_name).context("relref source has no parent directory")?;
-    let title = read_title_from_content_of_file(target.clone())
+    let metadata = read_front_matter_from_file(&target)
         .with_context(|| format!("unable to resolve relref target {}", target.display()))?;
-    let template = format!("/notes/{}.html", slugify!(&title));
+    let title = metadata.title.context("relref target has no title")?;
+    let fragment = if fragment.is_empty() {
+        String::new()
+    } else {
+        format!("#{fragment}")
+    };
+    let template = format!("/notes/{}.html{fragment}", slugify!(&title));
+    let document_link = metadata.id.map(|id| format!("id:{id}{fragment}"));
     shortcodes.push(Shortcode {
         name,
         args: value,
         span: span.start()..span.end(),
         body: Some(template),
+        document_link,
     });
     Ok(())
 }
@@ -197,13 +210,11 @@ fn join<P: AsRef<Path>>(path: PathBuf, file_name: P) -> Option<PathBuf> {
     path.parent().map(|p| p.join(file_name))
 }
 
-fn read_title_from_content_of_file(path: PathBuf) -> Option<String> {
-    ModuleSpecifier::from_file_path(path)
+fn read_front_matter_from_file(path: &Path) -> Option<FrontMatter> {
+    std::fs::read_to_string(path)
         .ok()
-        .and_then(|p| std::fs::read_to_string(p.path()).ok())
         .and_then(|s| extract_yaml(&s).ok())
         .and_then(|s| serde_saphyr::from_str::<FrontMatter>(&s).ok())
-        .and_then(|fm| fm.title)
 }
 
 fn extract_yaml(markdown: &str) -> Result<String, Box<dyn std::error::Error>> {

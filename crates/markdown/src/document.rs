@@ -35,12 +35,15 @@ pub(super) fn from_ast<'a>(
 ) -> Result<Document, String> {
     let metadata = front_matter.map_or_else(Metadata::default, |value| Metadata {
         title: value.title.clone(),
+        slug: value.slug.clone(),
+        previous_slugs: value.previous_slugs.clone(),
         authors: value.author.clone().unwrap_or_default(),
         description: value.description.clone(),
         published: value.published.clone(),
         modified: value.modified.clone(),
         tags: value.tags.clone().unwrap_or_default(),
         draft: value.draft,
+        comments: value.comments,
     });
     let source_uri = source.uri().to_string();
     let id = front_matter
@@ -54,7 +57,7 @@ pub(super) fn from_ast<'a>(
 
     Ok(Document {
         id: ContentId(id),
-        kind: DocumentKind::Article,
+        kind: front_matter.map_or_else(DocumentKind::default, |value| value.kind.clone()),
         metadata,
         blocks: group_sections(blocks_from_children(root)?),
         relations: Vec::new(),
@@ -137,6 +140,7 @@ fn inline_plain_text(inlines: &[Inline]) -> String {
             | Inline::Strong { content }
             | Inline::Strikethrough { content }
             | Inline::Link { content, .. } => output.push_str(&inline_plain_text(content)),
+            Inline::DocumentLink(link) => output.push_str(&inline_plain_text(&link.content)),
             Inline::Image { description, .. } => {
                 output.push_str(&inline_plain_text(description));
             }
@@ -299,11 +303,7 @@ fn inline_from_node<'a>(node: &'a AstNode<'a>) -> Vec<Inline> {
         NodeValue::Code(code) => vec![Inline::Code {
             value: code.literal.clone(),
         }],
-        NodeValue::Link(link) => vec![Inline::Link {
-            destination: link.url.clone(),
-            title: nonempty(&link.title),
-            content: inlines_from_children(node),
-        }],
+        NodeValue::Link(link) => vec![link_from_node(node, link)],
         NodeValue::Image(image) => vec![Inline::Image {
             source: image.url.clone(),
             title: nonempty(&image.title),
@@ -319,6 +319,85 @@ fn inline_from_node<'a>(node: &'a AstNode<'a>) -> Vec<Inline> {
         }],
         _ => inlines_from_children(node),
     }
+}
+
+fn link_from_node<'a>(node: &'a AstNode<'a>, link: &comrak::nodes::NodeLink) -> Inline {
+    let content = inlines_from_children(node);
+    let title = nonempty(&link.title);
+    if let Some(destination) = link.url.strip_prefix("id:") {
+        let (target, fragment) = destination
+            .split_once('#')
+            .map_or((destination, None), |(target, fragment)| {
+                (target, Some(fragment.to_owned()))
+            });
+        Inline::DocumentLink(berlin_document::DocumentLink {
+            target: ContentId(target.into()),
+            fragment,
+            anchor: berlin_document::ComponentId(String::new()),
+            title,
+            content,
+        })
+    } else {
+        Inline::Link {
+            destination: link.url.clone(),
+            title,
+            content,
+        }
+    }
+}
+
+/// Generated occurrence anchors are rebuilt with backlinks, after caption parsing.
+pub(super) fn assign_reference_anchors(blocks: &mut [Block]) {
+    fn inlines(content: &mut [Inline], next: &mut usize) {
+        for inline in content {
+            match inline {
+                Inline::DocumentLink(link) => {
+                    *next += 1;
+                    link.anchor.0 = format!("bln-ref-{next}");
+                }
+                Inline::Emphasis { content }
+                | Inline::Strong { content }
+                | Inline::Strikethrough { content }
+                | Inline::Link { content, .. } => inlines(content, next),
+                _ => {}
+            }
+        }
+    }
+    fn visit(blocks: &mut [Block], next: &mut usize) {
+        for block in blocks {
+            match block {
+                Block::Paragraph { content } | Block::Heading { content, .. } => {
+                    inlines(content, next)
+                }
+                Block::Section { title, blocks, .. } => {
+                    inlines(title, next);
+                    visit(blocks, next);
+                }
+                Block::Component { blocks, .. }
+                | Block::BlockQuote { blocks }
+                | Block::FootnoteDefinition { blocks, .. } => visit(blocks, next),
+                Block::List(list) => {
+                    for item in &mut list.items {
+                        visit(&mut item.blocks, next);
+                    }
+                }
+                Block::Table(table) => {
+                    for row in &mut table.rows {
+                        for cell in &mut row.cells {
+                            inlines(cell, next);
+                        }
+                    }
+                }
+                Block::Code(code) => {
+                    if let Some(caption) = &mut code.caption {
+                        inlines(caption, next);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    visit(blocks, &mut 0);
 }
 
 fn take_heading_id(content: &mut [Inline]) -> Option<String> {

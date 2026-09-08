@@ -12,4 +12,4 @@ pub use pipeline::PipelineLoader;
 pub use pipeline::PipelineNode;
 pub use pipeline::PipelinePlan;
 pub use pipeline::PipelineValidationError;
-pub use website::{WebsiteConfig, WebsiteProfiles};
+pub use website::{GiscusConfig, WebsiteConfig, WebsiteProfiles};

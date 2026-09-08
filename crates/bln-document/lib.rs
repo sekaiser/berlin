@@ -8,7 +8,9 @@
 
 mod code_references;
 mod date;
+mod references;
 pub use date::{InvalidPublicationDate, PublicationDate};
+pub use references::{DocumentLink, ReferenceOccurrence, plain_text};
 
 use std::collections::BTreeMap;
 
@@ -34,7 +36,8 @@ impl Document {
         validate_provenance(&self.provenance)?;
         self.relations.iter().try_for_each(validate_relation)?;
         validate_blocks(&self.blocks)?;
-        code_references::validate(&self.blocks)
+        let anchors = code_references::validate(&self.blocks)?;
+        references::validate(self, anchors)
     }
 }
 
@@ -50,6 +53,8 @@ pub enum DocumentValidationError {
     InvalidSourceHash(String),
     #[error("invalid code reference: {0}")]
     InvalidCodeReference(String),
+    #[error("invalid document reference: {0}")]
+    InvalidDocumentReference(String),
 }
 
 fn validate_identifier(field: &'static str, value: &str) -> Result<(), DocumentValidationError> {
@@ -153,6 +158,7 @@ pub struct ContentId(pub String);
 pub enum DocumentKind {
     #[default]
     Article,
+    Guide,
     Note,
     SocialPost,
     Custom(String),
@@ -171,12 +177,21 @@ pub struct Relation {
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Metadata {
     pub title: Option<String>,
+    /// Optional stable website slug; independent of the title and content ID.
+    #[serde(default)]
+    pub slug: Option<String>,
+    /// Former website slugs redirected directly to `slug` during publication.
+    #[serde(default)]
+    pub previous_slugs: Vec<String>,
     pub authors: Vec<String>,
     pub description: Option<String>,
     pub published: Option<PublicationDate>,
     pub modified: Option<PublicationDate>,
     pub tags: Vec<String>,
     pub draft: bool,
+    /// Author opt-in to a discussion; provider configuration belongs to the website.
+    #[serde(default)]
+    pub comments: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -351,6 +366,7 @@ pub enum Inline {
         title: Option<String>,
         content: Vec<Inline>,
     },
+    DocumentLink(DocumentLink),
     Image {
         source: String,
         title: Option<String>,

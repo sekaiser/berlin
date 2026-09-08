@@ -77,11 +77,24 @@ fn website_settings_reject_unknown_fields_wrong_types_and_invalid_urls() {
         "#{url: \"not an absolute URL\"}",
         "#{profiles: #{gitub: \"https://github.com/example\"}}",
         "#{profiles: #{github: \"not a URL\"}}",
+        "#{giscus: #{repo: \"owner/repo\"}}",
+        "#{giscus: true}",
     ] {
         let source = format!("let settings = website_config({settings});");
         assert!(compile(&source).is_err(), "accepted {settings}");
     }
     assert!(compile("let settings = website_config(#{});").is_ok());
+    assert!(
+        compile(
+            r#"
+        let settings = website_config(#{giscus: #{
+            repo: "owner/notebook", repo_id: "R_TEST",
+            category: "Article comments", category_id: "DIC_TEST"
+        }});
+    "#
+        )
+        .is_ok()
+    );
 }
 
 #[test]

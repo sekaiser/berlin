@@ -15,6 +15,14 @@ pub struct Templates {
 }
 
 impl Templates {
+    pub fn contains(&self, name: &str) -> bool {
+        self.tera.templates.contains_key(name)
+    }
+
+    pub fn set_document_routes(&mut self, routes: HashMap<berlin_document::ContentId, String>) {
+        self.document_renderer =
+            berlin_document_html::Renderer::default().with_document_routes(routes);
+    }
     pub fn load(template_root: impl Into<PathBuf>) -> Result<Self, Error> {
         let glob = format!("{}/**/*.tera", template_root.into().display());
         let mut tera = Tera::new(&glob)?;

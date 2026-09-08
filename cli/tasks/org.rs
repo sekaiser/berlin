@@ -7,7 +7,7 @@ use anyhow::Context;
 use anyhow::Error;
 use anyhow::bail;
 
-use super::SourceFile;
+use super::{SourceFile, origins};
 
 #[derive(Debug, Eq, PartialEq)]
 struct Export {
@@ -113,8 +113,10 @@ fn run_ox_hugo(
 
     let emacs = std::env::var("BERLIN_EMACS").unwrap_or_else(|_| "emacs".into());
     let script = project_root.join("support/ox-hugo/export.el");
+    let source_map = tempfile::NamedTempFile::new()?;
     let mut command = Command::new(&emacs);
     command
+        .env("BERLIN_ORG_SOURCE_MAP", source_map.path())
         .arg("--batch")
         .arg("--load")
         .arg(&script)
@@ -128,6 +130,43 @@ fn run_ox_hugo(
         .with_context(|| format!("Failed to start Emacs using '{emacs}'"))?;
     if !status.success() {
         bail!("Ox-Hugo export failed with {status}");
+    }
+    // Navigation is optional and local. A missing/old adapter must not prevent
+    // publication; exact export hashes keep a failed transaction's maps inert.
+    if let Err(error) = store_origins(project_root, exports, source_map.path()) {
+        log::warn!("Exported Markdown, but could not store Org navigation: {error:#}");
+    }
+    Ok(())
+}
+
+fn store_origins(project_root: &Path, exports: &[Export], file: &Path) -> Result<(), Error> {
+    let origins: origins::ExportOrigins = serde_json::from_slice(&std::fs::read(file)?)?;
+    if origins.schema_version != 1 {
+        bail!("Unsupported Org origin schema");
+    }
+    for mut origin in origins.documents {
+        let source = origin.source.canonicalize()?;
+        let markdown = origin.markdown.canonicalize()?;
+        let export = exports
+            .iter()
+            .find(|export| {
+                export
+                    .destination
+                    .canonicalize()
+                    .is_ok_and(|path| path == markdown)
+                    && export
+                        .source
+                        .canonicalize()
+                        .is_ok_and(|path| path == source)
+            })
+            .context("Org origin does not match a declared export")?;
+        if origins::digest(&std::fs::read(&export.destination)?) != origin.markdown_hash
+            || origins::digest(&std::fs::read(&export.source)?) != origin.source_hash
+        {
+            bail!("Org or Markdown changed while exporting source navigation");
+        }
+        origin.source = export.source.clone();
+        origins::store(project_root, &export.published_path, origin)?;
     }
     Ok(())
 }

@@ -20,6 +20,8 @@ struct Record {
     date_added: String,
     #[serde(rename = "Manual Tags", deserialize_with = "deserialize_tags")]
     tags: Vec<String>,
+    #[serde(rename = "Annotation", default)]
+    annotation: Option<String>,
 }
 
 fn deserialize_tags<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
@@ -71,6 +73,10 @@ pub(super) fn parse(sources: &[SourceFile]) -> Result<Feed, Error> {
                 url: record.url,
                 host,
                 tags: record.tags,
+                annotation: record
+                    .annotation
+                    .map(|note| note.trim().to_owned())
+                    .filter(|note| !note.is_empty()),
                 source: source.uri.clone(),
             });
         }
@@ -107,6 +113,33 @@ mod tests {
         assert_eq!(item.host, "example.com");
         assert_eq!(item.tags, ["rust", "publishing"]);
         assert_eq!(item.source, "file:///project/data/feed.csv");
+        assert_eq!(item.annotation, None);
+    }
+
+    #[test]
+    fn annotations_are_optional_plain_text_not_imported_abstracts() {
+        let source = SourceFile {
+            path: PathBuf::from("data/feed.csv"),
+            uri: "file:///project/data/feed.csv".into(),
+            text: concat!(
+                "Title,Url,Date Added,Manual Tags,Abstract Note,Annotation\n",
+                "One,https://example.com/one,2026-09-08,rust,Publisher summary,\"  A useful distinction, worth revisiting.  \"\n",
+                "Two,https://example.com/two,2026-09-08,rust,Not my opinion,\"   \"\n",
+                "Three,https://example.com/three,2026-09-08,rust,,\"Literal <em>text</em> & punctuation\"\n"
+            )
+            .into(),
+        };
+        let feed = parse(&[source]).unwrap();
+        let items = feed.as_slice();
+        assert_eq!(
+            items[0].annotation.as_deref(),
+            Some("A useful distinction, worth revisiting.")
+        );
+        assert_eq!(items[1].annotation, None);
+        assert_eq!(
+            items[2].annotation.as_deref(),
+            Some("Literal <em>text</em> & punctuation")
+        );
     }
 
     #[test]

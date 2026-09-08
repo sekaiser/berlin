@@ -1,0 +1,12 @@
+{% extends "_base.tera" %}
+{% block content %}
+<h1>Search the notebook</h1>
+<section data-search-index="{{config_site_url}}/search/index.json?v={{search_index_version}}">
+  <form role="search" hidden><label>Search notes <input type="search" name="q" maxlength="200"></label><button type="submit">Search</button></form>
+  <p data-search-status role="status" aria-live="polite"></p>
+  <noscript>Search requires JavaScript. Browse the notes instead.</noscript>
+  <ol data-search-results></ol>
+</section>
+<a href="{{config_site_url}}/notes.html">Browse notes</a>
+<script src="{{config_site_url}}/search/client.js" defer></script>
+{% endblock content %}

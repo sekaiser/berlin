@@ -1,7 +1,9 @@
 //! HTML rendering for Berlin's semantic document model.
 
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::fmt::Write as _;
+use std::sync::OnceLock;
 
 use berlin_document::Block;
 use berlin_document::CodeBlock;
@@ -14,20 +16,33 @@ use berlin_document::ListItem;
 use berlin_document::PropertyValue;
 use berlin_document::Table;
 use berlin_document::TableAlignment;
+use berlin_document::{ContentId, DocumentLink};
 use comrak::plugins::syntect::SyntectAdapter;
 
 use crate::Html;
-use crate::code::CodeListings;
+use crate::code::{CodeListings, InlineNote, RenderedNote};
 
 /// Projects Berlin semantic documents into HTML.
 pub struct Renderer {
     syntax_highlighter: SyntectAdapter,
+    line_highlighter: OnceLock<crate::highlight::LineHighlighter>,
+    document_routes: HashMap<ContentId, String>,
 }
 
 impl Renderer {
+    /// Supplies channel-specific URLs; unresolved links render as labels, not broken URLs.
+    pub fn with_document_routes(mut self, routes: HashMap<ContentId, String>) -> Self {
+        self.document_routes = routes;
+        self
+    }
     /// Renders a semantic document as typed HTML.
     pub fn render(&self, document: &Document) -> Html {
-        RenderSession::new(&self.syntax_highlighter).render(document)
+        RenderSession::new(
+            &self.syntax_highlighter,
+            &self.line_highlighter,
+            &self.document_routes,
+        )
+        .render(document)
     }
 }
 
@@ -36,20 +51,30 @@ impl Default for Renderer {
     fn default() -> Self {
         Self {
             syntax_highlighter: SyntectAdapter::new(Some("InspiredGitHub")),
+            line_highlighter: OnceLock::new(),
+            document_routes: HashMap::new(),
         }
     }
 }
 
 struct RenderSession<'a> {
+    document_routes: &'a HashMap<ContentId, String>,
     syntax_highlighter: &'a SyntectAdapter,
+    line_highlighter: &'a OnceLock<crate::highlight::LineHighlighter>,
     output: String,
     code_listings: CodeListings,
 }
 
 impl<'a> RenderSession<'a> {
-    fn new(syntax_highlighter: &'a SyntectAdapter) -> Self {
+    fn new(
+        syntax_highlighter: &'a SyntectAdapter,
+        line_highlighter: &'a OnceLock<crate::highlight::LineHighlighter>,
+        document_routes: &'a HashMap<ContentId, String>,
+    ) -> Self {
         Self {
+            document_routes,
             syntax_highlighter,
+            line_highlighter,
             output: String::new(),
             code_listings: CodeListings::default(),
         }
@@ -112,6 +137,7 @@ impl<'a> RenderSession<'a> {
     }
 
     fn render_code(&mut self, code: &CodeBlock) {
+        let notes = self.render_code_notes(code);
         let caption = code
             .caption
             .as_ref()
@@ -122,8 +148,39 @@ impl<'a> RenderSession<'a> {
                 &mut self.output,
                 code,
                 caption.as_deref(),
+                (!notes.is_empty()).then(|| self.line_highlighter.get_or_init(Default::default)),
+                &notes,
             )
             .expect("writing highlighted code to a String cannot fail");
+    }
+
+    fn render_code_notes(&mut self, code: &CodeBlock) -> HashMap<String, Vec<RenderedNote>> {
+        self.code_listings
+            .inline_notes(code)
+            .into_iter()
+            .map(|(target, notes)| {
+                let notes = notes
+                    .into_iter()
+                    .map(|note| self.render_code_note(note))
+                    .collect();
+                (target, notes)
+            })
+            .collect()
+    }
+
+    fn render_code_note(&mut self, note: InlineNote) -> RenderedNote {
+        let Inline::Link { content: label, .. } = &note.content[0] else {
+            unreachable!("notes start with a reference");
+        };
+        let html = format!(
+            "<p><strong>{}</strong>{}</p>",
+            self.render_fragment(label),
+            self.render_fragment(&note.content[1..])
+        );
+        RenderedNote {
+            anchor: note.anchor,
+            html,
+        }
     }
 
     /// Captures inline markup while retaining this document's reference context.
@@ -215,6 +272,13 @@ impl<'a> RenderSession<'a> {
     }
 
     fn render_list(&mut self, list: &List) {
+        if list
+            .items
+            .iter()
+            .all(|item| item.checked.is_none() && self.code_listings.is_inline_note(&item.blocks))
+        {
+            return;
+        }
         let tag = if list.ordered { "ol" } else { "ul" };
         let _ = write!(self.output, "<{tag}");
         if let (true, Some(start)) = (list.ordered, list.start)
@@ -305,6 +369,7 @@ impl<'a> RenderSession<'a> {
                 title,
                 content,
             } => self.render_link(destination, title.as_deref(), content),
+            Inline::DocumentLink(link) => self.render_document_link(link),
             Inline::Image {
                 source,
                 title,
@@ -321,6 +386,24 @@ impl<'a> RenderSession<'a> {
         self.output.push_str("<code>");
         self.output.push_str(&escape_text(value));
         self.output.push_str("</code>");
+    }
+
+    fn render_document_link(&mut self, link: &DocumentLink) {
+        let _ = write!(
+            self.output,
+            "<span id=\"{}\" class=\"document-reference\">",
+            escape_attribute(&link.anchor.0)
+        );
+        if let Some(route) = self.document_routes.get(&link.target) {
+            let destination = match &link.fragment {
+                Some(fragment) => format!("{route}#{fragment}"),
+                None => route.clone(),
+            };
+            self.render_link(&destination, link.title.as_deref(), &link.content);
+        } else {
+            self.render_inlines(&link.content);
+        }
+        self.output.push_str("</span>");
     }
 
     fn render_link(&mut self, destination: &str, title: Option<&str>, content: &[Inline]) {
@@ -413,6 +496,7 @@ fn plain_text(inlines: &[Inline]) -> String {
             | Inline::Strong { content }
             | Inline::Strikethrough { content }
             | Inline::Link { content, .. } => output.push_str(&plain_text(content)),
+            Inline::DocumentLink(link) => output.push_str(&plain_text(&link.content)),
             Inline::Image { description, .. } => output.push_str(&plain_text(description)),
             Inline::SoftBreak | Inline::LineBreak => output.push(' '),
             Inline::Html { .. } | Inline::FootnoteReference { .. } => {}

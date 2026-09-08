@@ -219,7 +219,9 @@ dependencies = [
  "berlin_document",
  "comrak",
  "markdown",
+ "serde_json",
  "sha2",
+ "syntect",
 ]
 
 [[package]]

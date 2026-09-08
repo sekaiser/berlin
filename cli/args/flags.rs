@@ -33,6 +33,12 @@ pub struct PlanFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CheckFlags {
+    pub json: bool,
+    pub pipeline: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ServeFlags {
     pub port: u16,
     pub watch: bool,
@@ -42,6 +48,7 @@ pub struct ServeFlags {
 pub enum BerlinSubcommand {
     Build(BuildFlags),
     Plan(PlanFlags),
+    Check(CheckFlags),
     Serve(ServeFlags),
 }
 
@@ -79,6 +86,7 @@ fn clap_root() -> Command {
         )
         .subcommand(build_subcommand())
         .subcommand(plan_subcommand())
+        .subcommand(check_subcommand())
         .subcommand(serve_subcommand())
 }
 
@@ -127,6 +135,17 @@ fn serve_subcommand() -> Command {
         )
 }
 
+fn check_subcommand() -> Command {
+    Command::new("check")
+        .about("Inspect authored document connections without publishing")
+        .long_about("Check the documents of one website output after parsing and mappings. Reads existing Markdown; never exports Org or writes build outputs. Editorial observations do not fail the check. This is not a full site or rendered-link validation.")
+        .arg(pipeline_arg("Select a pipeline with one website output"))
+        .arg(Arg::new("json")
+            .long("json")
+            .help("Print a structured authoring report")
+            .action(ArgAction::SetTrue))
+}
+
 fn pipeline_arg(help: &'static str) -> Arg {
     Arg::new("pipeline")
         .long("pipeline")
@@ -156,6 +175,10 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
             json: args.get_flag("json"),
             pipeline: selected_pipeline(args),
         }),
+        ("check", args) => BerlinSubcommand::Check(CheckFlags {
+            json: args.get_flag("json"),
+            pipeline: selected_pipeline(args),
+        }),
         ("serve", args) => BerlinSubcommand::Serve(ServeFlags {
             port: *args.get_one::<u16>("port").expect("port has a default"),
             watch: args.get_flag("watch"),
@@ -178,6 +201,32 @@ fn selected_pipeline(args: &clap::ArgMatches) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn check_defaults_to_site_and_accepts_json_and_pipeline() {
+        let defaults = flags_from_vec(vec!["bln".into(), "check".into()]).unwrap();
+        assert_eq!(
+            defaults.subcommand,
+            BerlinSubcommand::Check(CheckFlags {
+                json: false,
+                pipeline: "site".into()
+            })
+        );
+        let flags = flags_from_vec(
+            ["bln", "check", "--pipeline", "notebook", "--json"]
+                .map(String::from)
+                .to_vec(),
+        )
+        .unwrap();
+        assert_eq!(
+            flags.subcommand,
+            BerlinSubcommand::Check(CheckFlags {
+                json: true,
+                pipeline: "notebook".into()
+            })
+        );
+        assert!(flags_from_vec(["bln", "check", "--dry-run"].map(String::from).to_vec()).is_err());
+    }
 
     #[test]
     fn separate_site_config_flag_is_no_longer_accepted() {
