@@ -1,19 +1,21 @@
 /* Functional browsing controls share the collection's warm surface. */
-.reading-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px 24px; padding: 12px 0 20px; border-bottom: 1px solid var(--rule); font: .9rem/1.5 var(--font-reading); }
+.reading-tools { display: grid; grid-template-columns: minmax(0, 32rem) minmax(0, 1fr); align-items: end; gap: 12px 24px; padding: 8px 0 16px; border-bottom: 1px solid var(--rule); font: var(--control-font); }
 .reading-tools[hidden], .reading-no-results[hidden], .notebook-reading .journal-bookmark[hidden] { display: none; }
 .reading-tools label { display: grid; gap: 6px; color: var(--muted); }
-.reading-tools .reading-query { grid-column: 1 / -1; }
-.reading-tools input[type="search"], .reading-tools button[type="reset"] { font: inherit; min-height: 44px; border: 1px solid var(--rule-strong); border-radius: 3px; padding: 8px 12px; color: var(--ink); background: var(--surface); }
+.reading-tools .reading-query { grid-column: 1; grid-row: 1; }
+.reading-tools input[type="search"] { font: inherit; min-height: 44px; border: 1px solid var(--rule-strong); border-radius: 3px; padding: 8px 12px; color: var(--ink); background: var(--surface); }
 .reading-tools input[type="search"] { width: 100%; min-width: 0; }
 .reading-tools input::placeholder { color: var(--muted); }
 .reading-tools button { cursor: pointer; }
-.reading-tools button[type="reset"] { color: var(--accent); }
-.reading-tools button:disabled { cursor: default; color: var(--muted); }
+.reading-filter-status { grid-column: 2; grid-row: 1; display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 4px 20px; min-height: 44px; }
+.reading-tools button[type="reset"] { color: var(--accent); font: inherit; background: none; border: 0; padding: 8px 0; min-height: 44px; text-decoration: underline; text-underline-offset: .22em; }
+/* Reserve its space so clearing filters never shifts the status or entries. */
+.reading-tools button[type="reset"]:disabled { visibility: hidden; }
 .reading-tools :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .reading-tools output { color: var(--muted); }
-.reading-tags { grid-column: 1 / -1; min-width: 0; margin: 0; padding: 0; border: 0; }
+.reading-tags { grid-column: 1 / -1; grid-row: 2; min-width: 0; margin: 0; padding: 0; border: 0; }
 .reading-tags legend { padding: 0; color: var(--ink); }
-.reading-tags p { margin: 4px 0; color: var(--muted); font-size: .85rem; }
+.reading-tags legend span { color: var(--muted); }
 .reading-tag-options { display: flex; flex-wrap: wrap; gap: 0 8px; }
 .reading-tag-count { margin-inline-start: 7px; font-weight: 400; font-variant-numeric: tabular-nums; }
 .reading-tag-description { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -22,5 +24,9 @@
 .reading-tag-options .paper-tag::before { inset-block: 7px; }
 .reading-tag-options .paper-tag[aria-pressed="false"] { --tag-paper: transparent; --tag-ink: var(--muted); --tag-edge: var(--rule-strong); }
 .reading-no-results { padding: 28px 0; font: 1rem/1.7 var(--font-reading); }
-@media (max-width: 600px) { .reading-tools { gap: 8px 12px; padding-block: 0 16px; } .reading-tools input[type="search"] { font-size: 16px; } }
+@media (max-width: 999px) {
+  .reading-tools { grid-template-columns: minmax(0, 1fr); gap: 8px; padding-block: 0 12px; }
+  .reading-filter-status { grid-column: 1; grid-row: 3; justify-content: space-between; gap: 4px 12px; }
+}
+@media (max-width: 600px) { .reading-tools input[type="search"] { font-size: 16px; } }
 @media print { .reading-tools, .reading-no-results { display: none; } .notebook-reading .journal-bookmark[hidden] { display: flex; } }

@@ -31,7 +31,9 @@
   --surface-inset: #edf0e5;
   --surroundings: #dfe7df;
   --caption-ink: #6a5b44;
-  --metadata-font: .85rem/1.5 var(--font-reading);
+  --metadata-font: .85rem/1.5 var(--font-interface);
+  --control-font: .875rem/1.5 var(--font-interface);
+  --code-font: .9375rem/1.7 var(--font-label);
   --caption-font: italic .95rem/1.65 var(--font-reading);
   --notebook-width: 1280px;
   --notebook-gutter: 48px;

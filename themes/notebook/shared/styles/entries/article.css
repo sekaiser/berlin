@@ -1,10 +1,16 @@
 .article-backlinks { margin: 0 0 2.25rem; }
-.article-backlinks h2 { margin: 0 0 1.2rem; font-size: 1.45rem; color: #273b32; }
-.article-backlinks ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 1.5rem; }
-.article-backlinks li { border-inline-start: 2px solid #b77d59; padding-inline-start: 1.15rem; max-width: 70ch; }
-.backlink-title { font-size: 1.1rem; color: #954829; text-decoration-thickness: 1px; text-underline-offset: .2em; }
-.article-backlinks blockquote { margin: .5rem 0 0; padding: 0; border: 0; font-size: .95rem; line-height: 1.65; color: #4c5b4b; }
+.article-backlinks h2 { margin: 0 0 1.2rem; font-size: 1.45rem; color: var(--ink); }
+.article-backlinks ul { list-style: none; padding: 0; margin: 0; }
+.backlink-sources { display: grid; gap: 24px; }
+.backlink-source { border-inline-start: 2px solid var(--accent-rule); padding-inline-start: 18px; max-width: 70ch; }
+.backlink-title { font: 400 1.2rem/1.4 var(--font-display); color: var(--ink); text-decoration-color: var(--accent-rule); text-decoration-thickness: 1px; text-underline-offset: .2em; }
+.article-backlinks blockquote { margin: .5rem 0 0; padding: 0; border: 0; font: .95rem/1.65 var(--font-reading); color: var(--muted); overflow-wrap: anywhere; }
+.backlink-more { margin-top: 4px; }
+.backlink-more summary { width: fit-content; min-height: 44px; align-content: center; font: var(--control-font); color: var(--accent); }
+.backlink-more .backlink-passages { display: grid; gap: 20px; padding-block: 8px 12px; }
+.backlink-passages a { font: var(--control-font); color: var(--accent); text-underline-offset: .2em; }
+.backlink-context { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .document-reference { scroll-margin-top: 7rem; }
 .document-reference:target { background: #f3e3c9; outline: 2px solid #b77d59; outline-offset: 3px; }
-.backlink-title:focus-visible { outline: 2px solid #954829; outline-offset: 4px; }
-@media (max-width: 600px) { .article-backlinks li { padding-inline-start: .85rem; } }
+.article-backlinks :focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+@media (max-width: 600px) { .backlink-source { padding-inline-start: 14px; } }

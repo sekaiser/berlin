@@ -62,6 +62,8 @@ test('clean example builds real page families, links, controls and palette at bo
       '---', 'preview:', '  source: /static/pics/study/engineering-desk.webp',
       '  alt: \'A "desk" <not markup>\'', '  width: 1254', '  height: 1254',
     ].join('\n')));
+    const guide = path.join(root, 'content/notes/guide.md');
+    fs.appendFileSync(guide, '\n\nInspect [another passage](id:theme-components).\n\nReturn to the [palette](id:theme-components#palette).\n');
     const pipeline = path.join(root, 'berlin.pipeline.rhai');
     fs.writeFileSync(pipeline, fs.readFileSync(pipeline, 'utf8')
       .replace('http://localhost:8082', url)
@@ -93,6 +95,17 @@ test('clean example builds real page families, links, controls and palette at bo
     const article = read('notes/component-specimens.html');
     assert.match(article, /class="study-page"/);
     assert.match(article, /class="article-backlinks"/);
+    const backlinks = article.match(/<section class="article-backlinks"[\s\S]*?<\/section>/)[0];
+    assert.equal([...backlinks.matchAll(/class="backlink-source"/g)].length, 1);
+    assert.equal([...backlinks.matchAll(/class="backlink-title"/g)].length, 1);
+    assert.match(backlinks, /<summary>2 more passages<\/summary>/);
+    assert.doesNotMatch(backlinks, /<details[^>]*\bopen\b/);
+    for (const anchor of ['bln-ref-1', 'bln-ref-2', 'bln-ref-3']) {
+      assert.ok(backlinks.includes(`${url}/notes/inspecting-the-theme.html#${anchor}`));
+    }
+    const singleBacklink = read('notes/inspecting-the-theme.html').match(/<section class="article-backlinks"[\s\S]*?<\/section>/)[0];
+    assert.match(singleBacklink, /class="backlink-title"/);
+    assert.doesNotMatch(singleBacklink, /<details/);
     assert.match(article, /class="code-copy"/);
     assert.match(article, /id="palette"/);
     assert.match(read('feed.html'), /reading-tag-options/);

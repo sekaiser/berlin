@@ -11,7 +11,7 @@
 .code-copy:disabled { cursor: wait; }
 .code-status:empty { display: none; }
 .code-status:not(:empty) { flex-basis: 100%; }
-.code-content { position: relative; isolation: isolate; display: flex; align-items: stretch; font: .85rem/1.7 var(--font-label); tab-size: 4; }
+.code-content { position: relative; isolation: isolate; display: flex; align-items: stretch; font: var(--code-font); tab-size: 4; }
 .code-listing pre { position: relative; z-index: 1; flex: 1; min-width: 0; margin: 0; padding: 18px 20px; border-radius: 0; background: transparent; font: inherit; white-space: pre; overflow-wrap: normal; }
 .code-caption { flex: 1 1 220px; color: var(--ink); }
 .code-gutter { flex: none; padding: 18px 0; min-width: 3.2em; background: #f5f6f1; border-right: 1px solid #e5e8dc; user-select: none; }

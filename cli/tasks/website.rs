@@ -569,6 +569,7 @@ impl<'a> RenderSession<'a> {
 
 #[derive(Serialize)]
 struct BacklinkView {
+    source_id: String,
     title: String,
     path: String,
     excerpt: String,
@@ -592,6 +593,7 @@ fn backlink_views(
                 excerpt.push('…');
             }
             Ok(BacklinkView {
+                source_id: source.id.0.clone(),
                 title: source
                     .metadata
                     .title
@@ -683,6 +685,10 @@ mod tests {
         assert_eq!(website.documents().len(), 2);
         assert_eq!(website.references().incoming(&target.id).len(), 2);
         let views = backlink_views(&website, &target).unwrap();
+        assert_eq!(views.len(), 2);
+        assert_eq!(views[0].source_id, "source");
+        assert_eq!(views[1].source_id, "source");
+        assert_eq!(views[1].path, "/notes/source.html#bln-ref-2");
         assert_eq!(views[0].excerpt, "Builds on target.");
         assert_eq!(views[0].path, "/notes/source.html#bln-ref-1");
         assert!(!serde_json::to_string(&website).unwrap().contains("SECRET"));

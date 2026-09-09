@@ -101,8 +101,8 @@ The authoritative common palette is `shared/styles/tokens.css`:
 
 Moss, sky, apricot and lavender tokens support tags and secondary surfaces.
 The same file defines the display, reading, interface and monospace font stacks,
-metadata and caption typography, outer width and base gutter. Responsive layouts
-override the gutter at their established breakpoints, not the palette.
+metadata, control, code and caption typography, outer width and base gutter.
+Responsive layouts override the gutter at their established breakpoints, not the palette.
 
 | Entry point | Responsibility |
 | --- | --- |
@@ -147,7 +147,7 @@ belong in `styles/entries/project.css` and remain a separate compiled entry.
 | Entry / bookmark | Macros with escaped labels, optional artwork and authored annotation |
 | Code | Berlin renderer markup; exact copying, wrapping, stable line references and inline notes |
 | Search | Berlin index/client; labels, live status, real result links and empty/error states |
-| Backlinks | Derived public references, linking to the source passage |
+| Backlinks | Grouped by stable source ID; first passage visible, additional passage links in a native disclosure |
 | Discussion | Explicit frontmatter opt-in; reader consent before loading the external widget |
 | Footer | Real profile links when configured; accessible icon labels and native back-to-top link |
 

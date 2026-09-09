@@ -146,7 +146,7 @@ body:has(.study-page, .notebook-page) .site-footer {
 }
 .study-prose .code-toolbar {
   background: transparent; border: 0; padding: 12px 16px 0;
-  gap: 6px 14px; font-size: .8125rem; color: #63705c;
+  gap: 6px 14px; font: var(--control-font); color: var(--muted);
 }
 .study-prose .code-caption { color: #565d50; }
 .study-prose .code-language { font-weight: 400; }
@@ -161,7 +161,6 @@ body:has(.study-page, .notebook-page) .site-footer {
 .study-prose .code-listing.is-wrapped pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .study-prose .code-listing.is-wrapped .code-gutter { display: none; }
 .study-prose .code-copy:hover { color: var(--accent); }
-.study-prose .code-content { font-size: .875rem; }
 /* Syntect's InspiredGitHub output uses inline colors. Override only the four
    low-contrast colors here, not Berlin's shared renderer or other site themes.
    Browser tests check every emitted token against ordinary and highlighted rows. */
@@ -182,7 +181,7 @@ body:has(.study-page, .notebook-page) .site-footer {
 .study-prose .code-gutter .code-note-link { color: #805337; }
 /* Annotated listings use real rows: disclosures enter normal document flow,
    so wrapping or opening a note never relies on fixed vertical offsets. */
-.study-prose .code-lines { container-type: inline-size; overflow: auto; padding: 18px 0; font: .875rem/1.7 var(--font-label); tab-size: 4; }
+.study-prose .code-lines { container-type: inline-size; overflow: auto; padding: 18px 0; font: var(--code-font); tab-size: 4; }
 .study-prose .code-rows { width: max-content; min-width: 100%; }
 .study-prose .code-row { position: relative; scroll-margin-top: 100px; }
 .study-prose .code-row > pre { max-width: none; margin: 0; padding: 0 64px 0 16px; overflow: visible; font: inherit; min-height: 1.7em; }

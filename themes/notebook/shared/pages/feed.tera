@@ -16,12 +16,14 @@
   <form class="reading-tools" role="search" aria-label="Search saved reading" hidden>
     <label class="reading-query">Find a reference<input type="search" name="q" placeholder="Title, tag, or a phrase" aria-controls="reading-entries" autocomplete="off"></label>
     <fieldset class="reading-tags" aria-describedby="reading-tags-hint">
-      <legend>Tags</legend>
-      <p id="reading-tags-hint">Match all selected tags. Counts show matches with that tag included.</p>
+      <legend>Tags <span>· match all</span></legend>
+      <p id="reading-tags-hint" class="reading-tag-description">Select tags to match all of them. Each count includes that tag in the current filters.</p>
       <div class="reading-tag-options"></div>
     </fieldset>
-    <output aria-live="polite" aria-atomic="true"></output>
-    <button type="reset">Clear filters</button>
+    <div class="reading-filter-status">
+      <output aria-live="polite" aria-atomic="true"></output>
+      <button type="reset">Clear filters</button>
+    </div>
   </form>
   <p class="reading-no-results" hidden>No matching references. Try another phrase or clear the filters.</p>
   <div class="journal-library" id="reading-entries">
