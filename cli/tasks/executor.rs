@@ -287,7 +287,7 @@ fn output_path(node: &PipelineNode) -> Result<&Path, Error> {
         .with_context(|| format!("pipeline node '{}' has no output path", node.id))
 }
 
-fn runtime_input<'a, T>(
+pub(super) fn runtime_input<'a, T>(
     node: &PipelineNode,
     artifacts: &'a HashMap<NodeId, RuntimeArtifact>,
     index: usize,

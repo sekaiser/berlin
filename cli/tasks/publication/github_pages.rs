@@ -29,19 +29,24 @@ impl GitHubPages {
     }
 
     fn api<T: serde::de::DeserializeOwned>(&self, resource: &str) -> Result<T, Error> {
-        let response = run(Command::new("gh").args([
-            "api",
-            "--hostname",
-            "github.com",
-            "--method",
-            "GET",
-            "-H",
-            "Accept: application/vnd.github+json",
-            "-H",
-            "X-GitHub-Api-Version: 2022-11-28",
-            &format!("repos/{}{}", self.repository, resource),
-        ]))?;
-        Ok(serde_json::from_str(&response)?)
+        let resource = format!("repos/{}{}", self.repository, resource);
+        let response = run(
+            Command::new("gh").args([
+                "api",
+                "--hostname",
+                "github.com",
+                "--method",
+                "GET",
+                "-H",
+                "Accept: application/vnd.github+json",
+                "-H",
+                "X-GitHub-Api-Version: 2022-11-28",
+                &resource,
+            ]),
+            &format!("query GitHub {resource}"),
+        )?;
+        serde_json::from_str(&response)
+            .with_context(|| format!("invalid response from GitHub {resource}"))
     }
 
     fn git(&self, args: &[&str]) -> Result<String, Error> {
@@ -78,7 +83,10 @@ impl GitHubPages {
                 "credential.helper=!gh auth git-credential",
             ])
             .args(args);
-        run(&mut command)
+        run(
+            &mut command,
+            &format!("run git {}", args.first().copied().unwrap_or("command")),
+        )
     }
 
     fn commit_snapshot(
@@ -189,22 +197,30 @@ impl PagesRemote for GitHubPages {
     fn observe(&mut self, commit: &Commit) -> Result<Observation, Error> {
         let head = self.head()?;
         if head.as_deref() == Some(commit.sha.as_str()) {
-            let build: Build = self.api("/pages/builds/latest")?;
-            return Ok(if build.commit == commit.sha {
-                match build.status.as_str() {
-                    "built" => Observation::Live,
-                    "errored" => Observation::Failed,
-                    _ => Observation::Uploaded,
-                }
-            } else {
-                Observation::Uploaded
-            });
+            return Ok(build_observation(commit, self.api("/pages/builds/latest")));
         }
         Ok(if head == commit.parent {
-            Observation::NotUploaded
+            Observation::AtParent
         } else {
             Observation::Conflict
         })
+    }
+}
+
+/// The branch already confirms this commit. An unavailable or stale build cannot
+/// undo that evidence, and only a matching successful build establishes liveness.
+fn build_observation(commit: &Commit, build: Result<Build, Error>) -> Observation {
+    match build {
+        Ok(build) if build.commit == commit.sha => match build.status.as_str() {
+            "built" => Observation::Live,
+            "errored" => Observation::Failed,
+            _ => Observation::Uploaded,
+        },
+        Ok(_) => Observation::Uploaded,
+        Err(error) => {
+            log::warn!("Commit is uploaded; Pages build status is unavailable: {error:#}");
+            Observation::Uploaded
+        }
     }
 }
 
@@ -222,7 +238,7 @@ fn parse_head(response: &str) -> Result<Option<String>, Error> {
     Ok(Some((*sha).into()))
 }
 
-fn run(command: &mut Command) -> Result<String, Error> {
+fn run(command: &mut Command, operation: &str) -> Result<String, Error> {
     // Spool output to files so waiting cannot deadlock on a full stdout/stderr pipe.
     let stdout = tempfile::NamedTempFile::new()?;
     let stderr = tempfile::NamedTempFile::new()?;
@@ -231,14 +247,14 @@ fn run(command: &mut Command) -> Result<String, Error> {
         .stdout(stdout.reopen()?)
         .stderr(stderr.reopen()?)
         .spawn()
-        .context("unable to start Git/gh; install both and authenticate gh")?;
+        .with_context(|| format!("unable to {operation}; install Git/gh and authenticate gh"))?;
     let timer = Instant::now();
     loop {
         if let Some(status) = child.try_wait()? {
             if !status.success() {
                 // Do not persist subprocess diagnostics that might include credentials.
                 bail!(
-                    "Git/gh command failed ({status}); check authentication, Pages settings, and branch permissions"
+                    "unable to {operation} ({status}); check gh auth status, Pages settings, and branch permissions"
                 );
             }
             return Ok(fs::read_to_string(stdout.path())?);
@@ -246,7 +262,7 @@ fn run(command: &mut Command) -> Result<String, Error> {
         if timer.elapsed() >= Duration::from_secs(45) {
             let _ = child.kill();
             let _ = child.wait();
-            bail!("Git/gh command timed out; remote outcome may be unknown");
+            bail!("timed out trying to {operation}; remote outcome may be unknown");
         }
         std::thread::sleep(Duration::from_millis(25));
     }
@@ -256,6 +272,68 @@ fn run(command: &mut Command) -> Result<String, Error> {
 mod tests {
     use super::*;
     use crate::tasks::release::Manifest;
+
+    #[test]
+    fn build_observation_requires_a_successful_build_for_the_expected_commit() {
+        let commit = Commit {
+            sha: "a".repeat(40),
+            parent: None,
+        };
+        for (status, expected) in [
+            ("built", Observation::Live),
+            ("errored", Observation::Failed),
+            ("building", Observation::Uploaded),
+            ("queued", Observation::Uploaded),
+            ("unrecognized", Observation::Uploaded),
+        ] {
+            assert_eq!(
+                build_observation(
+                    &commit,
+                    Ok(Build {
+                        commit: commit.sha.clone(),
+                        status: status.into(),
+                    })
+                ),
+                expected
+            );
+            assert_eq!(
+                build_observation(
+                    &commit,
+                    Ok(Build {
+                        commit: "b".repeat(40),
+                        status: status.into(),
+                    })
+                ),
+                Observation::Uploaded,
+                "another release's build must not decide this one's status"
+            );
+        }
+    }
+
+    #[test]
+    fn unavailable_build_status_does_not_erase_upload_confirmation() {
+        let commit = Commit {
+            sha: "a".repeat(40),
+            parent: None,
+        };
+        assert_eq!(
+            build_observation(&commit, Err(anyhow::anyhow!("Pages API unavailable"))),
+            Observation::Uploaded
+        );
+    }
+
+    #[test]
+    fn command_errors_identify_the_operation_without_echoing_subprocess_output() {
+        let error = run(
+            Command::new("git").arg("--invalid-berlin-option=synthetic-secret"),
+            "inspect publishing branch",
+        )
+        .unwrap_err();
+        let message = format!("{error:#}");
+        assert!(message.contains("inspect publishing branch"));
+        assert!(!message.contains("synthetic-secret"));
+        assert!(!message.contains("invalid-berlin-option"));
+    }
 
     #[test]
     fn git_snapshot_preserves_exact_bytes_and_reconstructs_the_same_commit() {
@@ -278,6 +356,7 @@ mod tests {
                     repository: "owner/site".into(),
                 },
                 files: release::inventory(&root.path().join("site")).unwrap(),
+                documents: None,
             },
         };
         let mut commits = Vec::new();
@@ -334,6 +413,8 @@ mod tests {
                 destination,
             ])
             .unwrap();
+        fs::write(remote.workspace.path().join("old.txt"), "previous release").unwrap();
+        remote.git(&["add", "--all"]).unwrap();
         let tree = remote.git(&["write-tree"]).unwrap();
         let initial = Commit {
             sha: remote
@@ -344,6 +425,14 @@ mod tests {
             parent: None,
         };
         remote.push_to(&initial, destination).unwrap();
+        fs::remove_file(remote.workspace.path().join("old.txt")).unwrap();
+        fs::write(
+            remote.workspace.path().join("index.html"),
+            "updated release",
+        )
+        .unwrap();
+        remote.git(&["add", "--all"]).unwrap();
+        let tree = remote.git(&["write-tree"]).unwrap();
         let next = |message| Commit {
             sha: remote
                 .git(&[
@@ -378,6 +467,24 @@ mod tests {
                 .unwrap()
                 .trim(),
             initial.sha
+        );
+        assert_eq!(
+            remote
+                .git(&["ls-tree", "-r", "--name-only", &accepted.sha])
+                .unwrap(),
+            "index.html\n"
+        );
+        assert_eq!(
+            remote
+                .git(&["show", &format!("{}:index.html", accepted.sha)])
+                .unwrap(),
+            "updated release"
+        );
+        assert_eq!(
+            remote
+                .git(&["show", &format!("{}:old.txt", initial.sha)])
+                .unwrap(),
+            "previous release"
         );
     }
 }

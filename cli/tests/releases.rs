@@ -85,10 +85,10 @@ fn prepared_directory_is_copied_without_changes_or_rebuilding() {
         original,
         "support files must not be added to the source"
     );
-    assert_eq!(
+    assert_ne!(
         id,
         prepare(root.path()),
-        "same bytes and declaration give the same release ID"
+        "native releases additionally bind their mapped document inventory"
     );
 
     fs::write(prepared.join("sitemap.xml"), "prepared sitemap").unwrap();
@@ -365,6 +365,43 @@ fn declared_deployment_does_not_change_build_behavior() {
             .status
             .success()
     );
+}
+
+#[test]
+fn recorded_publications_remain_inspectable_without_the_authoring_configuration() {
+    let root = fixture();
+    let id = prepare(root.path());
+    let directory = root.path().join(".berlin/publications");
+    fs::create_dir(&directory).unwrap();
+    // Schema 1 is the existing on-disk contract, not a newly generated record.
+    let record = serde_json::json!({
+        "schema_version": 1,
+        "release": id,
+        "commit": { "sha": "a".repeat(40), "parent": "b".repeat(40) },
+        "status": "uploaded",
+        "updated_at_unix_seconds": 1,
+        "live_observed_at_unix_seconds": null,
+    });
+    let path = directory.join(format!("{id}.json"));
+    let bytes = serde_json::to_vec_pretty(&record).unwrap();
+    fs::write(&path, &bytes).unwrap();
+    fs::write(
+        root.path().join("berlin.pipeline.rhai"),
+        "invalid authoring configuration",
+    )
+    .unwrap();
+
+    let output = success(run(root.path(), &["publication", &id]));
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&output).unwrap(),
+        record
+    );
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        bytes,
+        "local inspection does not refresh a receipt"
+    );
+    assert!(!root.path().join("_site").exists());
 }
 
 #[cfg(unix)]

@@ -231,6 +231,7 @@ dependencies = [
  "berlin_content",
  "berlin_document",
  "serde",
+ "url",
 ]
 
 [[package]]

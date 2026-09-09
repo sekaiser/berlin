@@ -321,7 +321,7 @@ fn register_route(
 }
 
 /// Returns the document's output-relative route, also used for public links.
-fn document_route(document: &Document) -> Result<String, Error> {
+pub(super) fn document_route(document: &Document) -> Result<String, Error> {
     let title = document
         .metadata
         .title

@@ -29,6 +29,21 @@ pub(crate) enum Status {
     Conflict,
 }
 
+impl Status {
+    fn after_observation(self, observed: Observation) -> Self {
+        match observed {
+            Observation::AtParent if matches!(self, Self::Prepared | Self::Unknown) => {
+                Self::Prepared
+            }
+            // Seeing the old head is not proof that an acknowledged push never happened.
+            Observation::AtParent | Observation::Conflict => Self::Conflict,
+            Observation::Uploaded => Self::Uploaded,
+            Observation::Live => Self::Live,
+            Observation::Failed => Self::Failed,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Publication {
@@ -40,8 +55,28 @@ pub(crate) struct Publication {
     live_observed_at_unix_seconds: Option<u64>,
 }
 
+impl Publication {
+    fn prepared(release: &WebsiteRelease, commit: Commit) -> Self {
+        Self {
+            schema_version: 1,
+            release: release.id.clone(),
+            commit,
+            status: Status::Prepared,
+            updated_at_unix_seconds: 0,
+            live_observed_at_unix_seconds: None,
+        }
+    }
+
+    fn refresh(&mut self, remote: &mut impl PagesRemote) -> Result<(), Error> {
+        self.status = self.status.after_observation(remote.observe(&self.commit)?);
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Observation {
-    NotUploaded,
+    /// The branch is at the recorded parent, or still absent for an initial push.
+    AtParent,
     Uploaded,
     Live,
     Failed,
@@ -77,32 +112,21 @@ fn publish_with(
     let previous = read(path, &release.id)?;
     remote.preflight(release)?;
     if let Some(mut record) = previous {
-        let observed = remote.observe(&record.commit)?;
-        if !matches!(observed, Observation::NotUploaded) {
-            record.status = status(observed);
-            save(path, &mut record)?;
-            return Ok(record);
-        }
-        if !matches!(record.status, Status::Prepared | Status::Unknown) {
-            record.status = Status::Conflict;
-            save(path, &mut record)?;
+        record.refresh(remote)?;
+        save(path, &mut record)?;
+        if record.status != Status::Prepared {
             return Ok(record);
         }
         let commit = remote.prepare(release)?;
         if commit != record.commit {
+            record.status = Status::Conflict;
+            save(path, &mut record)?;
             bail!("remote changed during recovery; inspect the publication before retrying");
         }
         push_and_record(path, record, remote)
     } else {
         let commit = remote.prepare(release)?;
-        let record = Publication {
-            schema_version: 1,
-            release: release.id.clone(),
-            commit,
-            status: Status::Prepared,
-            updated_at_unix_seconds: 0,
-            live_observed_at_unix_seconds: None,
-        };
+        let record = Publication::prepared(release, commit);
         push_and_record(path, record, remote)
     }
 }
@@ -117,19 +141,17 @@ fn push_and_record(
     if let Err(error) = remote.push(&record.commit) {
         record.status = Status::Unknown;
         save(path, &mut record)?;
-        return Err(
-            error.context("push outcome is unknown; use publication --refresh before retrying")
-        );
+        return Err(error.context(format!(
+            "push outcome is unknown; run 'bln publication {} --refresh' before retrying",
+            record.release
+        )));
     }
     record.status = Status::Uploaded;
     save(path, &mut record)?;
     // Upload acknowledgment is useful even when Pages cannot yet be queried.
-    if let Ok(observed) = remote.observe(&record.commit) {
-        record.status = match observed {
-            Observation::NotUploaded => Status::Unknown,
-            other => status(other),
-        };
-        save(path, &mut record)?;
+    match record.refresh(remote) {
+        Ok(()) => save(path, &mut record)?,
+        Err(error) => log::warn!("Upload acknowledged; unable to refresh publication: {error:#}"),
     }
     Ok(record)
 }
@@ -145,16 +167,7 @@ pub(crate) fn inspect(project: &Project, id: &str, refresh: bool) -> Result<Publ
     if refresh {
         let mut remote = github_pages::GitHubPages::new(&release)?;
         remote.preflight(&release)?;
-        let observed = remote.observe(&record.commit)?;
-        record.status = match observed {
-            Observation::NotUploaded
-                if matches!(record.status, Status::Prepared | Status::Unknown) =>
-            {
-                Status::Prepared
-            }
-            Observation::NotUploaded => Status::Conflict,
-            other => status(other),
-        };
+        record.refresh(&mut remote)?;
         save(&path, &mut record)?;
     }
     Ok(record)
@@ -169,16 +182,6 @@ fn save(path: &Path, record: &mut Publication) -> Result<(), Error> {
         record.live_observed_at_unix_seconds = Some(now);
     }
     release::atomic_json(path, record)
-}
-
-fn status(observed: Observation) -> Status {
-    match observed {
-        Observation::NotUploaded => Status::Prepared,
-        Observation::Uploaded => Status::Uploaded,
-        Observation::Live => Status::Live,
-        Observation::Failed => Status::Failed,
-        Observation::Conflict => Status::Conflict,
-    }
 }
 
 fn read(path: &Path, id: &str) -> Result<Option<Publication>, Error> {
@@ -201,161 +204,4 @@ fn read(path: &Path, id: &str) -> Result<Option<Publication>, Error> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::tasks::release::Manifest;
-
-    struct FakeRemote {
-        path: std::path::PathBuf,
-        pushes: usize,
-        uploaded: bool,
-        fail_after_push: bool,
-        conflict: bool,
-    }
-    fn commit() -> Commit {
-        Commit {
-            sha: "a".repeat(40),
-            parent: Some("b".repeat(40)),
-        }
-    }
-    impl PagesRemote for FakeRemote {
-        fn preflight(&mut self, _: &WebsiteRelease) -> Result<(), Error> {
-            Ok(())
-        }
-        fn prepare(&mut self, _: &WebsiteRelease) -> Result<Commit, Error> {
-            Ok(commit())
-        }
-        fn push(&mut self, _: &Commit) -> Result<(), Error> {
-            let record: Publication = serde_json::from_slice(&fs::read(&self.path)?).unwrap();
-            assert_eq!(record.status, Status::Prepared, "intent must precede push");
-            self.pushes += 1;
-            self.uploaded = true;
-            if self.fail_after_push {
-                bail!("response lost");
-            }
-            Ok(())
-        }
-        fn observe(&mut self, _: &Commit) -> Result<Observation, Error> {
-            Ok(if self.conflict {
-                Observation::Conflict
-            } else if self.uploaded {
-                Observation::Live
-            } else {
-                Observation::NotUploaded
-            })
-        }
-    }
-    fn fixture(root: &Path) -> (WebsiteRelease, FakeRemote) {
-        (
-            WebsiteRelease {
-                id: "1".repeat(64),
-                directory: root.join("release"),
-                manifest: Manifest {
-                    schema_version: 1,
-                    berlin_version: "test".into(),
-                    pipeline: "site".into(),
-                    website_node: "website".into(),
-                    url: "https://example.com".parse().unwrap(),
-                    destination: berlin_core::DeploymentTarget::GitHubPages {
-                        repository: "owner/site".into(),
-                    },
-                    files: vec![],
-                },
-            },
-            FakeRemote {
-                path: root.join("publication.json"),
-                pushes: 0,
-                uploaded: false,
-                fail_after_push: false,
-                conflict: false,
-            },
-        )
-    }
-
-    #[test]
-    fn repeated_publish_reconciles_without_another_write() {
-        let root = tempfile::tempdir().unwrap();
-        let (release, mut remote) = fixture(root.path());
-        let path = remote.path.clone();
-        assert_eq!(
-            publish_with(&release, &path, &mut remote).unwrap().status,
-            Status::Live
-        );
-        assert_eq!(
-            publish_with(&release, &path, &mut remote).unwrap().status,
-            Status::Live
-        );
-        assert_eq!(remote.pushes, 1);
-    }
-
-    #[test]
-    fn lost_response_does_not_duplicate_a_successful_push() {
-        let root = tempfile::tempdir().unwrap();
-        let (release, mut remote) = fixture(root.path());
-        remote.fail_after_push = true;
-        let path = remote.path.clone();
-        assert!(publish_with(&release, &path, &mut remote).is_err());
-        assert_eq!(
-            read(&path, &release.id).unwrap().unwrap().status,
-            Status::Unknown
-        );
-        assert_eq!(
-            publish_with(&release, &path, &mut remote).unwrap().status,
-            Status::Live
-        );
-        assert_eq!(remote.pushes, 1);
-    }
-
-    #[test]
-    fn interrupted_prepared_operation_can_retry_only_the_same_commit() {
-        let root = tempfile::tempdir().unwrap();
-        let (release, mut remote) = fixture(root.path());
-        let path = remote.path.clone();
-        release::atomic_json(
-            &path,
-            &Publication {
-                schema_version: 1,
-                release: release.id.clone(),
-                commit: commit(),
-                status: Status::Prepared,
-                updated_at_unix_seconds: 0,
-                live_observed_at_unix_seconds: None,
-            },
-        )
-        .unwrap();
-        assert_eq!(
-            publish_with(&release, &path, &mut remote).unwrap().status,
-            Status::Live
-        );
-        assert_eq!(remote.pushes, 1);
-    }
-
-    #[test]
-    fn branch_conflicts_never_overwrite_remote_changes() {
-        let root = tempfile::tempdir().unwrap();
-        let (release, mut remote) = fixture(root.path());
-        let path = remote.path.clone();
-        publish_with(&release, &path, &mut remote).unwrap();
-        remote.conflict = true;
-        assert_eq!(
-            publish_with(&release, &path, &mut remote).unwrap().status,
-            Status::Conflict
-        );
-        assert_eq!(remote.pushes, 1);
-    }
-
-    #[test]
-    fn unavailable_ledger_prevents_remote_writes() {
-        let root = tempfile::tempdir().unwrap();
-        let (release, mut remote) = fixture(root.path());
-        assert!(
-            publish_with(
-                &release,
-                &root.path().join("missing/state.json"),
-                &mut remote
-            )
-            .is_err()
-        );
-        assert_eq!(remote.pushes, 0);
-    }
-}
+mod tests;

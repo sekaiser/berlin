@@ -171,6 +171,30 @@ Both paths copy files before adding support assets; the supplied directory stays
 unchanged. Imported releases do not attest to the build or external checks that
 produced their files.
 
+Native releases also bind a versioned inventory of the selected renderer's public,
+mapped documents. Stable IDs connect revisions across title and route changes;
+separate content and metadata hashes exclude provenance and presentation. The
+inventory contains no document bodies or source paths and is not published as a
+site asset. Native manifests use schema 2; schema-1 bundles and their IDs remain
+readable. Imported directories carry no document inventory.
+
+`release-diff` verifies two local bundles and compares file inventories, release
+metadata, and document revisions where both inventories are available. Missing
+document history is reported explicitly, not reconstructed from current inputs.
+The command does not load authoring inputs, acquire the recovery lock, or read or
+write publication state. Comparisons do not establish what is live remotely or
+decide whether an editorial change warrants an announcement.
+
+`release-drafts` consumes the verified comparison to prepare review-only LinkedIn
+announcement starting points for added or content-modified documents. It requires
+two native inventories for the same website URL and destination, and uses the
+shared LinkedIn renderer's diagnostics without fabricating semantic articles.
+Plans contain release identities, public titles/URLs, revision hashes, and draft
+text, not source bodies. Preview is read-only; explicit export creates a new
+directory and never overwrites an existing review. It neither checks live state
+nor publishes, schedules, or records social posts. The full-document Rhai
+`render_linkedin` operation remains separate.
+
 The GitHub Pages adapter publishes only to a dedicated `gh-pages` branch and
 requires matching, pre-existing Pages configuration. Intent and outcomes are
 synchronously persisted per release under `.berlin/publications`, independently

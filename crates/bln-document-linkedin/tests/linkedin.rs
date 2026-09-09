@@ -131,3 +131,54 @@ fn derives_portable_artifact_names_from_source_provenance() {
     );
     assert_eq!(artifact_name("file:///"), "document");
 }
+
+#[test]
+fn announcement_projection_needs_no_fabricated_document_or_summary() {
+    use berlin_document_linkedin::{Announcement, AnnouncementKind};
+    let source = berlin_content::DocumentRef(ContentId("stable-id".into()));
+    let url = "https://example.com/notebook/notes/json.html"
+        .parse()
+        .unwrap();
+    for (kind, prefix) in [
+        (AnnouncementKind::New, "New"),
+        (AnnouncementKind::Updated, "Updated"),
+    ] {
+        let draft = Renderer::default().render_announcement(&Announcement {
+            source: &source,
+            title: "Processing\nJSON\twith Rust",
+            url: &url,
+            kind,
+        });
+        assert_eq!(draft.source, source);
+        assert_eq!(draft.artifact_name, "json");
+        assert_eq!(
+            draft.text,
+            format!("{prefix}: Processing JSON with Rust\n\n{url}")
+        );
+        assert_eq!(draft.character_count, draft.text.chars().count());
+        assert!(draft.diagnostics.is_empty());
+    }
+}
+
+#[test]
+fn announcements_retain_over_limit_text_for_review_and_count_unicode_characters() {
+    use berlin_document_linkedin::{Announcement, AnnouncementKind};
+    let source = berlin_content::DocumentRef(ContentId("note".into()));
+    let url = "https://example.com/notes/note.html".parse().unwrap();
+    let title = "日".repeat(LINKEDIN_POST_CHARACTER_LIMIT);
+    let draft = Renderer::default().render_announcement(&Announcement {
+        source: &source,
+        title: &title,
+        url: &url,
+        kind: AnnouncementKind::New,
+    });
+    assert!(draft.text.contains(&title));
+    assert!(draft.character_count < draft.text.len());
+    assert_eq!(
+        draft.diagnostics,
+        [LinkedInDraftDiagnostic::CharacterLimitExceeded {
+            limit: LINKEDIN_POST_CHARACTER_LIMIT,
+            actual: draft.character_count,
+        }]
+    );
+}

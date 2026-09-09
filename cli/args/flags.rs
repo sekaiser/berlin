@@ -50,6 +50,19 @@ pub struct ReleaseFlags {
     pub from_directory: Option<std::path::PathBuf>,
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReleaseDiffFlags {
+    pub before: String,
+    pub after: String,
+    pub json: bool,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReleaseDraftsFlags {
+    pub before: String,
+    pub after: String,
+    pub json: bool,
+    pub output: Option<std::path::PathBuf>,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PublishFlags {
     pub release: String,
     pub confirm: String,
@@ -64,6 +77,8 @@ pub struct PublicationFlags {
 pub enum BerlinSubcommand {
     Release(ReleaseFlags),
     ReleasePlan(String),
+    ReleaseDiff(ReleaseDiffFlags),
+    ReleaseDrafts(ReleaseDraftsFlags),
     Publish(PublishFlags),
     Publication(PublicationFlags),
     Build(BuildFlags),
@@ -129,6 +144,31 @@ fn clap_root() -> Command {
             Command::new("release-plan")
                 .about("Verify a sealed release and show its files and destination; no network")
                 .arg(release_arg()),
+        )
+        .subcommand(
+            Command::new("release-diff")
+                .about(
+                    "Verify and compare two sealed releases locally; no builds, writes, or network",
+                )
+                .arg(Arg::new("before").value_name("BEFORE_ID").required(true))
+                .arg(Arg::new("after").value_name("AFTER_ID").required(true))
+                .arg(
+                    Arg::new("json")
+                        .long("json")
+                        .help("Print a structured release comparison")
+                        .action(ArgAction::SetTrue),
+                ),
+        )
+        .subcommand(
+            Command::new("release-drafts")
+                .about("Preview local LinkedIn announcement drafts from two sealed releases")
+                .long_about("Draft title-and-link starting points for added or content-modified documents. Requires two native releases for the same website. Does not summarize changes, check live status, or publish. Review and edit before posting manually.")
+                .arg(Arg::new("before").value_name("BEFORE_ID").required(true))
+                .arg(Arg::new("after").value_name("AFTER_ID").required(true))
+                .arg(Arg::new("json").long("json").help("Print the structured draft plan").action(ArgAction::SetTrue))
+                .arg(Arg::new("output").long("output").value_name("NEW_DIRECTORY")
+                    .value_parser(clap::value_parser!(std::path::PathBuf))
+                    .help("Export editable text and a manifest; parent must exist, destination must not")),
         )
         .subcommand(
             Command::new("publish")
@@ -258,6 +298,17 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
         ("release-plan", args) => {
             BerlinSubcommand::ReleasePlan(args.get_one::<String>("release").unwrap().clone())
         }
+        ("release-diff", args) => BerlinSubcommand::ReleaseDiff(ReleaseDiffFlags {
+            before: args.get_one::<String>("before").unwrap().clone(),
+            after: args.get_one::<String>("after").unwrap().clone(),
+            json: args.get_flag("json"),
+        }),
+        ("release-drafts", args) => BerlinSubcommand::ReleaseDrafts(ReleaseDraftsFlags {
+            before: args.get_one::<String>("before").unwrap().clone(),
+            after: args.get_one::<String>("after").unwrap().clone(),
+            json: args.get_flag("json"),
+            output: args.get_one::<std::path::PathBuf>("output").cloned(),
+        }),
         ("publish", args) => BerlinSubcommand::Publish(PublishFlags {
             release: args.get_one::<String>("release").unwrap().clone(),
             confirm: args.get_one::<String>("confirm").unwrap().clone(),
@@ -314,6 +365,78 @@ fn selected_pipeline(args: &clap::ArgMatches) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn release_drafts_default_to_preview_and_accept_explicit_export() {
+        let parse = |args: Vec<&str>| flags_from_vec(args.into_iter().map(String::from).collect());
+        assert_eq!(
+            parse(vec!["bln", "release-drafts", "old", "new"])
+                .unwrap()
+                .subcommand,
+            BerlinSubcommand::ReleaseDrafts(ReleaseDraftsFlags {
+                before: "old".into(),
+                after: "new".into(),
+                json: false,
+                output: None
+            })
+        );
+        assert_eq!(
+            parse(vec![
+                "bln",
+                "release-drafts",
+                "old",
+                "new",
+                "--json",
+                "--output",
+                "review"
+            ])
+            .unwrap()
+            .subcommand,
+            BerlinSubcommand::ReleaseDrafts(ReleaseDraftsFlags {
+                before: "old".into(),
+                after: "new".into(),
+                json: true,
+                output: Some("review".into())
+            })
+        );
+        for args in [
+            vec!["bln", "release-drafts"],
+            vec!["bln", "release-drafts", "old"],
+            vec!["bln", "release-drafts", "old", "new", "extra"],
+            vec!["bln", "release-drafts", "old", "new", "--json=true"],
+            vec!["bln", "release-drafts", "old", "new", "--output"],
+            vec!["bln", "release-drafts", "old", "new", "--confirm", "new"],
+        ] {
+            assert!(parse(args).is_err());
+        }
+    }
+
+    #[test]
+    fn release_diff_requires_two_ordered_ids_and_supports_json() {
+        for json in [false, true] {
+            let mut args = vec!["bln", "release-diff", "before", "after"];
+            if json {
+                args.push("--json");
+            }
+            let flags = flags_from_vec(args.into_iter().map(String::from).collect()).unwrap();
+            assert_eq!(
+                flags.subcommand,
+                BerlinSubcommand::ReleaseDiff(ReleaseDiffFlags {
+                    before: "before".into(),
+                    after: "after".into(),
+                    json,
+                })
+            );
+        }
+        for args in [
+            vec!["bln", "release-diff"],
+            vec!["bln", "release-diff", "before"],
+            vec!["bln", "release-diff", "before", "after", "extra"],
+            vec!["bln", "release-diff", "before", "after", "--json=true"],
+        ] {
+            assert!(flags_from_vec(args.into_iter().map(String::from).collect()).is_err());
+        }
+    }
 
     #[test]
     fn pipeline_files_are_optional_repeatable_and_global() {

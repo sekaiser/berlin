@@ -1,15 +1,23 @@
 //! Sealed website bundles. No credentials, network calls, or source rewrites.
+pub(crate) mod announcements;
+pub(crate) mod diff;
+pub(crate) mod documents;
+
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, Error, bail};
-use berlin_core::{DeploymentTarget, Operation, PipelineLoader as _, PipelineNode, PipelinePlan};
+use berlin_core::{
+    DeploymentTarget, NodeId, Operation, PipelineLoader as _, PipelineNode, PipelinePlan,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use url::Url;
 
 use crate::project::Project;
+use documents::DocumentInventory;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -21,6 +29,9 @@ pub(crate) struct Manifest {
     pub url: Url,
     pub destination: DeploymentTarget,
     pub files: Vec<ReleaseFile>,
+    // Omission preserves the canonical serialization and IDs of schema-1 releases.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub documents: Option<DocumentInventory>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -49,6 +60,7 @@ pub(super) fn seal(
     pipeline: &str,
     plan: &PipelinePlan,
     staging: &Path,
+    artifacts: &HashMap<NodeId, super::RuntimeArtifact>,
 ) -> Result<WebsiteRelease, Error> {
     let node = website_output(plan)?;
     let source = staging.join(
@@ -56,7 +68,12 @@ pub(super) fn seal(
             .as_ref()
             .context("website has no output directory")?,
     );
-    seal_output(project, pipeline, node, &source)
+    let website = super::executor::runtime_input(node, artifacts, 0, |artifact| match artifact {
+        super::RuntimeArtifact::WebsiteAssembly(website) => Some(website),
+        _ => None,
+    })?;
+    let documents = DocumentInventory::from_website(website)?;
+    seal_output(project, pipeline, node, &source, Some(documents))
 }
 
 /// Import externally prepared bytes. The selected pipeline declares identity and
@@ -76,7 +93,8 @@ pub(crate) fn from_directory(
     let source = project.root().join(directory);
     ensure_directory(&source)?;
     let source = source.canonicalize()?;
-    seal_output(project, pipeline, node, &source)
+    // Imported bytes have no verified relationship to the current authoring inputs.
+    seal_output(project, pipeline, node, &source, None)
 }
 
 fn website_output(plan: &PipelinePlan) -> Result<&PipelineNode, Error> {
@@ -110,6 +128,7 @@ fn seal_output(
     pipeline: &str,
     node: &PipelineNode,
     source: &Path,
+    documents: Option<DocumentInventory>,
 ) -> Result<WebsiteRelease, Error> {
     let Operation::RenderWebsite { config } = &node.operation else {
         unreachable!()
@@ -167,14 +186,16 @@ fn seal_output(
     let files = inventory(&site)?;
     validate_site(&site, &files)?;
     let manifest = Manifest {
-        schema_version: 1,
+        schema_version: if documents.is_some() { 2 } else { 1 },
         berlin_version: crate::version::berlin().to_string(),
         pipeline: pipeline.into(),
         website_node: node.id.as_str().into(),
         url,
         destination,
         files,
+        documents,
     };
+    validate_document_inventory(&manifest)?;
     let id = digest(&serde_json::to_vec(&manifest)?);
     let directory = releases.join(&id);
     if directory.try_exists()? {
@@ -197,7 +218,8 @@ pub(crate) fn open(project: &Project, id: &str) -> Result<WebsiteRelease, Error>
     let manifest_path = directory.join("manifest.json");
     ensure_file(&manifest_path)?;
     let manifest: Manifest = serde_json::from_slice(&fs::read(manifest_path)?)?;
-    if manifest.schema_version != 1 || digest(&serde_json::to_vec(&manifest)?) != id {
+    validate_document_inventory(&manifest)?;
+    if digest(&serde_json::to_vec(&manifest)?) != id {
         bail!("release manifest does not match its ID");
     }
     validate_url(&manifest.url)?;
@@ -213,6 +235,14 @@ pub(crate) fn open(project: &Project, id: &str) -> Result<WebsiteRelease, Error>
         manifest,
         directory,
     })
+}
+
+fn validate_document_inventory(manifest: &Manifest) -> Result<(), Error> {
+    match (manifest.schema_version, &manifest.documents) {
+        (1, None) => Ok(()),
+        (2, Some(documents)) => documents.validate(&manifest.files),
+        _ => bail!("unsupported release schema or missing document inventory"),
+    }
 }
 
 pub(crate) fn validate_id(id: &str) -> Result<(), Error> {

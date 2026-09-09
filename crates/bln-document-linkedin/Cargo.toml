@@ -14,3 +14,4 @@ path = "lib.rs"
 berlin_content.workspace = true
 berlin_document.workspace = true
 serde.workspace = true
+url.workspace = true

@@ -37,10 +37,10 @@ Current capabilities include:
 - Static HTML through Tera templates, CSS compilation, and asset copying.
 - [Stable article URLs](docs/stable-urls.md), with optional static redirects from previous slugs.
 - Syntax-highlighted code with named listings, line references, captions, and highlights.
-- LinkedIn draft text and manifests, with character-limit diagnostics.
+- LinkedIn draft text and manifests, with character-limit diagnostics; [release announcement starting points](docs/website-releases.md#prepare-announcement-drafts-for-review) for manual review.
 - Local build receipts recording input/output hashes, provenance, and diagnostics.
 - Staged output replacement with recovery support, plus a local preview server.
-- [Sealed website releases and explicit GitHub Pages publishing](docs/website-releases.md), with integrity verification and recoverable publication records.
+- [Sealed website releases and explicit GitHub Pages publishing](docs/website-releases.md), with integrity verification, file and document revision comparisons, and recoverable publication records.
 
 The website renderer currently uses a fixed set of page families and template
 names. The [notebook theme](themes/notebook/README.md) provides reusable Tera/CSS

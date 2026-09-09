@@ -32,6 +32,12 @@ fn run_subcommand(flags: Flags) -> Result<(), Error> {
             tools::release::prepare(release_flags, flags.pipeline_files)
         }
         BerlinSubcommand::ReleasePlan(id) => tools::release::plan(&id, flags.pipeline_files),
+        BerlinSubcommand::ReleaseDiff(diff_flags) => {
+            tools::release::diff(diff_flags, flags.pipeline_files)
+        }
+        BerlinSubcommand::ReleaseDrafts(draft_flags) => {
+            tools::drafts::prepare(draft_flags, flags.pipeline_files)
+        }
         BerlinSubcommand::Publish(publish_flags) => {
             tools::release::publish(publish_flags, flags.pipeline_files)
         }

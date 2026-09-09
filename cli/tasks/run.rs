@@ -73,6 +73,7 @@ impl<'a> PipelineRun<'a> {
             self.pipeline,
             &prepared.plan,
             &self.output_root,
+            &self.artifacts,
         )
     }
 
