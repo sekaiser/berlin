@@ -12,19 +12,44 @@ use lightningcss::stylesheet::MinifyOptions;
 use lightningcss::stylesheet::ParserOptions;
 use lightningcss::stylesheet::PrinterOptions;
 
-pub(super) fn compile(source: &Path) -> Result<String, Error> {
+mod cache;
+
+#[derive(Clone, Copy, serde::Serialize)]
+enum Mode {
+    Modules,
+    Stylesheet,
+}
+
+impl Mode {
+    fn options<'a>(self) -> Result<ParserOptions<'a>, Error> {
+        match self {
+            Self::Modules => parser_options(),
+            Self::Stylesheet => Ok(ParserOptions::default()),
+        }
+    }
+}
+
+pub(super) fn compile(
+    source: &Path,
+    root: &Path,
+    cache: Option<&super::cache::ArtifactCache>,
+) -> Result<String, Error> {
     let fs = FileProvider::new();
-    compile_with(source, &fs, parser_options()?)
+    cache::compile(source, root, &fs, Mode::Modules, cache)
 }
 
 /// Theme styles use ordinary CSS, not CSS modules. Remote imports remain browser
 /// imports; local imports must stay within the merged stylesheet workspace.
-pub(super) fn compile_stylesheet(source: &Path, root: &Path) -> Result<String, Error> {
+pub(super) fn compile_stylesheet(
+    source: &Path,
+    root: &Path,
+    cache: Option<&super::cache::ArtifactCache>,
+) -> Result<String, Error> {
     let sources = StylesheetSources {
         files: FileProvider::new(),
         root: root.canonicalize()?,
     };
-    compile_with(source, &sources, ParserOptions::default())
+    cache::compile(source, root, &sources, Mode::Stylesheet, cache)
 }
 
 fn compile_with<'a, P: SourceProvider>(
@@ -115,7 +140,7 @@ mod tests {
         "#,
         )
         .unwrap();
-        let compiled = compile_stylesheet(&entry, root).unwrap();
+        let compiled = compile_stylesheet(&entry, root, None).unwrap();
         assert!(compiled.starts_with("@import"));
         assert!(compiled.contains("https://example.invalid/base.css"));
         assert!(compiled.contains("--ink:green"));
@@ -133,7 +158,35 @@ mod tests {
         fs::write(directory.path().join("outside.css"), "body { color: red; }").unwrap();
         let entry = root.join("entry.css");
         fs::write(&entry, "@import '../outside.css';").unwrap();
-        let error = compile_stylesheet(&entry, &root).unwrap_err();
+        let error = compile_stylesheet(&entry, &root, None).unwrap_err();
+        assert!(format!("{error:#}").contains("leaves the stylesheet directory"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn cache_hits_recheck_theme_import_confinement() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("styles");
+        fs::create_dir(&root).unwrap();
+        fs::write(root.join("a.css"), ".a { color: red }").unwrap();
+        fs::write(
+            directory.path().join("outside.css"),
+            ".private { color: blue }",
+        )
+        .unwrap();
+        let alias = root.join("alias.css");
+        std::os::unix::fs::symlink("a.css", &alias).unwrap();
+        let entry = root.join("entry.css");
+        fs::write(&entry, "@import 'alias.css';").unwrap();
+        let cache = super::super::cache::ArtifactCache::new(directory.path());
+        let cold = compile_stylesheet(&entry, &root, Some(&cache)).unwrap();
+        assert_eq!(
+            compile_stylesheet(&entry, &root, Some(&cache)).unwrap(),
+            cold
+        );
+        fs::remove_file(&alias).unwrap();
+        std::os::unix::fs::symlink("../outside.css", alias).unwrap();
+        let error = compile_stylesheet(&entry, &root, Some(&cache)).unwrap_err();
         assert!(format!("{error:#}").contains("leaves the stylesheet directory"));
     }
 }

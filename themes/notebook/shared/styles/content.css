@@ -2,6 +2,15 @@
 figcaption, .src-block-caption, .table-caption { font: .8rem/1.6 var(--font-interface); color: var(--muted); margin-top: .75rem; }
 .document-body table { display: block; overflow-x: auto; border-collapse: collapse; max-width: 100%; font-size: .9em; }
 th, td { border-bottom: 1px solid var(--rule); padding: .6em .8em; text-align: left; }
+/* Imported paper tables keep words intact; the existing table scroll container
+   carries excess width instead of breaking short labels into letters. */
+.document-body [data-component="paper-table"] { margin-block: 1.5rem; }
+.document-body [data-component="paper-table"] > p { font: .8rem/1.6 var(--font-interface); color: var(--muted); margin-block: 0 .75rem; }
+.document-body [data-component="paper-table"] :is(th, td) { overflow-wrap: normal; word-break: normal; }
+.document-body [data-component="paper-figure"] { margin-block: 2rem; }
+.document-body [data-component="paper-figure"] figure { margin: 0; }
+.document-body [data-component="paper-figure"] > p { font: .8rem/1.6 var(--font-interface); color: var(--muted); margin-top: .75rem; }
+.document-body .footnote-label { font-variant-numeric: tabular-nums; }
 summary { cursor: pointer; }
 .frontmatter { font: .92rem/1.75 var(--font-interface); border-bottom: 1px solid var(--rule); padding-bottom: 24px; margin-bottom: 32px; }
 .frontmatter .abstract { color: var(--ink); background: var(--moss); border-left: 3px solid var(--moss-ink); padding: 18px 22px; }

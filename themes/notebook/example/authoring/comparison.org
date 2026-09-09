@@ -1,0 +1,41 @@
+:PROPERTIES:
+:ID: theme-comparison
+:END:
+#+TITLE: Comparing representations
+#+HUGO_SLUG: comparing-representations
+#+AUTHOR: Example Author
+#+DATE: 2026-09-01
+
+#+begin_description
+A synthetic pair of JSON specimens demonstrates the notebook comparison spread.
+#+end_description
+
+This static example compares two representations of the same invented value.
+No formatter or benchmark is executed when the page is published.
+
+#+begin_export html
+<figure class="notebook-comparison" aria-labelledby="representation-comparison-title">
+  <figcaption id="representation-comparison-title">
+    <span class="comparison-eyebrow">Compare the representations</span>
+    <span class="comparison-title">Two layouts, one value.</span>
+    <span class="comparison-description">These synthetic JSON specimens differ in whitespace, not data.</span>
+  </figcaption>
+  <div class="comparison-panels">
+    <div class="comparison-panel">
+      <h3 class="comparison-label">Indented</h3>
+      <pre tabindex="0" aria-label="Indented JSON"><code>{
+  "name": "Example",
+  "enabled": true,
+  "description": "A deliberately long synthetic value stays unchanged when its presentation is compacted."
+}</code></pre>
+      <p>Line breaks and indentation expose the fields.</p>
+    </div>
+    <div class="comparison-panel">
+      <h3 class="comparison-label">Compact</h3>
+      <pre tabindex="0" aria-label="Compact JSON"><code>{"name":"Example","enabled":true,"description":"A deliberately long synthetic value stays unchanged when its presentation is compacted."}</code></pre>
+      <p>The same fields occupy a single line. Scroll to inspect the full source.</p>
+    </div>
+  </div>
+  <p class="comparison-note">Presentation changes; the parsed value does not.</p>
+</figure>
+#+end_export

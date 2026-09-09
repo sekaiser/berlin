@@ -14,7 +14,10 @@ pub fn build(
         &project,
         &build_flags.pipeline,
         ExecutionOptions {
+            no_cache: build_flags.no_cache,
+            allow_tex: build_flags.allow_tex,
             dry_run: build_flags.dry_run,
+            production: build_flags.production,
         },
     )
 }

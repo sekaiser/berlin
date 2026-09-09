@@ -28,6 +28,10 @@ fn run_local<F: std::future::Future>(future: F) -> F::Output {
 
 fn run_subcommand(flags: Flags) -> Result<(), Error> {
     match flags.subcommand.clone() {
+        BerlinSubcommand::RenderDiagram(options) => tools::diagram::run(options),
+        BerlinSubcommand::Announcement(action) => {
+            tools::announcement::run(action, flags.pipeline_files)
+        }
         BerlinSubcommand::Release(release_flags) => {
             tools::release::prepare(release_flags, flags.pipeline_files)
         }

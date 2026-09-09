@@ -1,8 +1,14 @@
 /* Foundation previously loaded with media=screen; retain its print boundary. */
 @import "../tokens.css" screen;
 @import "../base.css" screen;
-@import "../components/code.css" screen;
+@import "../components/code.css";
+@import "../components/examples.css";
 @import "../content.css" screen;
 @import "../components/tags.css" screen;
 @import "../layouts/study.css";
 @import "../layouts/environment.css";
+@import "../components/traversal.css";
+@import "../components/result.css";
+@import "../components/comparison.css";
+@import "../components/diagram.css";
+@import "../components/observation.css";

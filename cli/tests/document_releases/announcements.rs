@@ -9,13 +9,13 @@ use std::{
 };
 
 #[derive(Debug, Eq, PartialEq)]
-enum Entry {
+pub(super) enum Entry {
     Directory,
     File(Vec<u8>),
     Symlink(PathBuf),
 }
 
-fn snapshot(root: &Path) -> BTreeMap<PathBuf, Entry> {
+pub(super) fn snapshot(root: &Path) -> BTreeMap<PathBuf, Entry> {
     fn collect(root: &Path, directory: &Path, entries: &mut BTreeMap<PathBuf, Entry>) {
         for entry in fs::read_dir(directory).unwrap() {
             let path = entry.unwrap().path();
@@ -195,12 +195,14 @@ fn export_refuses_existing_empty_directories_missing_parents_and_release_state()
     let root = fixture();
     let (before, after) = prepare_pair(root.path());
     fs::create_dir(root.path().join("empty-review")).unwrap();
+    fs::create_dir(root.path().join(".berlin/announcements")).unwrap();
     let original = snapshot(root.path());
     for output in [
         "empty-review".to_owned(),
         "missing-parent/review".into(),
         format!(".berlin/releases/{after}/review"),
         ".berlin/releases/review".into(),
+        ".berlin/announcements/review".into(),
     ] {
         let result = run(
             root.path(),

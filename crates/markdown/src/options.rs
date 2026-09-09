@@ -16,5 +16,8 @@ pub(super) fn berlin_markdown_options() -> Options<'static> {
     options.extension.header_id_prefix = Some(String::new());
     options.extension.footnotes = true;
     options.extension.description_lists = true;
+    options.extension.math_dollars = true;
+    options.extension.math_latex = true;
+    options.extension.math_code = true;
     options
 }

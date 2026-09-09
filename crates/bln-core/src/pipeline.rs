@@ -59,6 +59,7 @@ impl FunctionRef {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ArtifactKind {
+    LatexSources,
     OrgSources,
     MarkdownSources,
     Documents,
@@ -75,6 +76,9 @@ pub enum ArtifactKind {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Operation {
+    LoadLatex { pattern: String },
+    CompilePapers { url_prefix: String },
+    CompileDiagrams { engine: crate::TexEngine },
     LoadOrg { pattern: String },
     LoadMarkdown { pattern: String },
     LoadData { pattern: String },
@@ -82,6 +86,8 @@ pub enum Operation {
     LoadAssets { pattern: String },
     ExportOrg { backend: String, section: String },
     ParseMarkdown,
+    ParseDocuments,
+    MergeDocuments,
     ParseFeed,
     MapDocuments { mapper: FunctionRef },
     AssembleWebsite,
@@ -94,6 +100,15 @@ pub enum Operation {
 impl Operation {
     pub fn signature(&self) -> OperationSignature {
         match self {
+            Self::LoadLatex { .. } => OperationSignature::source(ArtifactKind::LatexSources),
+            Self::CompileDiagrams { .. } => OperationSignature::output(
+                &[ArtifactKind::DataSources, ArtifactKind::StaticAssets],
+                ArtifactKind::StaticAssets,
+            ),
+            Self::CompilePapers { .. } => OperationSignature::artifact_and_output(
+                &[ArtifactKind::LatexSources],
+                ArtifactKind::Documents,
+            ),
             Self::LoadOrg { .. } => OperationSignature::source(ArtifactKind::OrgSources),
             Self::LoadMarkdown { .. } => OperationSignature::source(ArtifactKind::MarkdownSources),
             Self::LoadData { .. } => OperationSignature::source(ArtifactKind::DataSources),
@@ -110,6 +125,13 @@ impl Operation {
             Self::ParseFeed => {
                 OperationSignature::artifact(&[ArtifactKind::DataSources], ArtifactKind::Feed)
             }
+            Self::ParseDocuments => {
+                OperationSignature::artifact(&[ArtifactKind::DataSources], ArtifactKind::Documents)
+            }
+            Self::MergeDocuments => OperationSignature::artifact(
+                &[ArtifactKind::Documents, ArtifactKind::Documents],
+                ArtifactKind::Documents,
+            ),
             Self::MapDocuments { .. } => {
                 OperationSignature::artifact(&[ArtifactKind::Documents], ArtifactKind::Documents)
             }
@@ -140,6 +162,7 @@ impl Operation {
     fn source_pattern(&self) -> Option<&str> {
         match self {
             Self::LoadOrg { pattern }
+            | Self::LoadLatex { pattern }
             | Self::LoadMarkdown { pattern }
             | Self::LoadData { pattern }
             | Self::LoadCss { pattern }
@@ -263,6 +286,7 @@ impl PipelinePlan {
             }
 
             validate_source_pattern(node)?;
+            validate_paper_url(node)?;
             validate_output(node, &mut output_paths)?;
             if let Some(target) = &node.deployment {
                 let validation = if matches!(node.operation, Operation::RenderWebsite { .. }) {
@@ -312,6 +336,29 @@ fn validate_source_pattern(node: &PipelineNode) -> Result<(), PipelineValidation
             return Err(PipelineValidationError::UnsafeSourcePattern {
                 node: node.id.clone(),
                 pattern: pattern.into(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn validate_paper_url(node: &PipelineNode) -> Result<(), PipelineValidationError> {
+    if let Operation::CompilePapers { url_prefix } = &node.operation {
+        let valid = url_prefix.strip_prefix('/').is_some_and(|path| {
+            !path.is_empty()
+                && path.split('/').all(|part| {
+                    !part.is_empty()
+                        && part != "."
+                        && part != ".."
+                        && part
+                            .bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
+                })
+        });
+        if !valid {
+            return Err(PipelineValidationError::InvalidPaperUrl {
+                node: node.id.clone(),
+                prefix: url_prefix.clone(),
             });
         }
     }
@@ -470,6 +517,10 @@ impl<'a> TopologicalTraversal<'a> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PipelineValidationError {
+    InvalidPaperUrl {
+        node: NodeId,
+        prefix: String,
+    },
     InvalidDeployment {
         node: NodeId,
         message: &'static str,
@@ -510,6 +561,10 @@ pub enum PipelineValidationError {
 impl fmt::Display for PipelineValidationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidPaperUrl { node, prefix } => write!(
+                f,
+                "pipeline paper node '{node}' requires a confined root-relative PDF URL prefix, got '{prefix}'"
+            ),
             Self::InvalidDeployment { node, message } => {
                 write!(f, "pipeline deployment '{node}': {message}")
             }

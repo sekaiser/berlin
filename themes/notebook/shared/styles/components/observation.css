@@ -1,0 +1,41 @@
+/* Source-owned reading notes. Always in the document flow, never moved by script. */
+.notebook-observation {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 3fr); gap: 14px 28px;
+  margin: 36px 0; padding: 8px 0 8px 24px; border-inline-start: 2px solid var(--accent-rule);
+  color: var(--ink); font: 1rem/1.7 var(--font-reading); overflow-wrap: anywhere;
+}
+.notebook-observation > .observation-title {
+  grid-column: 1; grid-row: 1 / span 2; margin: 0;
+  color: var(--accent); font: italic 400 1.25rem/1.35 var(--font-display);
+}
+.notebook-observation > :is(.observation-body, .observation-actions) { grid-column: 2; min-width: 0; }
+.notebook-observation :is(p, ul, ol) { margin: 0; max-width: none; }
+.notebook-observation .observation-body > * + * { margin-top: .75em; }
+.notebook-observation > .observation-actions { font: var(--control-font); }
+.notebook-observation a { color: var(--accent); text-underline-offset: .22em; }
+.notebook-observation a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.notebook-observation :not(pre) > code {
+  color: var(--ink); background: none; padding: 0; font-size: .88em; overflow-wrap: anywhere;
+}
+
+/* The template's optional margin slot remains available to project overrides. */
+.study-observation { border-top: 1px solid var(--rule); margin-top: 38px; padding-top: 28px; }
+.study-observation h2 { font: 400 1.05rem/1.4 var(--font-reading); color: var(--ink); margin: 0 0 12px; }
+.study-observation p { font: .9rem/1.6 var(--font-reading); color: var(--muted); margin-bottom: 12px; }
+.study-observation code { background: none; padding: 0; font-size: .88em; color: var(--ink); }
+.study-observation a { font: .78rem/1.6 var(--font-interface); color: #805337; }
+@media (max-width: 1199px) {
+  .study-observation { display: none; } /* A margin reminder must also be explained in the prose. */
+}
+@media (max-width: 700px) {
+  .notebook-observation { display: block; margin-block: 28px; padding-inline-start: 18px; }
+  .notebook-observation > .observation-title { margin-bottom: 12px; }
+  .notebook-observation > .observation-actions { margin-top: 12px; }
+  .notebook-observation .observation-actions a { display: inline-block; padding-block: 10px; }
+}
+@media print {
+  .notebook-observation { display: block; color: black; border-color: #888; font: 11pt/1.5 Georgia, serif; }
+  .notebook-observation > .observation-title { color: black; margin-bottom: 8pt; font: italic 12pt/1.4 Georgia, serif; }
+  .notebook-observation :not(pre) > code { color: black; }
+  .notebook-observation > .observation-actions { display: none; }
+}

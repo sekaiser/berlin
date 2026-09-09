@@ -54,6 +54,10 @@ fn collect<'a>(
 ) -> Result<(), DocumentValidationError> {
     for block in blocks {
         match block {
+            Block::Equation(equation) => {
+                identifier(&equation.id.0)?;
+                insert(ids, &equation.id.0)?;
+            }
             Block::Code(code) => {
                 if let Some(caption) = &code.caption {
                     inline_links(caption, links);
@@ -102,9 +106,11 @@ fn collect<'a>(
                 inline_links(content, links);
             }
             Block::Paragraph { content } => inline_links(content, links),
-            Block::BlockQuote { blocks } | Block::FootnoteDefinition { blocks, .. } => {
-                collect(blocks, ids, prefixes, links)?
+            Block::FootnoteDefinition { name, blocks } => {
+                insert(ids, &format!("fn-{name}"))?;
+                collect(blocks, ids, prefixes, links)?;
             }
+            Block::BlockQuote { blocks } => collect(blocks, ids, prefixes, links)?,
             Block::List(list) => {
                 for item in &list.items {
                     collect(&item.blocks, ids, prefixes, links)?;
@@ -136,6 +142,7 @@ fn inline_links<'a>(inlines: &'a [Inline], links: &mut Vec<&'a str>) {
             }
             Inline::Emphasis { content }
             | Inline::Strong { content }
+            | Inline::CrossReference { content, .. }
             | Inline::Strikethrough { content } => inline_links(content, links),
             Inline::Image { description, .. } => inline_links(description, links),
             _ => {}

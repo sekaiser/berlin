@@ -219,9 +219,16 @@ fn export_directory(project: &Project, output: &Path) -> Result<PathBuf, Error> 
         .context("review directory's parent must already exist")?;
     let output = parent.join(name);
     let root = project.root().canonicalize()?;
-    for protected in [".berlin/releases", ".berlin/publications", ".git"] {
+    for protected in [
+        ".berlin/releases",
+        ".berlin/publications",
+        ".berlin/announcements",
+        ".git",
+    ] {
         if output.starts_with(root.join(protected)) {
-            bail!("review drafts cannot be exported into release, publication, or Git state");
+            bail!(
+                "review drafts cannot be exported into release, publication, announcement, or Git state"
+            );
         }
     }
     Ok(output)

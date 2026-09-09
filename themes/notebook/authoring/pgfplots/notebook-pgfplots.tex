@@ -1,0 +1,35 @@
+% Opt-in presentation for two-dimensional line plots. No global axis defaults.
+\RequirePackage{pgfplots}
+
+% Corresponding roles in shared/styles/tokens.css; checked by the theme tests.
+\definecolor{notebookInk}{HTML}{273B32}
+\definecolor{notebookMoss}{HTML}{435A3C}
+\definecolor{notebookTerracotta}{HTML}{94492F}
+\definecolor{notebookSky}{HTML}{34566F}
+\definecolor{notebookRule}{HTML}{D7DCCD}
+
+% Shapes and line patterns distinguish series without relying on color alone.
+\pgfplotscreateplotcyclelist{notebook}{%
+  notebookMoss,solid,mark=*\\
+  notebookTerracotta,dashed,mark=square*\\
+  notebookSky,densely dotted,mark=triangle*\\
+}
+
+\pgfplotsset{
+  notebook axis/.style={
+    axis lines*=left,
+    axis line style={color=notebookInk,line width=0.6pt},
+    tick align=outside,
+    tick style={color=notebookInk,line width=0.6pt},
+    ticklabel style={font=\fontsize{11}{13}\selectfont,color=notebookInk},
+    label style={font=\fontsize{12}{14}\selectfont,color=notebookInk},
+    title style={font=\fontsize{12}{14}\selectfont,color=notebookInk},
+    xmajorgrids=false,
+    ymajorgrids=true,
+    major grid style={color=notebookRule,line width=0.4pt},
+    legend style={draw=none,fill=none,font=\fontsize{11}{13}\selectfont,text=notebookInk},
+    legend cell align=left,
+    cycle list name=notebook,
+    every axis plot/.append style={line width=1.1pt,mark size=2.6pt},
+  },
+}

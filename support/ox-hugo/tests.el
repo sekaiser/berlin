@@ -2,6 +2,80 @@
 
 (require 'ert)
 (load (expand-file-name "export.el" (file-name-directory load-file-name)))
+(load (expand-file-name "code-results-tests.el" (file-name-directory load-file-name)))
+(load (expand-file-name "knowledge-tests.el" (file-name-directory load-file-name)))
+
+(defconst berlin-math-fixture
+  (expand-file-name "../fixtures/mathematics/article.org" (file-name-directory load-file-name)))
+
+(ert-deftest berlin-native-citations-and-equation-references ()
+  (let* ((directory (make-temp-file "berlin-citations-" t))
+         (source (expand-file-name "source.org" directory)))
+    (unwind-protect
+        (progn
+          (with-temp-file (expand-file-name "sources.bib" directory)
+            (insert "@misc{example, author={Example Author}, title={Synthetic Citation}, year={2026}}"))
+          (with-temp-file source
+            (insert ":PROPERTIES:\n:ID: cite-note\n:END:\n#+TITLE: Reference Note\n#+bibliography: sources.bib\n\n"
+                    "See [cite:@example p. 7] and equation \\eqref{eq:sum}.\n\n"
+                    "\\begin{equation}\nx=a+b \\label{eq:sum}\n\\end{equation}\n\n#+print_bibliography:\n"))
+          (let ((command-line-args-left (list directory "notes" source))) (berlin-ox-hugo-command nil))
+          (with-temp-buffer
+            (insert-file-contents (expand-file-name "content/notes/source.md" directory))
+            (let ((markdown (buffer-string)))
+              (dolist (text '("references:" "Synthetic Citation" "\\cite{example}" "p. 7" "\\eqref{eq:sum}" "\\label{eq:sum}"))
+                (should (string-match-p (regexp-quote text) markdown)))))
+          (when-let* ((binary (getenv "BERLIN_TEST_BINARY")))
+            (with-temp-file (expand-file-name "berlin.pipeline.rhai" directory)
+              (insert "pipeline org { output export_org(load_org(\"*.org\"), \"ox-hugo\", \".berlin/generated/org\", \"notes\"); }\n"
+                      "pipeline test { output render_linkedin(parse_markdown(load_markdown(\".berlin/generated/org/content/notes/*.md\")), \"drafts\"); }"))
+            (let ((default-directory directory) (process-environment (copy-sequence process-environment)))
+              (setenv "BERLIN_DIR" directory)
+              (dolist (pipeline '("org" "test"))
+                (with-temp-buffer
+                  (let ((status (call-process binary nil t nil "build" "--pipeline" pipeline)))
+                    (should (equal (list status (unless (equal status 0) (buffer-string))) '(0 nil)))))))))
+      (when-let* ((buffer (get-file-buffer source))) (kill-buffer buffer))
+      (delete-directory directory t))))
+
+(ert-deftest berlin-math-does-not-enable-a-tex-toolchain ()
+  (should (berlin-latex-enabled-p '(:with-latex t)))
+  (should (berlin-latex-enabled-p '(:with-latex mathjax)))
+  (should-not (berlin-latex-enabled-p '(:with-latex nil)))
+  (dolist (mode '(dvipng dvisvgm imagemagick verbatim))
+    (should-error (berlin-latex-enabled-p (list :with-latex mode)))))
+
+(ert-deftest berlin-export-preserves-math-without-markdown-escaping-or-babel ()
+  (let* ((directory (make-temp-file "berlin-math-export-" t))
+         (source (expand-file-name "source.org" directory))
+         (fragment-translator (symbol-function 'org-blackfriday-latex-fragment))
+         (environment-translator (symbol-function 'org-blackfriday-latex-environment)))
+    (unwind-protect
+        (progn
+          (copy-file berlin-math-fixture source)
+          (let ((command-line-args-left (list directory "notes" source)))
+            (berlin-ox-hugo-command nil))
+          (should (eq fragment-translator (symbol-function 'org-blackfriday-latex-fragment)))
+          (should (eq environment-translator (symbol-function 'org-blackfriday-latex-environment)))
+          (with-temp-buffer
+            (insert-file-contents (expand-file-name "content/notes/source.md" directory))
+            (let ((markdown (buffer-string)))
+              (dolist (tex '("\\(x_i\\)" "\\frac{1}{2}" "\\sum_{i=1}^{n}" "```math\n\\begin{align*}"))
+                (should (string-match-p (regexp-quote tex) markdown)))
+              (should-not (string-match-p (regexp-quote "x\\_i") markdown))
+              (should-not (string-match-p (regexp-quote "\\\\[\n") markdown))))
+          ;; Feed the real export through Berlin's parser, without a theme or TeX engine.
+          (when-let* ((binary (getenv "BERLIN_TEST_BINARY")))
+            (with-temp-file (expand-file-name "berlin.pipeline.rhai" directory)
+              (insert "pipeline test { output render_linkedin(parse_markdown(load_markdown(\"content/notes/*.md\")), \"drafts\"); }"))
+            (let ((default-directory directory)
+                  (process-environment (copy-sequence process-environment)))
+              (setenv "BERLIN_DIR" directory)
+              (with-temp-buffer
+                (let ((status (call-process binary nil t nil "build" "--pipeline" "test")))
+                  (should (equal (list status (and (not (equal status 0)) (buffer-string))) '(0 nil))))))))
+      (when-let* ((buffer (get-file-buffer source))) (kill-buffer buffer))
+      (delete-directory directory t))))
 
 (ert-deftest berlin-export-preserves-document-and-heading-identity ()
   (let* ((directory (make-temp-file "berlin-reference-export-" t))

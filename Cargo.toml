@@ -11,6 +11,8 @@ repository = "https://github.com/sekaiser/berlin"
 [workspace.dependencies]
 berlin_document = { path = "./crates/bln-document", version = "0.0.0" }
 berlin_document_html = { path = "./crates/bln-document-html", version = "0.0.0" }
+berlin_math = { path = "./crates/bln-math", version = "0.0.0" }
+berlin_paper = { path = "./crates/bln-paper", version = "0.0.0" }
 berlin_document_linkedin = { path = "./crates/bln-document-linkedin", version = "0.0.0" }
 berlin_content = { path = "./crates/bln-content", version = "0.0.0" }
 berlin_core = { path = "./crates/bln-core", version = "0.0.0" }
@@ -19,10 +21,14 @@ markdown = { path = "./crates/markdown", version = "0.0.0" }
 anyhow = "1.0.104"
 clap = "4.6.6"
 comrak = "0.54.0"
+pulldown-latex = "0.8.0"
 csv = "1.4.0"
 env_logger = "0.11.11"
 glob = "0.3.4"
 lightningcss = "1.0.0-alpha.72"
+lol_html = "3.0.1"
+html-escape = "0.2.15"
+percent-encoding = "2.3.2"
 log = { version = "0.4.34", features = ["serde"] }
 notify = "8.2.0"
 serde = { version = "1.0", features = ["derive"] }

@@ -6,7 +6,9 @@
 mod code;
 mod highlight;
 mod html;
+mod math;
 mod renderer;
 
+pub use berlin_math::Error as MathError;
 pub use html::Html;
 pub use renderer::Renderer;

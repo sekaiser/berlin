@@ -1,10 +1,10 @@
 //! Minimal announcement input, separate from a full article's document model.
 
 use berlin_content::DocumentRef;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AnnouncementKind {
     New,

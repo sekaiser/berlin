@@ -377,6 +377,7 @@ pub fn render(
     website: &WebsiteAssembly,
     config: &WebsiteConfig,
     output_root: &Path,
+    cache: Option<&super::cache::ArtifactCache>,
 ) -> Result<(), Error> {
     validate_routes(website)?;
     if let Some(giscus) = &config.giscus {
@@ -386,7 +387,7 @@ pub fn render(
         Some(selected) => {
             let theme = super::theme::Theme::load(project.root(), selected)?;
             let templates = theme.templates()?;
-            theme.write_assets(output_root)?;
+            theme.write_assets(output_root, cache)?;
             templates
         }
         None => Templates::load(project.root().join("pages"))?,

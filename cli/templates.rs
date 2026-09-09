@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use anyhow::Error;
 use anyhow::anyhow;
+use anyhow::{Context as _, Error};
 use berlin_document::Document;
 use tera::Context;
 use tera::Function;
@@ -63,7 +63,12 @@ impl Templates {
     ) -> Result<String, Error> {
         self.tera.register_function(
             "render",
-            RenderedDocument(self.document_renderer.render(document)),
+            RenderedDocument(self.document_renderer.render(document).with_context(|| {
+                format!(
+                    "Unable to render mathematics in document '{}'",
+                    document.id.0
+                )
+            })?),
         );
         Ok(self.tera.render(template, context)?)
     }

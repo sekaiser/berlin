@@ -60,12 +60,37 @@ impl Renderer {
         let normalized = normalize_shortcodes(source)?;
         let arena = Arena::new();
         let root = parse_document(&arena, &normalized, &self.options);
-        front_matter::parse(root, source.uri().as_str())?;
+        let front_matter = front_matter::parse(root, source.uri().as_str())?;
+        let references = crate::references::References::collect(
+            root,
+            front_matter.as_ref(),
+            source.uri().as_str(),
+        )?;
         remove_ox_hugo_heading_markers(root);
+        let has_math = crate::math::render(root, source.uri().as_str(), &references)?;
+        for node in root.descendants() {
+            let mut data = node.data.borrow_mut();
+            if let NodeValue::Text(text) = &data.value
+                && let Some(html) = references
+                    .render_text(text)
+                    .map_err(|message| crate::references::invalid(source.uri().as_str(), message))?
+            {
+                data.value = NodeValue::HtmlInline(html);
+            }
+        }
 
         let mut plugins = ComrakPlugins::default();
         plugins.render.codefence_syntax_highlighter = Some(&self.syntax_highlighter);
-        Ok(Html(render_html(root, &self.options, &plugins)))
+        let mut html = render_html(root, &self.options, &plugins);
+        html.push_str(
+            &references
+                .bibliography_html()
+                .map_err(|message| crate::references::invalid(source.uri().as_str(), message))?,
+        );
+        if has_math {
+            html.insert_str(0, &format!("<style>{}</style>\n", berlin_math::STYLESHEET));
+        }
+        Ok(Html(html))
     }
 }
 

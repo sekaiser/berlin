@@ -14,6 +14,7 @@ cargo build --quiet --bin bln
 node --test themes/notebook/test.cjs themes/notebook/tests/*.test.cjs
 BERLIN_TEST_BINARY="$repository/target/debug/bln" BERLIN_TEST_REPOSITORY="$repository" \
     emacs --batch --load support/ox-hugo/tests.el --load support/emacs/tests.el \
+    --load support/emacs/diagram-tests.el --load themes/notebook/tests/org-export.el \
     --funcall ert-run-tests-batch-and-exit
 
 # Acceptance checks never read or regenerate the author's local website.

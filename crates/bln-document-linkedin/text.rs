@@ -30,6 +30,8 @@ fn render_blocks(blocks: &[Block]) -> Vec<String> {
 
 fn render_block(block: &Block) -> Option<String> {
     let text = match block {
+        Block::Math { tex } => format!("\\[\n{tex}\n\\]"),
+        Block::Equation(equation) => format!("\\[\n{}\n\\] ({})", equation.tex, equation.number),
         Block::Paragraph { content } | Block::Heading { content, .. } => render_inlines(content),
         Block::BlockQuote { blocks } => render_block_quote(blocks),
         Block::List(list) => render_list(list),
@@ -146,8 +148,12 @@ fn render_inlines(inlines: &[Inline]) -> String {
 
 fn render_inline(text: &mut String, inline: &Inline) {
     match inline {
+        Inline::Math { tex } => {
+            let _ = write!(text, "\\({tex}\\)");
+        }
         Inline::Text { value } | Inline::Code { value } => text.push_str(value),
         Inline::Emphasis { content }
+        | Inline::CrossReference { content, .. }
         | Inline::Strong { content }
         | Inline::Strikethrough { content } => text.push_str(&render_inlines(content)),
         Inline::Link {

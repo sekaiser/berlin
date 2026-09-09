@@ -8,6 +8,10 @@ use std::{
 
 #[path = "document_releases/announcements.rs"]
 mod announcements;
+#[path = "document_releases/manual_announcements.rs"]
+mod manual_announcements;
+#[path = "document_releases/production.rs"]
+mod production;
 
 const PIPELINE: &str = r#"
 fn edit(document) { document }

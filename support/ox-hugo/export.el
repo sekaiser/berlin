@@ -1,8 +1,11 @@
 ;;; export.el --- Berlin batch exporter for Ox-Hugo -*- lexical-binding: t; -*-
 
 (require 'org)
+(require 'org-attach)
 (require 'cl-lib)
 (require 'json)
+(load (expand-file-name "references.el" (file-name-directory load-file-name)))
+(load (expand-file-name "code-results.el" (file-name-directory load-file-name)))
 (unless (require 'ox-hugo nil t)
   (error "Ox-Hugo is unavailable; install ox-hugo where batch Emacs can load it"))
 
@@ -11,6 +14,29 @@
 
 (defvar berlin-source-headings nil
   "Local heading origins collected during one export, never embedded in Markdown.")
+
+(defvar berlin-id-index nil
+  "ID locations in this explicitly selected export, never the user's global graph.")
+
+(defun berlin-find-selected-id (id &optional markerp)
+  "Resolve ID only inside the selected export; preserve Org's return convention."
+  (when-let* ((file (and berlin-id-index (gethash id berlin-id-index))))
+    (org-id-find-id-in-file id file markerp)))
+
+(defun berlin-index-sources (sources)
+  "Index stable IDs in SOURCES without scanning agendas, open buffers or Org-roam."
+  (let ((index (make-hash-table :test 'equal)))
+    (dolist (source sources)
+      (with-temp-buffer
+        (insert-file-contents source)
+        (delay-mode-hooks (org-mode))
+        (org-element-map (org-element-parse-buffer) 'node-property
+			 (lambda (property)
+			   (when (equal (org-element-property :key property) "ID")
+			     (let ((id (org-element-property :value property)))
+			       (when (gethash id index) (error "Duplicate ID in selected Org sources: %s" id))
+			       (puthash id source index)))))))
+    index))
 
 (defun berlin-file-sha256 (file)
   "Hash the exact bytes of FILE, independently of buffer coding conventions."
@@ -30,6 +56,30 @@
 
 (defvar berlin-source-link nil
   "Original Org link, used to distinguish site URLs from explicit file links.")
+
+(defun berlin-latex-fragment (fragment _contents info)
+  "Preserve FRAGMENT as TeX for Berlin's math-aware Markdown parser."
+  (when (berlin-latex-enabled-p info)
+    (org-element-property :value fragment)))
+
+(defun berlin-latex-environment (environment _contents info)
+  "Keep ENVIRONMENT in an explicit math fence, not Markdown prose."
+  (when (berlin-latex-enabled-p info)
+    (let* ((value (org-remove-indentation (org-element-property :value environment)))
+           (length 3)
+           (offset 0))
+      (while (string-match "`+" value offset)
+        (setq length (max length (1+ (- (match-end 0) (match-beginning 0))))
+              offset (match-end 0)))
+      (let ((fence (make-string length ?`)))
+        (concat fence "math\n" value "\n" fence "\n")))))
+
+(defun berlin-latex-enabled-p (info)
+  "Honor disabled math; refuse export modes that could invoke a TeX toolchain."
+  (let ((mode (plist-get info :with-latex)))
+    (cond ((null mode) nil)
+          ((memq mode '(t mathjax)) t)
+          (t (error "Berlin supports tex:t or tex:nil, not TeX image/verbatim export (%s)" mode)))))
 
 (defun berlin-publish-attachment (path info)
   "Copy a local attachment PATH into the staged workspace described by INFO.
@@ -61,12 +111,35 @@ onto the same destination.  Remote images remain remote and are not fetched."
   (let ((original (symbol-function 'org-hugo-heading))
         (link-translator (symbol-function 'org-hugo-link))
         (berlin-source-headings nil)
+        (berlin-export-references nil)
+        (org-export-use-babel nil)
+        ;; Resolve only links left in the published tree. Org's whole-buffer
+        ;; attachment hook also visits private/noexport subtrees before pruning.
+        (org-export-before-parsing-functions
+         (remq #'org-attach-expand-links org-export-before-parsing-functions))
+        (org-export-filter-parse-tree-functions
+         (cons #'berlin-export-code-results org-export-filter-parse-tree-functions))
+        (org-cite-export-processors '((hugo berlin) (t basic)))
+        (org-export-filter-options-functions
+         (cons #'berlin-ox-hugo-add-references org-export-filter-options-functions))
+        (org-export-filter-final-output-functions
+         (cons #'berlin-ox-hugo-write-references org-export-filter-final-output-functions))
         (source (buffer-file-name)))
-    (cl-letf (((symbol-function 'org-hugo--attachment-rewrite-maybe)
+    (cl-letf (((symbol-function 'org-id-find) #'berlin-find-selected-id)
+              ((symbol-function 'org-hugo--attachment-rewrite-maybe)
                #'berlin-publish-attachment)
+              ((symbol-function 'org-blackfriday-latex-fragment) #'berlin-latex-fragment)
+              ((symbol-function 'org-blackfriday-latex-environment) #'berlin-latex-environment)
               ((symbol-function 'org-hugo-link)
                (lambda (link description info)
                  (let ((berlin-source-link (org-element-property :raw-link link)))
+                   (when (equal (org-element-property :type link) "attachment")
+                     (let ((path (org-with-point-at (org-element-property :begin link)
+						    (unless (org-attach-dir) (error "Attachment link has no configured attachment directory"))
+						    (org-attach-expand (org-element-property :path link)))))
+                       (org-element-put-property link :type "file")
+                       (org-element-put-property link :path path)
+                       (org-element-put-property link :raw-link (concat "file:" path))))
                    (funcall link-translator link description info))))
               ((symbol-function 'org-hugo-heading)
                (lambda (heading contents info)
@@ -96,7 +169,8 @@ onto the same destination.  Remote images remain remote and are not fetched."
 PATH and DESCRIPTION are the authored link; BACKEND and INFO come from Org."
   (when (eq backend 'md)
     (let ((target path)
-          (location (org-id-find path 'marker)))
+          (location (when-let* ((file (and berlin-id-index (gethash path berlin-id-index))))
+                      (org-id-find-id-in-file path file 'marker))))
       (when location
         (with-current-buffer (marker-buffer location)
           (save-excursion
@@ -146,40 +220,33 @@ PATH and DESCRIPTION are the authored link; BACKEND and INFO come from Org."
          (sources command-line-args-left)
          (origins-file (getenv "BERLIN_ORG_SOURCE_MAP"))
          origins
-         (org-id-locations-file
-          (make-temp-file "berlin-org-id-locations-")))
+         (berlin-id-index (berlin-index-sources sources)))
     (setq command-line-args-left nil)
     (unless (and base-dir section sources)
       (error "Usage: --berlin-export-org BASE-DIR SECTION SOURCE..."))
-    (delete-file org-id-locations-file)
-    (unwind-protect
-        (progn
-          (org-id-update-id-locations sources t)
-          (dolist (source sources)
-            (with-current-buffer (find-file-noselect source)
-              (goto-char (point-min))
-              (let ((berlin-content-id (org-entry-get nil "ID"))
-                    ;; Publishing reads source and stored results; it must not run examples.
-                    (org-export-use-babel nil)
-                    (org-export-filter-options-functions
-                     (append '(berlin-ox-hugo-add-content-id berlin-ox-hugo-add-preview)
-                             org-export-filter-options-functions))
-                    (org-hugo-base-dir base-dir)
-                    (org-link-parameters (copy-tree org-link-parameters))
-                    (org-hugo-front-matter-format "yaml")
-                    (org-hugo-section section))
-                (unless berlin-content-id
-                  (error "Org source %s has no file-level ID" source))
-                (org-link-set-parameters "id" :export #'berlin-ox-hugo-id-link)
-                (push (berlin-export-with-origins) origins))
-              (kill-buffer)))
-          (when origins-file
-            (let ((coding-system-for-write 'utf-8-unix))
-              (with-temp-file origins-file
-                (insert (json-encode `((schema_version . 1)
-                                       (documents . ,(vconcat (nreverse origins))))))))))
-      (when (file-exists-p org-id-locations-file)
-        (delete-file org-id-locations-file)))))
+    (dolist (source sources)
+      (with-current-buffer (find-file-noselect source)
+        (goto-char (point-min))
+        (let ((berlin-content-id (org-entry-get nil "ID"))
+              ;; Publishing reads source and stored results; it must not run examples.
+              (org-export-use-babel nil)
+              (org-export-filter-options-functions
+               (append '(berlin-ox-hugo-add-content-id berlin-ox-hugo-add-preview)
+                       org-export-filter-options-functions))
+              (org-hugo-base-dir base-dir)
+              (org-link-parameters (copy-tree org-link-parameters))
+              (org-hugo-front-matter-format "yaml")
+              (org-hugo-section section))
+          (unless berlin-content-id
+            (error "Org source %s has no file-level ID" source))
+          (org-link-set-parameters "id" :export #'berlin-ox-hugo-id-link)
+          (push (berlin-export-with-origins) origins))
+        (kill-buffer)))
+    (when origins-file
+      (let ((coding-system-for-write 'utf-8-unix))
+        (with-temp-file origins-file
+          (insert (json-encode `((schema_version . 1)
+                                 (documents . ,(vconcat (nreverse origins)))))))))))
 
 (add-to-list 'command-switch-alist
              '("--berlin-export-org" . berlin-ox-hugo-command))

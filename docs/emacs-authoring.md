@@ -1,5 +1,8 @@
 # Emacs authoring checks
 
+For explicit TikZ compilation, see [Org diagrams](diagrams.md). That separate
+authoring command is not loaded by this read-only check adapter.
+
 Load the repository's small editor adapter explicitly; it does not install
 packages or change your Emacs configuration:
 
@@ -38,6 +41,30 @@ TRAMP or exact source lines.
 
 See [the check's scope and JSON contract](authoring-check.md). Optional editorial
 observations are suggestions, not requirements to connect every note.
+
+## Org-roam and attachments
+
+Berlin publishes selected Org files, not the Org-roam database or capture inbox.
+Each published file currently needs a file-level `ID`; heading IDs resolve into
+anchors within that document. File renames do not change ID-based links. A heading
+node without a file-level document ID is not independently published as an article.
+`ROAM_ALIASES` and `ROAM_REFS` can remain in your source; Berlin does not currently
+project them into public search aliases or bibliography entries.
+
+ID lookup is scoped to selected export files, not open buffers, agendas or global
+ID locations. Unpublished targets remain unresolved for the authoring check,
+rather than pulling private notes into publication. Duplicate IDs fail export.
+
+Native `attachment:` links use Org's `DIR`/legacy `ATTACH_DIR` or ID-based directory
+resolution. Inheritance follows `org-attach-use-inheritance` and
+`org-use-property-inheritance`. Batch Emacs needs the same relevant attachment
+settings as your authoring session; Berlin does not load your entire Doom setup.
+Only referenced attachments in the exported tree are copied. Private `noexport`
+subtrees and unrelated files in attachment directories are not published.
+
+Capture, `org-protocol` and Org-roam navigation remain editor concerns. Saved files
+are the integration boundary. See [LaTeX graphics](diagrams.md) for code/result
+selection and the shared graphics renderer.
 
 ## Article previews
 

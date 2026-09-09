@@ -1,0 +1,150 @@
+/*! Adapted from pulldown-latex 0.8.0 styles.css.
+ * MIT License
+ *
+ * Copyright 2024 Charles Edward Gagnon
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ */
+@namespace m url('http://www.w3.org/1998/Math/MathML');
+m|math { font-family: "STIX Two Math", "Cambria Math", "Latin Modern Math", "Noto Sans Math", math; }
+m|mtext { font-family: serif; }
+.berlin-math-display { position: relative; max-width: 100%; overflow-x: auto; padding-block: .75em; margin-block: 1em; }
+.berlin-math-display:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.berlin-equation { display: grid; grid-template-columns: minmax(0, 1fr) fit-content(25%); align-items: center; gap: 1em; margin-block: 1em; scroll-margin-block-start: 5rem; }
+.berlin-equation > .berlin-math-display { margin-block: 0; min-width: 0; }
+.berlin-equation-number { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; color: inherit; text-decoration: none; }
+.berlin-equation-number:hover { text-decoration: underline; }
+.berlin-equation-number:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+/* MathML css styling */
+m|mtd {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+
+m|mo.small {
+    font-size: 70%;
+}
+
+m|merror>m|mtext {
+    font-family: monospace;
+    white-space-collapse: preserve;
+    display: block;
+    text-align: left;
+}
+
+m|mtable {
+    border-color: currentColor;
+    border-spacing: 0;
+    border-collapse: collapse;
+}
+
+m|mtr:last-child>m|mtd:empty:only-child {
+    display: none;
+}
+
+m|mtr:last-child:has(> m|mtd:empty)::after {
+    display: none;
+}
+
+m|mtable.menv-alignlike>m|mtr>m|mtd:nth-child(odd),
+m|mtable.menv-cells-right>m|mtr>m|mtd,
+m|mtable.menv-multline>m|mtr>m|mtd:last-child,
+m|mtd.cell-right {
+    text-align: right;
+    text-align: -webkit-right;
+    text-align: -moz-right
+}
+
+m|mtable.menv-alignlike>m|mtr>m|mtd:nth-child(even),
+m|mtable.menv-cells-left>m|mtr>m|mtd,
+m|mtable.menv-multline>m|mtr>m|mtd:first-child,
+m|mtd.cell-left {
+    text-align: left;
+}
+
+m|mtable.menv-multline>m|mtr>m|mtd {
+    width: 100%;
+}
+
+m|mtable.menv-align>m|mtr>m|mtd:nth-child(2n + 3) {
+    padding-left: 1em;
+}
+
+m|mtable.menv-cases>m|mtr>m|mtd:first-child {
+    padding-right: 1em;
+}
+
+m|mtable.menv-arraylike>m|mtr>m|mtd {
+    padding-left: 0.4em;
+    padding-right: 0.4em;
+}
+
+m|mtable.menv-matrix>m|mtr>m|mtd:first-child {
+    padding-left: 0;
+}
+
+m|mtable.menv-matrix>m|mtr>m|mtd:last-child {
+    padding-right: 0;
+}
+
+m|mtable.menv-with-eqn>m|mtr:not(:has(> m|mtd.menv-nonumber)) {
+    counter-increment: eq-number;
+}
+
+m|mtable.menv-with-eqn>m|mtr:not(:has(> m|mtd.menv-nonumber))::after {
+    position: absolute;
+    right: 0;
+    padding: 0 0.4em;
+    content: "(" counter(eq-number) ")";
+}
+
+/* A semantic Equation owns one source-assigned number. Do not add a second
+   presentation-only counter when its TeX contains an unstarred environment. */
+.berlin-equation m|mtable.menv-with-eqn > m|mtr:not(:has(> m|mtd.menv-nonumber)) { counter-increment: none; }
+.berlin-equation m|mtable.menv-with-eqn > m|mtr:not(:has(> m|mtd.menv-nonumber))::after { content: none; }
+
+m|mo.mop-negated {
+    background: linear-gradient(to top left, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0) calc(50% - 0.8px), rgba(0, 0, 0, 1) 50%, rgba(0, 0, 0, 0) calc(50% + 0.8px), rgba(0, 0, 0, 0) 100%)
+}
+
+m|mtd.menv-left-solid {
+    border-left: 0.06em solid;
+}
+
+m|mtd.menv-right-solid {
+    border-right: 0.06em solid;
+}
+
+m|mtd.menv-left-dashed {
+    border-left: 0.06em dashed;
+}
+
+m|mtd.menv-right-dashed {
+    border-right: 0.06em dashed;
+}
+
+m|mtr.menv-hline {
+    border-top: 0.06em solid;
+}
+
+m|mtr.menv-hdashline {
+    border-top: 0.06em dashed;
+}
+
+m|mtr.menv-hline>m|mtd.menv-nonumber:only-child,
+m|mtr.menv-hdashline:empty>m|mtd.menv-nonumber:only-child {
+    padding-top: 0.1em;
+    padding-bottom: 0;
+}
+
+m|mtd.menv-border-only:empty {
+    width: 0.1em;
+    padding: 0;
+    margin: 0;
+}

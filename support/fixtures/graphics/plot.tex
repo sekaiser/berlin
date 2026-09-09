@@ -1,0 +1,9 @@
+\documentclass[tikz,border=5pt]{standalone}
+\input{preamble.tex}
+\begin{document}
+\begin{tikzpicture}
+\begin{axis}[width=9cm,height=6cm,xlabel={Input},ylabel={Measured value},grid=major]
+\addplot[thick,blue,mark=*] table[x=x,y=y,col sep=comma] {values.csv};
+\end{axis}
+\end{tikzpicture}
+\end{document}

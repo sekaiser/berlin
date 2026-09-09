@@ -12,6 +12,7 @@ path = "lib.rs"
 
 [dependencies]
 berlin_document.workspace = true
+berlin_math.workspace = true
 comrak.workspace = true
 sha2.workspace = true
 serde_json.workspace = true

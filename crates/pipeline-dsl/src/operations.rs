@@ -100,6 +100,7 @@ macro_rules! artifact {
 }
 
 artifact!(OrgSources);
+artifact!(LatexSources);
 artifact!(MarkdownSources);
 artifact!(Documents);
 artifact!(DataSources);
@@ -140,10 +141,27 @@ impl PipelineTarget {
 }
 
 pub(super) fn register_operations(engine: &mut Engine) {
+    engine.register_fn("load_latex", load_latex);
+    engine.register_fn(
+        "compile_papers",
+        |sources: LatexSources, output: ImmutableString| {
+            compile_papers(sources, output, "/papers".into())
+        },
+    );
+    engine.register_fn("compile_papers", compile_papers);
+    engine.register_fn("compile_diagrams", compile_diagrams);
+    engine.register_fn(
+        "compile_diagrams",
+        |source: DataSources, inputs: StaticAssets, output: ImmutableString| {
+            compile_diagrams(source, inputs, output, "pdflatex".into())
+        },
+    );
     engine.register_fn("load_org", load_org);
     engine.register_fn("export_org", export_org);
     engine.register_fn("load_markdown", load_markdown);
     engine.register_fn("parse_markdown", parse_markdown);
+    engine.register_fn("parse_documents", parse_documents);
+    engine.register_fn("merge_documents", merge_documents);
     engine.register_fn("map_documents", map_documents);
     engine.register_fn("load_data", load_data);
     engine.register_fn("parse_feed", parse_feed);
@@ -161,6 +179,7 @@ pub(super) fn register_operations(engine: &mut Engine) {
     engine.register_fn("copy_assets", copy_assets);
 
     engine.register_fn("named", OrgSources::named);
+    engine.register_fn("named", LatexSources::named);
     engine.register_fn("named", MarkdownSources::named);
     engine.register_fn("named", Documents::named);
     engine.register_fn("named", DataSources::named);
@@ -179,6 +198,29 @@ fn load_org(pattern: ImmutableString) -> OrgSources {
         Operation::LoadOrg {
             pattern: pattern.into(),
         },
+    ))
+}
+
+fn load_latex(pattern: ImmutableString) -> LatexSources {
+    LatexSources(Fragment::source(
+        "latex_sources",
+        Operation::LoadLatex {
+            pattern: pattern.into(),
+        },
+    ))
+}
+
+fn compile_papers(
+    source: LatexSources,
+    output: ImmutableString,
+    url_prefix: ImmutableString,
+) -> Documents {
+    Documents(source.0.transform(
+        "paper_documents",
+        Operation::CompilePapers {
+            url_prefix: url_prefix.into(),
+        },
+        Some(output.as_str()),
     ))
 }
 
@@ -225,6 +267,24 @@ fn map_documents(source: Documents, mapper: FnPtr) -> Documents {
     ))
 }
 
+fn compile_diagrams(
+    source: DataSources,
+    inputs: StaticAssets,
+    output: ImmutableString,
+    engine: ImmutableString,
+) -> Result<StaticAssets, Box<rhai::EvalAltResult>> {
+    let engine = engine
+        .as_str()
+        .parse::<berlin_core::TexEngine>()
+        .map_err(Box::<rhai::EvalAltResult>::from)?;
+    Ok(StaticAssets(source.0.join(
+        inputs.0,
+        "diagrams",
+        Operation::CompileDiagrams { engine },
+        Some(output.as_str()),
+    )))
+}
+
 fn load_data(pattern: ImmutableString) -> DataSources {
     DataSources(Fragment::source(
         "feed_data",
@@ -236,6 +296,21 @@ fn load_data(pattern: ImmutableString) -> DataSources {
 
 fn parse_feed(source: DataSources) -> Feed {
     Feed(source.0.transform("feed", Operation::ParseFeed, None))
+}
+
+fn parse_documents(source: DataSources) -> Documents {
+    Documents(
+        source
+            .0
+            .transform("imported_documents", Operation::ParseDocuments, None),
+    )
+}
+
+fn merge_documents(left: Documents, right: Documents) -> Documents {
+    Documents(
+        left.0
+            .join(right.0, "merged_documents", Operation::MergeDocuments, None),
+    )
 }
 
 fn assemble_website(documents: Documents, feed: Feed) -> WebsiteAssembly {

@@ -97,7 +97,7 @@ pub(crate) fn from_directory(
     seal_output(project, pipeline, node, &source, None)
 }
 
-fn website_output(plan: &PipelinePlan) -> Result<&PipelineNode, Error> {
+pub(super) fn website_output(plan: &PipelinePlan) -> Result<&PipelineNode, Error> {
     let websites = plan
         .nodes()
         .iter()
@@ -173,16 +173,7 @@ fn seal_output(
     } else if site.join("CNAME").try_exists()? {
         bail!("default github.io release must not contain a custom-domain CNAME");
     }
-    for (name, bytes) in [
-        ("LICENSE.txt", include_bytes!("../../LICENSE").as_slice()),
-        ("NOTICE.txt", include_bytes!("../../NOTICE").as_slice()),
-        (
-            "THIRD_PARTY_NOTICES.txt",
-            include_bytes!("../THIRD_PARTY_NOTICES.txt").as_slice(),
-        ),
-    ] {
-        add_file(&site, &format!("licenses/berlin/{name}"), bytes)?;
-    }
+    add_notices(&site)?;
     let files = inventory(&site)?;
     validate_site(&site, &files)?;
     let manifest = Manifest {
@@ -206,6 +197,20 @@ fn seal_output(
     fs::rename(temporary.path(), &directory)?;
     sync_directory(&releases)?;
     open(project, &id)
+}
+
+pub(super) fn add_notices(site: &Path) -> Result<(), Error> {
+    for (name, bytes) in [
+        ("LICENSE.txt", include_bytes!("../../LICENSE").as_slice()),
+        ("NOTICE.txt", include_bytes!("../../NOTICE").as_slice()),
+        (
+            "THIRD_PARTY_NOTICES.txt",
+            include_bytes!("../THIRD_PARTY_NOTICES.txt").as_slice(),
+        ),
+    ] {
+        add_file(site, &format!("licenses/berlin/{name}"), bytes)?;
+    }
+    Ok(())
 }
 
 pub(crate) fn open(project: &Project, id: &str) -> Result<WebsiteRelease, Error> {
@@ -256,7 +261,7 @@ pub(crate) fn validate_id(id: &str) -> Result<(), Error> {
     Ok(())
 }
 
-fn validate_url(url: &Url) -> Result<(), Error> {
+pub(super) fn validate_url(url: &Url) -> Result<(), Error> {
     if url.scheme() != "https"
         || !url.username().is_empty()
         || url.password().is_some()

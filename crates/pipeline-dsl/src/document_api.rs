@@ -228,12 +228,14 @@ fn inline_plain_text(inlines: &[Inline]) -> String {
     let mut text = String::new();
     for inline in inlines {
         match inline {
+            Inline::Math { tex } => text.push_str(tex),
             Inline::Text { value } | Inline::Code { value } | Inline::Html { value } => {
                 text.push_str(value)
             }
             Inline::Emphasis { content }
             | Inline::Strong { content }
             | Inline::Strikethrough { content }
+            | Inline::CrossReference { content, .. }
             | Inline::Link { content, .. } => text.push_str(&inline_plain_text(content)),
             Inline::DocumentLink(link) => text.push_str(&inline_plain_text(&link.content)),
             Inline::Image { description, .. } => text.push_str(&inline_plain_text(description)),

@@ -17,6 +17,7 @@ pest.workspace = true
 pest_derive.workspace = true
 
 berlin_document.workspace = true
+berlin_math.workspace = true
 sha2.workspace = true
 anyhow.workspace = true
 comrak.workspace = true
@@ -27,4 +28,5 @@ thiserror.workspace = true
 url.workspace = true
 
 [dev-dependencies]
+serde_json.workspace = true
 tempfile.workspace = true

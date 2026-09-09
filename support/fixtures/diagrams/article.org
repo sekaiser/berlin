@@ -1,0 +1,37 @@
+:PROPERTIES:
+:ID: tikz-publishing-example
+:END:
+#+TITLE: A saved TikZ diagram
+#+AUTHOR: Example Author
+#+DATE: 2026-09-09
+#+DESCRIPTION: A synthetic example of explicitly compiled diagrams published as saved attachments.
+#+HUGO_SLUG: saved-tikz-diagram
+#+HUGO_TAGS: examples
+
+This diagram is compiled deliberately while authoring. Publishing copies the
+saved image; it does not execute the source block.
+
+#+CAPTION: Org sources become typed documents, then published HTML.
+#+ATTR_HTML: :alt Three stages connected by arrows: Org, Documents, HTML.
+[[file:pipeline.svg]]
+
+* Diagram source :noexport:
+
+Place point in this block and run =M-x berlin-render-diagram=, then save.
+The standard Babel result below the block remains useful within Emacs.
+
+#+name: publishing-pipeline
+#+begin_src latex :file pipeline.svg :results file graphics :eval never-export :headers '("\\usepackage{tikz}")
+\usetikzlibrary{arrows.meta,positioning}
+\begin{tikzpicture}[
+  font=\sffamily\Large,
+  stage/.style={draw=black!65, fill=green!7, rounded corners=2pt,
+                minimum width=23mm, minimum height=10mm},
+  node distance=8mm, >={Stealth[length=2mm]}]
+  \node[stage] (org) {Org};
+  \node[stage, right=of org] (documents) {Documents};
+  \node[stage, right=of documents, fill=orange!12] (html) {HTML};
+  \draw[->, thick, black!65] (org) -- (documents);
+  \draw[->, thick, black!65] (documents) -- (html);
+\end{tikzpicture}
+#+end_src

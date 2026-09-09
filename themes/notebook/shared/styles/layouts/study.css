@@ -132,105 +132,10 @@ body:has(.study-page, .notebook-page) .site-footer {
   color: var(--accent); text-decoration: underline; text-decoration-thickness: 2px;
   text-underline-offset: .3em;
 }
-.study-observation { margin-top: 52px; padding-top: 18px; border-top: 2px solid #ad7653; }
-.study-observation h2 { font: italic 400 1.1rem/1.3 var(--font-display); margin: 0 0 12px; color: #805337; }
-.study-observation p { font: .85rem/1.75 var(--font-interface); color: var(--muted); margin-bottom: 12px; }
-.study-observation code { background: none; padding: 0; font-size: .88em; color: var(--ink); }
-.study-observation a { font: .78rem/1.6 var(--font-interface); color: #805337; }
 
-/* Keep selectable code, its anchors and the highlight row geometry intact.
-   A caption is close to its specimen; it is not an application title bar. */
-.study-prose .code-listing {
-  margin: 2.2em 0; border: 0; border-radius: 0; box-shadow: none;
-  background: #f6f5ec; border-top: 1px solid #c9ccbc; border-bottom: 1px solid #dcdfd1;
-}
-.study-prose .code-toolbar {
-  background: transparent; border: 0; padding: 12px 16px 0;
-  gap: 6px 14px; font: var(--control-font); color: var(--muted);
-}
-.study-prose .code-caption { color: #565d50; }
-.study-prose .code-language { font-weight: 400; }
-.study-prose .code-actions { gap: 14px; flex-wrap: wrap; }
-.study-prose .code-actions > :not([hidden]) { display: inline-flex; align-items: center; min-height: 24px; }
-.study-prose .code-copy, .study-prose .code-wrap {
-  background: transparent; border: 0; padding: 2px 0; border-radius: 0;
-  color: var(--moss-ink); font: inherit; cursor: pointer;
-  text-decoration: underline; text-underline-offset: .22em;
-}
-.study-prose .code-wrap[aria-pressed="true"] { color: var(--accent); text-decoration-thickness: 2px; }
-.study-prose .code-listing.is-wrapped pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-.study-prose .code-listing.is-wrapped .code-gutter { display: none; }
-.study-prose .code-copy:hover { color: var(--accent); }
-/* Syntect's InspiredGitHub output uses inline colors. Override only the four
-   low-contrast colors here, not Berlin's shared renderer or other site themes.
-   Browser tests check every emitted token against ordinary and highlighted rows. */
-.study-prose .code-listing pre span[style*="color:#969896"] { color: #596355 !important; font-style: normal !important; }
-.study-prose .code-listing pre span[style*="color:#62a35c"] { color: #35702f !important; }
-.study-prose .code-listing pre span[style*="color:#0086b3"] { color: #006889 !important; }
-.study-prose .code-listing pre span[style*="color:#795da3"] { color: #70528f !important; }
-/* Inset focus rings remain visible inside scrollable, clipped code surfaces. */
-.study-prose .code-listing :focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.study-prose .code-listing pre { padding-inline: 16px; }
-.study-prose .code-gutter { order: 2; min-width: 0; background: transparent; border-right: 0; }
-/* Keep every anchor's vertical position for existing deep links, without
-   displaying numbers or leaving invisible links in the keyboard tab order.
-   Only explanation links contribute width, in the right-hand margin. */
-.study-prose .code-line-reference > a[data-line] { width: 0; padding: 0; visibility: hidden; }
-.study-prose .code-line-reference > a[data-line]::before { content: none; }
-.study-prose .code-gutter a { color: #717969; }
-.study-prose .code-gutter .code-note-link { color: #805337; }
-/* Annotated listings use real rows: disclosures enter normal document flow,
-   so wrapping or opening a note never relies on fixed vertical offsets. */
-.study-prose .code-lines { container-type: inline-size; overflow: auto; padding: 18px 0; font: var(--code-font); tab-size: 4; }
-.study-prose .code-rows { width: max-content; min-width: 100%; }
-.study-prose .code-row { position: relative; scroll-margin-top: 100px; }
-.study-prose .code-row > pre { max-width: none; margin: 0; padding: 0 64px 0 16px; overflow: visible; font: inherit; min-height: 1.7em; }
-.study-prose .code-row > pre code { font: inherit; }
-.study-prose .code-line-anchor { position: absolute; top: 0; left: 0; scroll-margin-top: 100px; }
-.study-prose .code-row.is-highlighted > pre { background: #f6edcc; }
-.study-prose .code-row:target > pre, .study-prose .code-row:has(> .code-line-anchor:target) > pre { background: #dce9cc; box-shadow: inset 3px 0 var(--accent); }
-/* Contain the explanation's margins so opening it cannot shift its summary
-   off the referenced line (notably with WebKit's native details layout). */
-.study-prose .code-note { display: flow-root; margin: 0; }
-.study-prose .code-note > summary { float: right; position: sticky; z-index: 2; right: 0; margin-top: -1.7em; padding: 0 10px; cursor: pointer; color: var(--accent); background: var(--surface-inset); font-family: var(--font-interface); text-decoration: underline; list-style: none; }
-.study-prose .code-note > summary::-webkit-details-marker { display: none; }
-.study-prose .code-note > summary::after { content: " +"; }
-.study-prose .code-note[open] > summary::after { content: " −"; }
-.study-prose .code-explanations { clear: both; position: sticky; left: 16px; box-sizing: border-box; width: min(65ch, calc(100cqi - 32px)); margin: 12px 0 18px 16px; padding: 16px 20px; border-left: 2px solid var(--accent-rule); background: var(--surface-inset); color: var(--ink); font: 1rem/1.7 var(--font-reading); white-space: normal; overflow-wrap: anywhere; }
-.study-prose .code-explanation p { margin: 0; }
-.study-prose .code-explanation + .code-explanation { margin-top: 14px; }
-.study-prose .code-explanation strong { font-weight: 600; }
-.study-prose .code-listing.is-wrapped .code-rows { width: 100%; }
-.study-prose .code-context-link { display: block; font: .8rem/1.7 var(--font-interface); }
-@media (max-width: 600px) {
-  .study-prose .code-row > pre { padding-left: 10px; }
-  .study-prose .code-explanations { left: 10px; margin-left: 10px; width: calc(100cqi - 20px); padding: 12px; }
-}
-@media print {
-  .study-prose .code-rows { width: 100%; }
-  .study-prose .code-note::details-content { content-visibility: visible; }
-}
-.study-prose .code-listing:has(.language-nil) {
-  display: flex; flex-direction: column; background: #f2ecdc;
-  border-top: 0; border-bottom: 0; border-left: 3px solid #a76c43;
-}
-.study-prose .code-listing:has(.language-nil) .code-toolbar {
-  order: 2; padding: 0 16px 16px; align-items: baseline;
-}
-.study-prose .code-listing:has(.language-nil) .code-language { display: none; }
-.study-prose .code-listing:has(.language-nil) .code-caption { flex-basis: 100%; font: italic .85rem/1.5 var(--font-reading); }
 .study-prose > figure:not(.code-listing) { margin: 2.5em 0; }
 .study-prose > figure:not(.code-listing) img { display: block; border: 1px solid #e6e2d6; }
 .study-prose figcaption { color: var(--caption-ink); }
-.study-prose .json-explorer {
-  background: #edf0e5; border: 0; border-top: 3px solid #677957;
-  border-radius: 0; padding: 28px; margin-top: 56px;
-}
-.study-prose .json-explorer h3 { margin-top: 0; font: 400 1.7rem/1.3 var(--font-display); }
-.study-prose .json-explorer pre { border-radius: 0; font-size: .875rem; }
-/* Babel results are reading specimens, not runnable/editable listings. */
-.study-prose .json-explorer .code-listing { margin: 1em 0; border: 0; background: var(--surface); }
-.study-prose .json-explorer .code-toolbar { display: none; }
 .study-end { margin-top: 70px; padding-top: 26px; border-top: 1px solid var(--rule); }
 .study-end h2 { font: italic 400 1.5rem/1.4 var(--font-display); margin-bottom: 24px; color: var(--accent); }
 .study-next { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 36px; }
@@ -255,30 +160,6 @@ body:has(.study-page, .notebook-page) .site-footer {
 }
 .notebook-connection > a:hover, .notebook-connection > a:focus-visible { text-decoration-color: var(--accent); }
 
-/* The JSON article's actual traversal: live text and links, readable without JS. */
-.study-prose .medal-flow { margin: 44px 0; padding: 24px 28px; border-block: 2px solid #9fae8d; background: #f0f2e7; }
-.study-prose .medal-flow figcaption { margin: 0 0 26px; color: #3e5036; font: 400 1.45rem/1.3 var(--font-display); }
-.flow-eyebrow { display: block; margin-bottom: 10px; color: #687256; font: .72rem/1.6 var(--font-interface); }
-.study-prose .flow-stages { margin: 0; padding-left: 1.4em; font: .92rem/1.75 var(--font-interface); }
-.study-prose .flow-stages > li { padding: 0 0 22px 10px; margin: 0 0 22px; border-bottom: 1px solid #cdd3bd; }
-.study-prose .flow-stages > li::marker { color: #97633e; font: 400 1.15rem var(--font-display); }
-.study-prose .flow-stages > li:last-child { padding-bottom: 0; margin-bottom: 0; border: 0; }
-.study-prose .medal-flow h3 { margin: 0 0 14px; color: #3b4c32; font: 600 1rem/1.5 var(--font-interface); letter-spacing: 0; text-wrap: initial; }
-.study-prose .medal-flow p { margin: 12px 0; }
-.study-prose .medal-flow code { background: none; color: #36452e; padding: 0; font-size: .85em; overflow-wrap: anywhere; }
-.study-prose .medal-flow a { color: #885336; font-size: .8rem; }
-.flow-path { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
-.flow-path > span { color: #687256; font-size: .78rem; }
-.flow-branches { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 20px; }
-.flow-branches > div { min-width: 0; padding: 14px 16px; border-left: 2px solid #a8b88f; background: #fffaf0; }
-.flow-branches > div:last-child { border-color: #bc8d66; }
-.flow-label { display: block; color: #6d755d; font-size: .73rem; margin-bottom: 8px; }
-.study-prose .flow-result { font-style: italic; color: #687256; }
-.flow-medals { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
-.flow-medals > span { padding: 4px 12px; border-bottom: 2px solid #c6a460; background: #f3e9ca; font-size: .8rem; }
-.flow-medals > span:nth-child(2) { border-color: #a1aaa2; background: #e7ece7; }
-.flow-medals > span:nth-child(3) { border-color: #ae805d; background: #efdeca; }
-
 @media (max-width: 1100px) {
   .study-page { padding: 48px 36px; --spread-gap: 36px; --margin-width: 160px; }
   .study-opening { grid-template-columns: minmax(0, 1fr) 230px; gap: 28px; }
@@ -291,7 +172,6 @@ body:has(.study-page, .notebook-page) .site-footer {
   .study-margin { width: 100%; }
   .study-margin-content { position: static; padding-top: 0; max-height: none; overflow: visible; }
   .study-contents { padding-block: 16px; margin-bottom: 28px; border-block: 1px solid var(--rule); }
-  .study-observation { display: none; } /* The full explanation remains in the prose. */
   .study-prose { width: 100%; }
   .study-heading h1 { font-size: clamp(2.8rem, 6vw, 4rem); }
 }
@@ -319,18 +199,10 @@ body:has(.study-page, .notebook-page) .site-footer {
   .study-vignette { width: 210px; max-width: 70%; margin: 28px 0 -15px auto; }
   .study-prose { font-size: 1.05rem; line-height: 1.8; }
   .study-prose h2 { font-size: 1.75rem; }
-  .study-prose .code-toolbar { padding-inline: 10px; }
-  .study-prose .code-listing pre { padding-inline: 10px; }
-  .study-prose .json-explorer { padding: 20px 16px; }
-  .study-prose .code-actions > :not([hidden]) { display: inline-flex; align-items: center; min-height: 44px; }
-  .study-prose .code-actions { gap: 18px; }
   .study-contents summary { min-height: 44px; display: list-item; align-content: center; }
   .study-contents a { display: inline-block; padding-block: 6px; }
   .study-next { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .study-return { padding-block: 12px; }
-  .study-prose .medal-flow { padding: 22px 18px; }
-  .flow-branches { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  .study-prose .medal-flow a { display: inline-block; padding-block: 8px; }
   body:has(.study-page, .notebook-page) .site-footer { margin-top: 40px; }
 }
 @media print {
@@ -339,8 +211,4 @@ body:has(.study-page, .notebook-page) .site-footer {
   body:has(.study-page, .notebook-page) .site-shell, .study-page { padding: 0; }
   .study-masthead, .study-vignette, .study-margin, .study-end { display: none; }
   .study-opening, .study-layout { display: block; }
-  .study-prose .code-listing { overflow: visible; break-inside: auto; }
-  .study-prose .code-actions, .study-prose .code-status, .study-prose .code-gutter { display: none; }
-  .study-prose .code-listing pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-  .study-prose .medal-flow { padding-inline: 0; background: none; }
 }

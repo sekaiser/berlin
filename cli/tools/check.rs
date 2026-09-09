@@ -129,6 +129,6 @@ fn write_text(output: &mut impl Write, check: &CheckOutput<'_>) -> io::Result<()
     }
     writeln!(
         output,
-        "\nScope: document connections in existing Markdown after mappings; not a full site validation."
+        "\nScope: document connections in prepared Markdown/semantic documents after mappings; not a full site validation."
     )
 }

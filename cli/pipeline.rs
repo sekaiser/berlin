@@ -82,6 +82,9 @@ pub fn print_current_plan(
 
 fn operation_name(operation: &Operation) -> String {
     match operation {
+        Operation::CompileDiagrams { engine } => format!("compile diagrams ({})", engine.program()),
+        Operation::LoadLatex { pattern } => format!("load latex {pattern}"),
+        Operation::CompilePapers { .. } => "compile papers".into(),
         Operation::LoadOrg { pattern } => format!("load org {pattern}"),
         Operation::LoadMarkdown { pattern } => format!("load markdown {pattern}"),
         Operation::LoadData { pattern } => format!("load data {pattern}"),
@@ -89,6 +92,8 @@ fn operation_name(operation: &Operation) -> String {
         Operation::LoadAssets { pattern } => format!("load assets {pattern}"),
         Operation::ExportOrg { backend, section } => format!("export org ({backend}, {section})"),
         Operation::ParseMarkdown => "parse markdown".into(),
+        Operation::ParseDocuments => "parse semantic documents".into(),
+        Operation::MergeDocuments => "merge documents".into(),
         Operation::ParseFeed => "parse feed".into(),
         Operation::MapDocuments { mapper } => format!("map documents ({})", mapper.as_str()),
         Operation::AssembleWebsite => "assemble website".into(),

@@ -29,7 +29,9 @@ where
     D: Deserializer<'de>,
 {
     Ok(String::deserialize(deserializer)?
-        .split("; ")
+        .split(';')
+        .map(str::trim)
+        .filter(|tag| !tag.is_empty())
         .map(str::to_owned)
         .collect())
 }
@@ -114,6 +116,25 @@ mod tests {
         assert_eq!(item.tags, ["rust", "publishing"]);
         assert_eq!(item.source, "file:///project/data/feed.csv");
         assert_eq!(item.annotation, None);
+    }
+
+    #[test]
+    fn empty_tag_fields_stay_untagged_and_separators_allow_whitespace() {
+        let source = SourceFile {
+            path: PathBuf::from("data/feed.csv"),
+            uri: "file:///project/data/feed.csv".into(),
+            text: concat!(
+                "Title,Url,Date Added,Manual Tags\n",
+                "Empty,https://example.com/empty,2026-09-05,\n",
+                "Whitespace,https://example.com/space,2026-09-05,   \n",
+                "Separators,https://example.com/separators,2026-09-05,; ;\n",
+                "Tags,https://example.com/tags,2026-09-05, rust;publishing ; ; systems \n"
+            )
+            .into(),
+        };
+        let feed = parse(&[source]).unwrap();
+        assert!(feed.as_slice()[..3].iter().all(|item| item.tags.is_empty()));
+        assert_eq!(feed.as_slice()[3].tags, ["rust", "publishing", "systems"]);
     }
 
     #[test]

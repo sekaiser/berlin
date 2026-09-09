@@ -57,16 +57,69 @@ control paths, and checks for common preview-only HTML references. It adds
 for custom domains. Conflicting supplied notice/CNAME files fail preparation.
 Normal authored downloads, including CSV files, remain allowed.
 
-These checks do **not** constitute a complete link, accessibility, privacy, or
-secret audit. Berlin does not rewrite URLs, fingerprint assets, generate a
-sitemap, or migrate site-specific production helpers in this step. Templates,
-CSS, authored links and attachments must already work under the configured URL
-prefix. Inspect the sealed `site/` directory and run your site's validation on
-that exact bundle before authorizing publication; validators must not alter it.
+Without `--production`, Berlin does not rewrite URLs, fingerprint assets, or
+generate a sitemap. Templates, CSS, authored links and attachments must already
+work under the configured URL prefix. Inspect the sealed `site/` directory before
+authorizing publication; additional validators must not alter it. Neither the
+basic guards nor production preparation constitute a complete accessibility,
+privacy, rights, or secret audit.
 
 `release-plan` rechecks the complete inventory and reports the exact destination
 and files. It does not reload the pipeline or contact GitHub. Subsequent edits
 and builds cannot change an existing release.
+
+### Native production preparation
+
+For a website with canonical URLs in its templates, prepare production files
+inside the same native build that supplies the document revision inventory:
+
+```sh
+bln release --production --pipeline-file production.rhai --pipeline site
+# Alternatively, install production output locally without requiring a destination:
+bln build --production --pipeline-file production.rhai --pipeline site
+```
+
+The selected configuration must supply the public HTTPS website URL. Berlin does
+not infer it from a repository name or edit your configuration. `--production`
+requires exactly one website renderer, with all declared outputs inside its
+output directory. Separate Org export remains an explicit preceding step.
+
+After the renderer and asset-copy operations complete, Berlin prepares their
+transaction-owned output:
+
+- Normalizes local HTML `href`, `src`, `poster`, `srcset`, and social-image URLs
+  against the configured website base. Authored `/path` links are site-relative;
+  paths already carrying the site's prefix are not prefixed twice.
+- Adds content-hash query versions to local assets. The existing CSS parser
+  rewrites stylesheet imports and `url()` references before computing dependent
+  hashes, so an image change updates the referring CSS and HTML URLs.
+- Checks local destinations and HTML fragments, exact absolute canonical URLs,
+  Berlin redirect targets, and common preview references. Redirected fragments
+  resolve against the destination page. Cyclic CSS dependencies fail preparation.
+- Generates `sitemap.xml` and `robots.txt`, replacing any staged copies, excludes
+  redirect aliases from the sitemap, and includes Berlin's notices and `.nojekyll`.
+- Rejects `.org`, `.csv`, `.DS_Store`, and the legacy `static/js/live.js` asset in
+  this stricter production mode. Ordinary builds/basic sealing retain their
+  existing behavior, including intentionally published CSV downloads.
+
+HTML is parsed rather than rewritten as arbitrary text: prose, code specimens,
+comments, and script bodies remain intact. This is not a general web bundler:
+JavaScript-generated URLs, inline CSS, SVG documents, external destinations, and
+social-platform previews are not validated or rewritten. HTML `<base href>`
+overrides are rejected. Templates must emit absolute canonicals; use Berlin's
+`config_site_url` and `page_path` context values. Generated HTML is expected to use
+semicolon-terminated character references in URL attributes.
+
+`release --production` seals only after preparation succeeds, keeps the mapped
+document inventory from that same execution, and leaves preview output untouched.
+`build --production` instead installs the prepared output transactionally, just
+like a regular build. Failed preparation does not install output or seal a bundle.
+`build --production --dry-run` validates the plan but does not run production file
+checks or write files. No mode publishes or executes a post-build command hook.
+
+Two such native releases can be passed directly to `release-diff` and
+`release-drafts`. Earlier imports still lack document history: establish a new
+native baseline rather than assigning today's source metadata to old bundles.
 
 ### Seal a prepared directory
 
@@ -89,6 +142,7 @@ absolute paths may point to an external preparation workspace.
 Berlin copies those files, verifies their hashes, and adds the same required
 Pages support files and notices to its private copy. It never modifies the
 supplied directory. Conflicting support files and unsafe paths still fail.
+`--from-directory` cannot be combined with `--production`.
 Imports have no document inventory: current source files, receipts, or a copied
 manifest are not evidence that they describe these prepared bytes. Native builds
 and imports therefore have different IDs even when their final files match;
@@ -209,8 +263,11 @@ explain what changed, and structural changes do not necessarily merit a post.
 Add your explanation, review the wording and diagnostics, and verify the intended
 release and URL are live before posting manually. Preparing a draft does not
 approve it or establish that either release is live. Existing publication records
-are not consulted. There is no LinkedIn API call, scheduling, social-post receipt,
-or duplicate-post prevention for manual posting.
+are not consulted by `release-drafts`. The separate
+[manual announcement workflow](announcement-workflow.md) approves your edited
+text and records user-reported post URLs. Neither workflow calls the LinkedIn
+API or schedules posts; local records do not verify delivery or prevent manual
+posts made outside Berlin.
 
 The version-1 JSON plan records both release identities and metadata, the channel,
 document revisions and URLs, generated drafts with character counts/diagnostics,
@@ -224,8 +281,9 @@ paths resolve against the project (`BERLIN_DIR`). The parent must already exist
 and the destination must not exist, even as an empty directory or symlink. The
 export creates one `.txt` per candidate and a `manifest.json`; a zero-candidate
 export contains only the manifest. Filename collisions fail before creating the
-directory. Export into this project's release, publication, or Git state is
-refused. Existing review directories and hand-edited drafts are never replaced.
+directory. Export into this project's release, publication, announcement, or Git
+state is refused. Existing review directories and hand-edited drafts are never
+replaced.
 
 The manifest records the generated starting points, not subsequent edits to text
 files, approval, or publication. It is written last. An I/O failure leaves the new

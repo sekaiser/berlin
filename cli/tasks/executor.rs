@@ -36,6 +36,11 @@ impl<'a> NodeExecutor<'a> {
             );
         }
         match &node.operation {
+            Operation::LoadLatex { pattern } => Ok(Some(RuntimeArtifact::LatexSources(
+                super::paper::load(self.project, pattern)?,
+            ))),
+            Operation::CompilePapers { url_prefix } => self.compile_papers(node, url_prefix),
+            Operation::CompileDiagrams { engine } => self.compile_diagrams(node, *engine),
             Operation::LoadOrg { pattern } => Ok(Some(RuntimeArtifact::OrgSources(load_files(
                 self.project,
                 pattern,
@@ -50,6 +55,8 @@ impl<'a> NodeExecutor<'a> {
                 load_runtime_sources(self.project, pattern)?,
             ))),
             Operation::ParseMarkdown => self.parse_markdown(node),
+            Operation::ParseDocuments => self.parse_documents(node),
+            Operation::MergeDocuments => self.merge_documents(node),
             Operation::ParseFeed => self.parse_feed(node),
             Operation::MapDocuments { mapper } => self.map_documents(node, mapper),
             Operation::AssembleWebsite => self.assemble_website(node),
@@ -98,6 +105,118 @@ impl<'a> NodeExecutor<'a> {
         Ok(Some(RuntimeArtifact::Feed(feed::parse(sources)?)))
     }
 
+    fn compile_diagrams(
+        &self,
+        node: &PipelineNode,
+        engine: berlin_core::TexEngine,
+    ) -> Result<Option<RuntimeArtifact>, Error> {
+        let sources = self.input(node, 0, |artifact| match artifact {
+            RuntimeArtifact::DataSources(sources) => Some(sources),
+            _ => None,
+        })?;
+        let (root, files) = self.input(node, 1, |artifact| match artifact {
+            RuntimeArtifact::StaticSources { source_root, files } => Some((source_root, files)),
+            _ => None,
+        })?;
+        let output = output_path(node)?;
+        let names = super::graphics::output_names(sources)?;
+        let inputs = super::graphics::snapshot_files(root, files)?;
+        if self.options.dry_run {
+            println!(
+                "would compile {} diagram(s) -> {}",
+                sources.len(),
+                output.display()
+            );
+        } else {
+            if !self.options.allow_tex {
+                anyhow::bail!("diagram compilation requires --allow-tex");
+            }
+            let output = self.output_root.join(output);
+            std::fs::create_dir_all(&output)?;
+            for (source, name) in sources.iter().zip(names) {
+                let svg = super::graphics::render(
+                    &source.text,
+                    &inputs,
+                    engine,
+                    self.project.root(),
+                    self.options.no_cache,
+                )?;
+                std::fs::write(output.join(name), svg)?;
+            }
+        }
+        Ok(None)
+    }
+
+    fn compile_papers(
+        &self,
+        node: &PipelineNode,
+        url_prefix: &str,
+    ) -> Result<Option<RuntimeArtifact>, Error> {
+        let sources = self.input(node, 0, |artifact| match artifact {
+            RuntimeArtifact::LatexSources(sources) => Some(sources),
+            _ => None,
+        })?;
+        let output = output_path(node)?;
+        let documents = if self.options.dry_run {
+            println!(
+                "would compile {} LaTeX paper(s) -> {}",
+                sources.len(),
+                output.display()
+            );
+            DocumentCollection::default()
+        } else {
+            if !self.options.allow_tex {
+                anyhow::bail!("LaTeX compilation requires --allow-tex");
+            }
+            super::paper::compile(
+                self.project.root(),
+                sources,
+                &self.output_root.join(output),
+                url_prefix,
+                self.options.no_cache,
+            )?
+        };
+        Ok(Some(RuntimeArtifact::Documents(documents)))
+    }
+
+    fn parse_documents(&self, node: &PipelineNode) -> Result<Option<RuntimeArtifact>, Error> {
+        let sources = self.input(node, 0, |artifact| match artifact {
+            RuntimeArtifact::DataSources(sources) => Some(sources),
+            _ => None,
+        })?;
+        if sources.is_empty() {
+            anyhow::bail!("ParseDocuments matched no semantic document files");
+        }
+        let documents = sources
+            .iter()
+            .map(|source| {
+                serde_json::from_str::<berlin_document::Document>(&source.text)
+                    .with_context(|| format!("invalid semantic document in {}", source.uri))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Some(RuntimeArtifact::Documents(
+            DocumentCollection::new(documents).validated()?,
+        )))
+    }
+
+    fn merge_documents(&self, node: &PipelineNode) -> Result<Option<RuntimeArtifact>, Error> {
+        let documents = |index| {
+            self.input(node, index, |artifact| match artifact {
+                RuntimeArtifact::Documents(documents) => Some(documents),
+                _ => None,
+            })
+        };
+        let merged = documents(0)?
+            .as_slice()
+            .iter()
+            .chain(documents(1)?.as_slice())
+            .cloned()
+            .collect::<Vec<_>>();
+        Ok(Some(RuntimeArtifact::Documents(
+            DocumentCollection::new(merged).validated()?,
+        )))
+    }
+
     fn map_documents(
         &self,
         node: &PipelineNode,
@@ -140,11 +259,14 @@ impl<'a> NodeExecutor<'a> {
         if self.options.dry_run {
             println!("would render website -> {}", output.display());
         } else {
+            let cache = (!self.options.no_cache)
+                .then(|| super::cache::ArtifactCache::new(self.project.root()));
             website::render(
                 self.project,
                 website,
                 config,
                 &self.output_root.join(output),
+                cache.as_ref(),
             )?;
         }
         Ok(None)
@@ -182,7 +304,24 @@ impl<'a> NodeExecutor<'a> {
         if self.options.dry_run {
             println!("would compile css -> {}", output.display());
         } else {
-            let compiled = css::compile(&source.path)?;
+            let source_root = crate::util::fs::source_reference(self.project, &source.path)
+                .and_then(|reference| {
+                    crate::util::fs::source_location(
+                        self.project,
+                        reference
+                            .to_str()
+                            .context("CSS source reference is not UTF-8")?,
+                    )
+                    .map(|(root, _)| root)
+                })
+                .ok();
+            let cache = (!self.options.no_cache && source_root.is_some())
+                .then(|| super::cache::ArtifactCache::new(self.project.root()));
+            let compiled = css::compile(
+                &source.path,
+                source_root.as_deref().unwrap_or(self.project.root()),
+                cache.as_ref(),
+            )?;
             write_output(&self.output_root.join(output), &compiled)?;
         }
         Ok(None)

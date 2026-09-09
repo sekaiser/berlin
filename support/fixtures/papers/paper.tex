@@ -1,0 +1,44 @@
+% berlin: {"id":"synthetic-paper","published":"2026-09-09"}
+\documentclass[11pt]{article}
+\usepackage{amsmath}
+\usepackage[hidelinks,pdfusetitle]{hyperref}
+\title{A Small Study of Incremental Publishing}
+\author{Example Author}
+\date{September 9, 2026}
+\begin{document}
+\maketitle
+\begin{abstract}
+This synthetic paper tests conversion fidelity. It is not a research claim.
+One source should retain its equations, references, and bibliography in both
+the printed paper and a readable web edition.
+\end{abstract}
+
+\section{A simple cost model}\label{sec:model}
+Suppose a collection has \(n\) documents and \(k\) of them change.
+If rendering one document costs \(c\), a full rebuild costs
+\begin{equation}\label{eq:work}
+W_{\mathrm{full}}=nc,\qquad W_{\mathrm{incremental}}=kc.
+\end{equation}
+Equation~\eqref{eq:work} intentionally omits dependency propagation.
+It provides a conversion test, not a performance prediction.\footnote{Actual
+builds may also spend time on discovery, validation, indexing, and asset copying.}
+
+\section{An illustrative comparison}\label{sec:comparison}
+The model in Section~\ref{sec:model} gives the values in Table~\ref{tab:cost}.
+\begin{table}[h]
+\centering
+\begin{tabular}{lrr}
+Strategy & Documents rendered & Cost \\
+\hline
+Full & 100 & 100 \\
+Incremental & 3 & 3 \\
+\end{tabular}
+\caption{Synthetic values with unit rendering cost.}\label{tab:cost}
+\end{table}
+
+The bibliography entry is explicitly fictional, used only to exercise
+citation handling~\cite{example}.
+
+\bibliographystyle{plain}
+\bibliography{references}
+\end{document}

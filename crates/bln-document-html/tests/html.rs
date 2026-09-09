@@ -33,7 +33,7 @@ fn main() {}
     let source = markdown::Source::new(source, "file:///content/test.md").unwrap();
     let document = markdown::Parser::new().parse(&source).unwrap();
 
-    let output = Renderer::default().render(&document);
+    let output = Renderer::default().render(&document).unwrap();
     let output = output.as_str();
 
     assert!(output.contains("<p>Intro with <strong>meaning</strong>"));
@@ -79,7 +79,7 @@ fn renders_extensible_sections_and_components() {
         }],
     }];
 
-    let output = Renderer::default().render(&document);
+    let output = Renderer::default().render(&document).unwrap();
     let output = output.as_str();
 
     assert!(output.contains("<section data-role=\"summary\">"));
@@ -103,7 +103,7 @@ fn renders_code_without_reinterpreting_it_as_markdown() {
         value: "{{< unknown >}}\n".into(),
     })];
 
-    let output = Renderer::default().render(&document);
+    let output = Renderer::default().render(&document).unwrap();
 
     assert!(output.as_str().contains("unknown"));
     assert!(output.as_str().contains("</code></pre>"));
@@ -124,7 +124,11 @@ fn render_code_blocks(values: &[&str]) -> String {
             })
         })
         .collect();
-    Renderer::default().render(&document).as_str().to_owned()
+    Renderer::default()
+        .render(&document)
+        .unwrap()
+        .as_str()
+        .to_owned()
 }
 
 fn listing_ids(html: &str) -> Vec<&str> {
@@ -194,7 +198,7 @@ fn renders_ox_hugo_references_and_return_links_without_javascript() {
         "../../markdown/tests/fixtures/code-references.md"
     ));
     let document = markdown::Parser::new().parse(&source).unwrap();
-    let html = Renderer::default().render(&document);
+    let html = Renderer::default().render(&document).unwrap();
     let html = html.as_str();
     assert!(
         html.contains("<figure class=\"code-listing\" id=\"code-snippet--country-extraction\"")
@@ -212,7 +216,7 @@ fn multiple_explanations_have_distinct_return_links_even_before_the_code() {
         "[First](#ref-1) and **[second](#ref-1)**.\n\n```rust { id=example, lineanchors=ref }\nx\n```\n",
     );
     let document = markdown::Parser::new().parse(&source).unwrap();
-    let html = Renderer::default().render(&document);
+    let html = Renderer::default().render(&document).unwrap();
     for index in 1..=2 {
         assert!(
             html.as_str()
@@ -235,6 +239,7 @@ fn author_assigned_listing_identity_survives_code_edits() {
         assert!(
             Renderer::default()
                 .render(&document)
+                .unwrap()
                 .as_str()
                 .contains("<figure class=\"code-listing\" id=\"example\"")
         );
@@ -247,7 +252,7 @@ fn reference_led_notes_render_once_inside_native_line_disclosures() {
         "```rust { id=example, lineanchors=ref }\nlet x = 1;\nx\n```\n\n1. [First](#ref-1) with **emphasis**.\n2. [Second](#ref-1) and `code`.\n",
     );
     let document = markdown::Parser::new().parse(&source).unwrap();
-    let html = Renderer::default().render(&document);
+    let html = Renderer::default().render(&document).unwrap();
     let html = html.as_str();
     assert_eq!(html.matches("<details class=\"code-note\">").count(), 1);
     assert!(!html.contains("<ol"));
@@ -275,7 +280,7 @@ fn annotated_source_preserves_exact_bytes_and_cannot_end_its_data_element() {
         panic!("code fixture");
     };
     code.value = original.into();
-    let html = Renderer::default().render(&document);
+    let html = Renderer::default().render(&document).unwrap();
     let data = html
         .as_str()
         .split("class=\"code-source\">")
@@ -300,7 +305,7 @@ fn mixed_lists_and_task_lists_remain_in_the_prose() {
         let document = markdown::Parser::new()
             .parse(&markdown::Source::in_memory(&markdown))
             .unwrap();
-        let html = Renderer::default().render(&document);
+        let html = Renderer::default().render(&document).unwrap();
         assert!(!html.as_str().contains("class=\"code-note\""));
         assert!(html.as_str().contains("this."));
         assert!(html.as_str().contains("<li>"));
@@ -313,7 +318,7 @@ fn renders_caption_inside_the_figure_and_highlights_by_source_offset() {
         "```rust { linenostart=20, hl_lines=[\"2\"] }\n/* first\nsecond */\n```\n<div class=\"src-block-caption\">\n<span class=\"src-block-number\">Code Snippet 1:</span>\nA <em>multiline</em> comment.\n</div>\n",
     );
     let document = markdown::Parser::new().parse(&source).unwrap();
-    let html = Renderer::default().render(&document);
+    let html = Renderer::default().render(&document).unwrap();
     let html = html.as_str();
     assert!(html.contains("<span class=\"code-caption\">A <em>multiline</em> comment.</span>"));
     assert!(!html.contains("src-block-caption"));
@@ -345,13 +350,15 @@ fn document_links_use_current_routes_and_keep_source_anchors() {
         )]
         .into(),
     );
-    let html = renderer.render(&document);
+    let html = renderer.render(&document).unwrap();
     assert!(html.as_str().contains("id=\"bln-ref-1\""));
     assert!(
         html.as_str()
             .contains("href=\"https://example.com/notebook/notes/renamed.html#details\"")
     );
-    let standalone = berlin_document_html::Renderer::default().render(&document);
+    let standalone = berlin_document_html::Renderer::default()
+        .render(&document)
+        .unwrap();
     assert!(standalone.as_str().contains("Earlier work"));
     assert!(!standalone.as_str().contains("href="));
     assert!(!standalone.as_str().contains("id:target"));

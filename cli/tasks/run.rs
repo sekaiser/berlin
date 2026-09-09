@@ -83,6 +83,23 @@ impl<'a> PipelineRun<'a> {
             .load(self.pipeline)
             .map_err(|error| anyhow::anyhow!(error.to_string()))?;
         plan.validate()?;
+        if !self.options.dry_run
+            && !self.options.allow_tex
+            && plan.nodes().iter().any(|node| {
+                matches!(
+                    node.operation,
+                    berlin_core::Operation::CompilePapers { .. }
+                        | berlin_core::Operation::CompileDiagrams { .. }
+                )
+            })
+        {
+            anyhow::bail!(
+                "this pipeline compiles LaTeX; use --allow-tex only for trusted sources and toolchains (TeX is not sandboxed)"
+            );
+        }
+        if self.options.production {
+            super::production::validate_plan(&plan)?;
+        }
         self.prepare_outputs(&plan)?;
         Ok(PreparedPipeline { program, plan })
     }
@@ -123,6 +140,9 @@ impl<'a> PipelineRun<'a> {
             }
             .execute(node)?;
             self.accept_output(node, artifact)?;
+        }
+        if self.options.production && !self.options.dry_run {
+            super::production::prepare(&prepared.plan, &self.output_root)?;
         }
         Ok(())
     }

@@ -36,6 +36,12 @@ impl Parser {
         let arena = Arena::new();
         let root = parse_document(&arena, &normalized, &self.options);
         let front_matter = front_matter::parse(root, source.uri().as_str())?;
+        let references = crate::references::References::collect(
+            root,
+            front_matter.as_ref(),
+            source.uri().as_str(),
+        )?;
+        crate::math::validate(root, source.uri().as_str())?;
         let mut document =
             document::from_ast(root, front_matter.as_ref(), source).map_err(|message| {
                 Error::InvalidDocument {
@@ -45,6 +51,9 @@ impl Parser {
             })?;
         restore_figures(&mut document.blocks, &figures);
         document::assign_reference_anchors(&mut document.blocks);
+        references
+            .resolve(&mut document)
+            .map_err(|message| crate::references::invalid(source.uri().as_str(), message))?;
         validate(document, source)
     }
 }
@@ -83,6 +92,11 @@ fn normalize_shortcodes(source: &Source<'_>) -> Result<(String, HashMap<String, 
                     token.clone(),
                     Figure {
                         source: image_source.to_owned(),
+                        alt: shortcode
+                            .args
+                            .get("alt")
+                            .and_then(|alt| alt.as_str())
+                            .map(str::to_owned),
                         caption: shortcode
                             .args
                             .get("caption")

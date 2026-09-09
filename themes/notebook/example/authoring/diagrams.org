@@ -1,0 +1,31 @@
+:PROPERTIES:
+:ID: theme-diagrams
+:END:
+#+TITLE: Diagram plates
+#+HUGO_SLUG: diagram-plates
+#+AUTHOR: Example Author
+#+DATE: 2026-09-01
+
+#+begin_description
+A saved PGFPlots drawing demonstrates the notebook diagram plate.
+#+end_description
+
+This plot uses the same four points as the repository's synthetic graphics
+fixture, with the opt-in notebook PGFPlots style. The SVG is already rendered;
+publishing this page does not invoke a LaTeX compiler.
+
+#+ATTR_HTML: :style --diagram-width:34rem;
+#+begin_notebook-diagram
+#+CAPTION: Four points from the synthetic graphics fixture.
+#+ATTR_HTML: :alt Line plot connecting the synthetic points (0,0), (1,1), (2,4), and (3,9).
+[[file:notebook-plot.svg]]
+
+#+begin_diagram-legend
+- Filled circles mark the four supplied points.
+- The moss line connects them; it is not a fitted model or a measured benchmark.
+#+end_diagram-legend
+
+#+begin_diagram-actions
+[[file:notebook-plot.svg][Open the full-size plot]]
+#+end_diagram-actions
+#+end_notebook-diagram

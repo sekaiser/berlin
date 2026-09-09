@@ -8,6 +8,7 @@
 
 mod code_references;
 mod date;
+mod local_references;
 mod references;
 pub use date::{InvalidPublicationDate, PublicationDate};
 pub use references::{DocumentLink, ReferenceOccurrence, plain_text};
@@ -55,6 +56,8 @@ pub enum DocumentValidationError {
     InvalidCodeReference(String),
     #[error("invalid document reference: {0}")]
     InvalidDocumentReference(String),
+    #[error("invalid local reference: {0}")]
+    InvalidLocalReference(String),
 }
 
 fn validate_identifier(field: &'static str, value: &str) -> Result<(), DocumentValidationError> {
@@ -112,12 +115,27 @@ fn validate_source_hash(source_hash: &str) -> Result<(), DocumentValidationError
 fn validate_blocks(blocks: &[Block]) -> Result<(), DocumentValidationError> {
     for block in blocks {
         match block {
-            Block::Heading { level, .. } => validate_heading_level(*level)?,
+            Block::Math { tex } => validate_non_empty("math expression", tex)?,
+            Block::Equation(equation) => {
+                validate_identifier("equation ID", &equation.id.0)?;
+                validate_identifier("equation number", &equation.number)?;
+                validate_non_empty("math expression", &equation.tex)?;
+            }
+            Block::Paragraph { content } => validate_inlines(content)?,
+            Block::Heading { level, content, .. } => {
+                validate_heading_level(*level)?;
+                validate_inlines(content)?;
+            }
             Block::Section {
-                id, level, blocks, ..
+                id,
+                level,
+                title,
+                blocks,
+                ..
             } => {
                 validate_identifier("section ID", &id.0)?;
                 validate_heading_level(*level)?;
+                validate_inlines(title)?;
                 validate_blocks(blocks)?;
             }
             Block::Component {
@@ -135,15 +153,36 @@ fn validate_blocks(blocks: &[Block]) -> Result<(), DocumentValidationError> {
                     validate_blocks(&item.blocks)?;
                 }
             }
-            Block::Paragraph { .. }
-            | Block::Code(_)
-            | Block::Figure(_)
-            | Block::Html { .. }
-            | Block::Table(_)
-            | Block::ThematicBreak => {}
+            Block::Code(code) => {
+                if let Some(caption) = &code.caption {
+                    validate_inlines(caption)?;
+                }
+            }
+            Block::Table(table) => {
+                for row in &table.rows {
+                    for cell in &row.cells {
+                        validate_inlines(cell)?;
+                    }
+                }
+            }
+            Block::Figure(_) | Block::Html { .. } | Block::ThematicBreak => {}
         }
     }
     Ok(())
+}
+
+fn validate_inlines(inlines: &[Inline]) -> Result<(), DocumentValidationError> {
+    inlines.iter().try_for_each(|inline| match inline {
+        Inline::Math { tex } => validate_non_empty("math expression", tex),
+        Inline::Emphasis { content }
+        | Inline::Strong { content }
+        | Inline::Strikethrough { content }
+        | Inline::CrossReference { content, .. }
+        | Inline::Link { content, .. } => validate_inlines(content),
+        Inline::DocumentLink(link) => validate_inlines(&link.content),
+        Inline::Image { description, .. } => validate_inlines(description),
+        _ => Ok(()),
+    })
 }
 
 fn validate_heading_level(level: u8) -> Result<(), DocumentValidationError> {
@@ -221,11 +260,18 @@ pub struct Provenance {
 pub enum SourceFormat {
     Org,
     Markdown,
+    Latex,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Block {
+    /// A numbered display with identity independent of its output channel.
+    Equation(Equation),
+    /// Display mathematics; TeX is retained independently of its HTML projection.
+    Math {
+        tex: String,
+    },
     Paragraph {
         content: Vec<Inline>,
     },
@@ -263,6 +309,16 @@ pub enum Block {
         properties: BTreeMap<String, PropertyValue>,
         blocks: Vec<Block>,
     },
+}
+
+/// A source-assigned number, not a renderer-generated counter. Importers retain
+/// the paper's numbering (including values such as `2.1` or `3a`) across channels.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Equation {
+    pub id: ComponentId,
+    pub number: String,
+    /// Mathematical TeX only; labels and references belong to document structure.
+    pub tex: String,
 }
 
 fn default_section_level() -> u8 {
@@ -335,6 +391,9 @@ impl Default for CodeReferences {
 pub struct Figure {
     pub source: String,
     pub caption: Option<String>,
+    /// Authored alternative text; distinct from a possibly HTML-formatted caption.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alt: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -361,6 +420,16 @@ pub struct TableRow {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Inline {
+    /// A checked link to a semantic anchor in this document. The label is
+    /// explicit so an importer can retain the source's numbering and wording.
+    CrossReference {
+        target: ComponentId,
+        content: Vec<Inline>,
+    },
+    /// Inline mathematics, not Markdown emphasis or escaped HTML.
+    Math {
+        tex: String,
+    },
     Text {
         value: String,
     },

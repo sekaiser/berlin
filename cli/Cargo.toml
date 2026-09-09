@@ -17,6 +17,7 @@ serde.workspace = true
 markdown.workspace = true
 berlin_document.workspace = true
 berlin_document_html.workspace = true
+berlin_paper.workspace = true
 berlin_document_linkedin.workspace = true
 berlin_content.workspace = true
 berlin_core.workspace = true
@@ -27,7 +28,10 @@ csv.workspace = true
 env_logger.workspace = true
 glob.workspace = true
 log.workspace = true
-lightningcss.workspace = true
+lightningcss = { workspace = true, features = ["visitor"] }
+lol_html.workspace = true
+html-escape.workspace = true
+percent-encoding.workspace = true
 notify.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -38,6 +42,9 @@ tempfile.workspace = true
 tokio.workspace = true
 url.workspace = true
 warp.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.189"
 
 [dev-dependencies]
 tempfile.workspace = true

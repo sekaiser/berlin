@@ -1,0 +1,56 @@
+:PROPERTIES:
+:ID: theme-results
+:END:
+#+TITLE: Result tables
+#+HUGO_SLUG: result-tables
+#+AUTHOR: Example Author
+#+DATE: 2026-09-01
+
+#+begin_description
+Synthetic result tables demonstrate the light and forest notebook variants.
+#+end_description
+
+These tables contain invented specimen data, not measurements from a build.
+The component presents authored values; it does not calculate or verify them.
+
+#+begin_export html
+<figure class="notebook-result notebook-result--forest" aria-labelledby="counted-results-title">
+  <figcaption id="counted-results-title">
+    <span class="result-eyebrow">Synthetic example</span>
+    <span class="result-title">Counted records.</span>
+    <span class="result-description">Three outcomes in a small, invented collection.</span>
+    <span class="result-meta">15 records in this example</span>
+  </figcaption>
+  <div class="result-table" role="region" aria-label="Record counts" tabindex="0">
+    <table>
+      <caption class="result-accessible-caption">Synthetic record counts by outcome</caption>
+      <thead><tr><th scope="col">Outcome</th><th scope="col" class="result-number">Records</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Accepted</th><td class="result-number">12</td></tr>
+        <tr><th scope="row">Deferred</th><td class="result-number">3</td></tr>
+        <tr><th scope="row">Rejected</th><td class="result-number">0</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <details class="result-source">
+    <summary>Inspect the sample source</summary>
+    <pre><code>accepted=12
+deferred=3
+rejected=0</code></pre>
+  </details>
+</figure>
+
+<figure class="notebook-result" aria-labelledby="publication-results-title">
+  <figcaption id="publication-results-title"><span class="result-title">Publication states.</span></figcaption>
+  <div class="result-table" role="region" aria-label="Publication states" tabindex="0">
+    <table>
+      <caption class="result-accessible-caption">Example entries and their publication states</caption>
+      <thead><tr><th scope="col">Entry</th><th scope="col">State</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">A short explanation</th><td>Published</td></tr>
+        <tr><th scope="row">An investigation with a deliberately longer title</th><td>Draft</td></tr>
+      </tbody>
+    </table>
+  </div>
+</figure>
+#+end_export

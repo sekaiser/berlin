@@ -136,10 +136,12 @@ fn inline_plain_text(inlines: &[Inline]) -> String {
     let mut output = String::new();
     for inline in inlines {
         match inline {
+            Inline::Math { tex } => output.push_str(tex),
             Inline::Text { value } | Inline::Code { value } => output.push_str(value),
             Inline::Emphasis { content }
             | Inline::Strong { content }
             | Inline::Strikethrough { content }
+            | Inline::CrossReference { content, .. }
             | Inline::Link { content, .. } => output.push_str(&inline_plain_text(content)),
             Inline::DocumentLink(link) => output.push_str(&inline_plain_text(&link.content)),
             Inline::Image { description, .. } => {
@@ -163,10 +165,13 @@ fn blocks_from_children<'a>(node: &'a AstNode<'a>) -> Result<Vec<Block>, String>
 fn blocks_from_node<'a>(node: &'a AstNode<'a>) -> Result<Vec<Block>, String> {
     Ok(match &node.data.borrow().value {
         NodeValue::FrontMatter(_) => Vec::new(),
-        NodeValue::Paragraph => vec![paragraph_block(node)],
+        NodeValue::Paragraph => paragraph_blocks(node),
         NodeValue::Heading(heading) => vec![heading_block(node, heading.level)],
         NodeValue::BlockQuote | NodeValue::MultilineBlockQuote(_) => vec![block_quote(node)?],
         NodeValue::List(list) => vec![list_block(node, list)?],
+        NodeValue::CodeBlock(code) if code.info.trim() == "math" => vec![Block::Math {
+            tex: code.literal.clone(),
+        }],
         NodeValue::CodeBlock(code) => vec![crate::code::from_node(code)?],
         NodeValue::HtmlBlock(html) => vec![Block::Html {
             value: html.literal.clone(),
@@ -179,9 +184,36 @@ fn blocks_from_node<'a>(node: &'a AstNode<'a>) -> Result<Vec<Block>, String> {
     })
 }
 
-fn paragraph_block<'a>(node: &'a AstNode<'a>) -> Block {
-    Block::Paragraph {
-        content: inlines_from_children(node),
+fn paragraph_blocks<'a>(node: &'a AstNode<'a>) -> Vec<Block> {
+    let mut blocks = Vec::new();
+    let mut content = Vec::new();
+    for child in node.children() {
+        if let NodeValue::Math(math) = &child.data.borrow().value
+            && math.display_math
+        {
+            flush_paragraph(&mut blocks, &mut content);
+            blocks.push(Block::Math {
+                tex: math.literal.clone(),
+            });
+        } else {
+            content.extend(inline_from_node(child));
+        }
+    }
+    flush_paragraph(&mut blocks, &mut content);
+    blocks
+}
+
+fn flush_paragraph(blocks: &mut Vec<Block>, content: &mut Vec<Inline>) {
+    if content.iter().any(|inline| match inline {
+        Inline::SoftBreak => false,
+        Inline::Text { value } => !value.trim().is_empty(),
+        _ => true,
+    }) {
+        blocks.push(Block::Paragraph {
+            content: std::mem::take(content),
+        });
+    } else {
+        content.clear();
     }
 }
 
@@ -289,6 +321,9 @@ pub(super) fn inline_fragment(source: &str) -> Vec<Inline> {
 
 fn inline_from_node<'a>(node: &'a AstNode<'a>) -> Vec<Inline> {
     match &node.data.borrow().value {
+        NodeValue::Math(math) => vec![Inline::Math {
+            tex: math.literal.clone(),
+        }],
         NodeValue::Text(value) => vec![Inline::Text {
             value: value.to_string(),
         }],
@@ -359,6 +394,7 @@ pub(super) fn assign_reference_anchors(blocks: &mut [Block]) {
                 Inline::Emphasis { content }
                 | Inline::Strong { content }
                 | Inline::Strikethrough { content }
+                | Inline::CrossReference { content, .. }
                 | Inline::Link { content, .. } => inlines(content, next),
                 _ => {}
             }

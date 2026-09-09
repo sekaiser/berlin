@@ -1,0 +1,58 @@
+:PROPERTIES:
+:ID: mathematics-specimen
+:END:
+#+TITLE: Mathematics in the notebook
+#+AUTHOR: Example Author
+#+DATE: 2026-09-09
+#+DESCRIPTION: A synthetic specimen for checking Org equations, matrices, and responsive reading.
+#+FILETAGS: :mathematics:
+
+Equations belong in the reading flow. The indexed value \(x_i\) and the fraction \(\frac{1}{2}\) remain mathematics, without turning underscores into emphasis.
+
+* A running total
+
+For a sequence of observations, the arithmetic mean is
+
+\[
+\bar{x} = \frac{1}{n}\sum_{i=1}^{n} x_i.
+\]
+
+Inline dollar notation also works: $a_b + c^2$.
+
+* Working through a system
+
+The aligned steps retain their relationships and spacing.
+
+\begin{align*}
+2x + y &= 7 \\
+x - y &= 2 \\
+3x &= 9
+\end{align*}
+
+The same system can be written as a matrix equation.
+
+\begin{equation*}
+\begin{bmatrix}2 & 1 \\ 1 & -1\end{bmatrix}
+\begin{bmatrix}x \\ y\end{bmatrix}
+= \begin{bmatrix}7 \\ 2\end{bmatrix}
+\end{equation*}
+
+* Wide equations
+
+On a narrow screen, the equation scrolls within its own region; the prose should never force the entire page sideways.
+
+\[
+\mathcal{L}(\theta) = \sum_{i=1}^{n}\log p(x_i \mid \theta) + \lambda_1\sum_{j=1}^{m}\theta_j^2 + \lambda_2\sum_{j=1}^{m}\lvert\theta_j\rvert + \lambda_3\sum_{j=1}^{m}(\theta_j-\theta_{j-1})^2
+\]
+
+* Source code stays source code
+
+#+begin_src rust
+fn main() {
+    println!("The notation is $x_i$ or \\(x_i\\)");
+}
+#+end_src
+
+#+begin_src emacs-lisp :exports results
+(error "Babel must never execute during a publishing build")
+#+end_src

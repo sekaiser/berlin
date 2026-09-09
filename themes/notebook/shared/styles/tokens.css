@@ -29,12 +29,27 @@
   --rule-strong: #9fae98;
   --accent-rule: #b6815d;
   --surface-inset: #edf0e5;
+  --traversal-surface: #f1f0e5;
+  --traversal-heading: #e3e8da;
+  --diagram-canvas: #ffffff;
+  --forest-surface: #243e34;
+  --forest-ink: #faf6e9;
+  --forest-muted: #c5d3c7;
+  --forest-accent: #edcd99;
+  --forest-rule: #6a7a65;
+  --forest-row-rule: #4a6050;
+  --forest-edge: #b89361;
   --surroundings: #dfe7df;
   --caption-ink: #6a5b44;
   --metadata-font: .85rem/1.5 var(--font-interface);
   --control-font: .875rem/1.5 var(--font-interface);
   --code-font: .9375rem/1.7 var(--font-label);
   --caption-font: italic .95rem/1.65 var(--font-reading);
+  --figure-gap: 42px;
   --notebook-width: 1280px;
   --notebook-gutter: 48px;
+}
+
+@media (max-width: 600px) {
+  :root { --figure-gap: 30px; }
 }

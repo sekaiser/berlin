@@ -1,0 +1,35 @@
+:PROPERTIES:
+:ID: theme-observations
+:END:
+#+TITLE: Authored observations
+#+HUGO_SLUG: authored-observations
+#+AUTHOR: Example Author
+#+DATE: 2026-09-01
+
+#+begin_description
+A short reading note beside a synthetic Rust example.
+#+end_description
+
+#+NAME: observation-example
+#+begin_src rust -n -r
+fn main() {
+    let recorded = Some(0); (ref:recorded-value)
+    assert_ne!(recorded, None);
+}
+#+end_src
+
+#+ATTR_HTML: :role note :aria-label Zero is still a value
+#+begin_notebook-observation
+#+begin_observation-title
+Zero is still a value
+#+end_observation-title
+
+#+begin_observation-body
+In this synthetic example, =Some(0)= records a value; =None= records its absence.
+The note refers to the distinction already visible in the listing.
+#+end_observation-body
+
+#+begin_observation-actions
+[[(recorded-value)][See the recorded value]]
+#+end_observation-actions
+#+end_notebook-observation

@@ -205,6 +205,7 @@ fn is_source_node(node: &PipelineNode) -> bool {
     matches!(
         node.operation,
         Operation::LoadOrg { .. }
+            | Operation::LoadLatex { .. }
             | Operation::LoadMarkdown { .. }
             | Operation::LoadData { .. }
             | Operation::LoadCss { .. }
@@ -218,6 +219,19 @@ fn collect_artifact_inputs(
     artifact: &RuntimeArtifact,
 ) -> Result<(), Error> {
     match artifact {
+        RuntimeArtifact::LatexSources(sources) => {
+            for source in sources {
+                collect_text_inputs(inputs, project_root, std::slice::from_ref(&source.text));
+                collect_text_inputs(inputs, project_root, &source.snapshot.dependencies);
+                for resource in &source.snapshot.resources {
+                    inputs.entry(resource.uri.clone()).or_insert(InputReceipt {
+                        path: source_path(project_root, &resource.uri, &resource.path),
+                        sha256: digest(&resource.bytes),
+                        content_id: None,
+                    });
+                }
+            }
+        }
         RuntimeArtifact::OrgSources(paths) => collect_org_inputs(inputs, project_root, paths)?,
         RuntimeArtifact::MarkdownSources(sources)
         | RuntimeArtifact::DataSources(sources)

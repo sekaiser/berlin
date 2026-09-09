@@ -11,6 +11,8 @@ pub(super) const DELIMITER: &str = "---";
 
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct FrontMatter {
+    #[serde(default)]
+    pub(crate) references: Vec<crate::references::Reference>,
     pub(crate) preview: Option<berlin_document::Preview>,
     #[serde(default)]
     pub(crate) kind: berlin_document::DocumentKind,

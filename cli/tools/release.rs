@@ -13,7 +13,16 @@ pub fn prepare(flags: ReleaseFlags, files: Vec<PathBuf>) -> Result<(), Error> {
     let project = Project::load(files)?;
     let release = match flags.from_directory {
         Some(directory) => tasks::release::from_directory(&project, &flags.pipeline, &directory)?,
-        None => tasks::prepare_release(&project, &flags.pipeline)?,
+        None => tasks::prepare_release(
+            &project,
+            &flags.pipeline,
+            tasks::ExecutionOptions {
+                production: flags.production,
+                allow_tex: flags.allow_tex,
+                no_cache: flags.no_cache,
+                ..Default::default()
+            },
+        )?,
     };
     eprintln!(
         "Sealed {} files for {}. Nothing published.",

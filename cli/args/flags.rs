@@ -22,7 +22,10 @@ static SHORT_VERSION: LazyLock<String> = LazyLock::new(|| {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BuildFlags {
+    pub no_cache: bool,
+    pub allow_tex: bool,
     pub dry_run: bool,
+    pub production: bool,
     pub pipeline: String,
 }
 
@@ -40,13 +43,18 @@ pub struct CheckFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ServeFlags {
+    pub no_cache: bool,
+    pub allow_tex: bool,
     pub port: u16,
     pub watch: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReleaseFlags {
+    pub no_cache: bool,
+    pub allow_tex: bool,
     pub pipeline: String,
+    pub production: bool,
     pub from_directory: Option<std::path::PathBuf>,
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -75,6 +83,8 @@ pub struct PublicationFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BerlinSubcommand {
+    RenderDiagram(super::diagram::Options),
+    Announcement(super::announcement::Action),
     Release(ReleaseFlags),
     ReleasePlan(String),
     ReleaseDiff(ReleaseDiffFlags),
@@ -125,11 +135,16 @@ fn clap_root() -> Command {
         .subcommand(plan_subcommand())
         .subcommand(check_subcommand())
         .subcommand(serve_subcommand())
+        .subcommand(super::announcement::command())
+        .subcommand(super::diagram::command())
         .subcommand(
             Command::new("release")
+                .arg(no_cache_arg().conflicts_with("from-directory"))
+                .arg(allow_tex_arg().conflicts_with("from-directory"))
                 .about("Build and seal a website release without replacing preview output")
                 .arg(pipeline_file_arg())
                 .arg(pipeline_arg("Select a website pipeline"))
+                .arg(production_arg().conflicts_with("from-directory"))
                 .arg(
                     Arg::new("from-directory")
                         .long("from-directory")
@@ -199,15 +214,37 @@ fn release_arg() -> Arg {
 
 fn build_subcommand() -> Command {
     Command::new("build")
+        .arg(no_cache_arg())
+        .arg(allow_tex_arg())
         .arg(pipeline_file_arg())
         .about("Execute a content pipeline")
         .arg(pipeline_arg("Select the pipeline to execute"))
+        .arg(production_arg())
         .arg(
             Arg::new("dry-run")
                 .long("dry-run")
                 .help("Show effectful work without writing outputs")
                 .action(ArgAction::SetTrue),
         )
+}
+
+fn production_arg() -> Arg {
+    Arg::new("production")
+        .long("production")
+        .help("Prepare and check website URLs, asset versions, and sitemap before completing the build")
+        .action(ArgAction::SetTrue)
+}
+
+fn allow_tex_arg() -> Arg {
+    Arg::new("allow-tex").long("allow-tex").action(ArgAction::SetTrue)
+        .help("Allow pipeline LaTeX compilation for this invocation; trust sources and toolchains, TeX is not sandboxed")
+}
+
+fn no_cache_arg() -> Arg {
+    Arg::new("no-cache")
+        .long("no-cache")
+        .action(ArgAction::SetTrue)
+        .help("Recompute operation results without reading or writing the build cache")
 }
 
 fn plan_subcommand() -> Command {
@@ -225,6 +262,8 @@ fn plan_subcommand() -> Command {
 
 fn serve_subcommand() -> Command {
     Command::new("serve")
+        .arg(no_cache_arg())
+        .arg(allow_tex_arg())
         .arg(pipeline_file_arg())
         .about("Build and serve the website")
         .arg(
@@ -289,8 +328,13 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
     };
 
     let subcommand = match matches.subcommand().expect("subcommand is required") {
+        ("render-diagram", args) => BerlinSubcommand::RenderDiagram(super::diagram::parse(args)),
+        ("announcement", args) => BerlinSubcommand::Announcement(super::announcement::parse(args)),
         ("release", args) => BerlinSubcommand::Release(ReleaseFlags {
+            no_cache: args.get_flag("no-cache"),
+            allow_tex: args.get_flag("allow-tex"),
             pipeline: selected_pipeline(args),
+            production: args.get_flag("production"),
             from_directory: args
                 .get_one::<std::path::PathBuf>("from-directory")
                 .cloned(),
@@ -318,7 +362,10 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
             refresh: args.get_flag("refresh"),
         }),
         ("build", args) => BerlinSubcommand::Build(BuildFlags {
+            no_cache: args.get_flag("no-cache"),
+            allow_tex: args.get_flag("allow-tex"),
             dry_run: args.get_flag("dry-run"),
+            production: args.get_flag("production"),
             pipeline: selected_pipeline(args),
         }),
         ("plan", args) => BerlinSubcommand::Plan(PlanFlags {
@@ -330,6 +377,8 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
             pipeline: selected_pipeline(args),
         }),
         ("serve", args) => BerlinSubcommand::Serve(ServeFlags {
+            no_cache: args.get_flag("no-cache"),
+            allow_tex: args.get_flag("allow-tex"),
             port: *args.get_one::<u16>("port").expect("port has a default"),
             watch: args.get_flag("watch"),
         }),
@@ -560,6 +609,7 @@ mod tests {
             BerlinSubcommand::Build(BuildFlags {
                 dry_run: true,
                 pipeline,
+                ..
             }) if pipeline == "org"
         ));
     }

@@ -9,6 +9,47 @@ use berlin_content::DocumentCollection;
 use berlin_document::{Block, Document, Inline, List, ListItem};
 use berlin_document_linkedin::{LINKEDIN_POST_CHARACTER_LIMIT, LinkedInDraftDiagnostic, Renderer};
 
+#[test]
+fn math_remains_explicit_tex_in_text_only_drafts() {
+    let mut document = document("math", false);
+    document.blocks = vec![
+        Block::Paragraph {
+            content: vec![Inline::Math { tex: "x_i".into() }],
+        },
+        Block::Math {
+            tex: r"\frac{1}{2}".into(),
+        },
+    ];
+    let draft = Renderer::default().render(&document);
+    assert!(draft.text.contains(r"\(x_i\)"));
+    assert!(draft.text.contains("\\[\n\\frac{1}{2}\n\\]"));
+}
+
+#[test]
+fn numbered_equations_and_reference_labels_survive_text_projection() {
+    let mut document = document("equations", false);
+    document.blocks = vec![
+        Block::Equation(berlin_document::Equation {
+            id: ComponentId("eq:work".into()),
+            number: "2.1".into(),
+            tex: "W=kc".into(),
+        }),
+        Block::Paragraph {
+            content: vec![Inline::CrossReference {
+                target: ComponentId("eq:work".into()),
+                content: vec![Inline::Text {
+                    value: "Equation (2.1)".into(),
+                }],
+            }],
+        },
+    ];
+    document.validate().unwrap();
+    let draft = Renderer::default().render(&document);
+    assert!(draft.text.contains("\\[\nW=kc\n\\] (2.1)"));
+    assert!(draft.text.contains("Equation (2.1)"));
+    assert!(!draft.text.contains("#eq:work"));
+}
+
 fn document(id: &str, draft: bool) -> Document {
     Document {
         id: ContentId(id.into()),

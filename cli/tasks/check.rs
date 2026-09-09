@@ -32,7 +32,10 @@ pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<AuthoringRepo
             project,
             artifacts: &artifacts,
             program: &program,
-            options: ExecutionOptions { dry_run: true },
+            options: ExecutionOptions {
+                dry_run: true,
+                ..ExecutionOptions::default()
+            },
             output_root: project.root(),
             diagnostics: &mut diagnostics,
         }
@@ -96,10 +99,13 @@ fn document_branch(plan: &PipelinePlan, root: &NodeId) -> Result<HashSet<NodeId>
             .context("Document preparation node is missing")?;
         match node.operation {
             Operation::LoadMarkdown { .. }
+            | Operation::LoadData { .. }
+            | Operation::ParseDocuments
+            | Operation::MergeDocuments
             | Operation::ParseMarkdown
             | Operation::MapDocuments { .. } => {}
             _ => bail!(
-                "check cannot execute document input '{}' ({:?}); it only loads Markdown, parses documents and applies mappings. Export Org explicitly first and check a pipeline that loads that Markdown.",
+                "check cannot execute document input '{}' ({:?}); it only reads Markdown/semantic documents, merges collections and applies mappings. Export Org or import papers explicitly first.",
                 node.id,
                 node.operation
             ),

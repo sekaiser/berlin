@@ -37,10 +37,14 @@ Current capabilities include:
 - Static HTML through Tera templates, CSS compilation, and asset copying.
 - [Stable article URLs](docs/stable-urls.md), with optional static redirects from previous slugs.
 - Syntax-highlighted code with named listings, line references, captions, and highlights.
-- LinkedIn draft text and manifests, with character-limit diagnostics; [release announcement starting points](docs/website-releases.md#prepare-announcement-drafts-for-review) for manual review.
+- [TeX equations](docs/mathematics.md) from Org or Markdown, rendered as static MathML without JavaScript.
+- [LaTeX graphics](docs/diagrams.md): shared Org/CLI/pipeline rendering, including TikZ, PGFPlots and LuaLaTeX graph layouts.
+- [Pipeline-driven LaTeX publishing](docs/papers.md), with checked references and citations, notebook HTML and a downloadable PDF.
+- LinkedIn draft text and manifests, with character-limit diagnostics; [release announcements](docs/announcement-workflow.md) with exact-text approvals and local records of user-reported posts.
 - Local build receipts recording input/output hashes, provenance, and diagnostics.
+- [Dependency-checked build caching](docs/build-caching.md) for CSS and supported LaTeX papers.
 - Staged output replacement with recovery support, plus a local preview server.
-- [Sealed website releases and explicit GitHub Pages publishing](docs/website-releases.md), with integrity verification, file and document revision comparisons, and recoverable publication records.
+- [Sealed website releases and explicit GitHub Pages publishing](docs/website-releases.md), with optional native production URL/asset preparation, file and document revision comparisons, and recoverable publication records.
 
 The website renderer currently uses a fixed set of page families and template
 names. The [notebook theme](themes/notebook/README.md) provides reusable Tera/CSS
@@ -267,7 +271,8 @@ It permits building and testing solely to prepare contributions, including
 organizational contributions. If you publish supplied presentation assets or
 adapted quick-start examples, preserve their notices and make LICENSE and NOTICE
 available with the assets or alongside the hosted output; Berlin does not
-currently copy these files automatically.
+copy these files for every output path. Production website builds and sealed
+website releases include Berlin's licence and notices under `licenses/berlin/`.
 Third-party licenses and previously granted rights remain applicable; see
 [NOTICE](NOTICE). Request permission through the
 [issue tracker](https://github.com/sekaiser/berlin/issues).

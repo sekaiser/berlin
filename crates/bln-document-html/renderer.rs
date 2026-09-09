@@ -21,6 +21,7 @@ use comrak::plugins::syntect::SyntectAdapter;
 
 use crate::Html;
 use crate::code::{CodeListings, InlineNote, RenderedNote};
+use crate::math::MathRenderings;
 
 /// Projects Berlin semantic documents into HTML.
 pub struct Renderer {
@@ -36,13 +37,15 @@ impl Renderer {
         self
     }
     /// Renders a semantic document as typed HTML.
-    pub fn render(&self, document: &Document) -> Html {
-        RenderSession::new(
+    pub fn render(&self, document: &Document) -> Result<Html, crate::MathError> {
+        let math = MathRenderings::for_document(document)?;
+        Ok(RenderSession::new(
             &self.syntax_highlighter,
             &self.line_highlighter,
             &self.document_routes,
+            &math,
         )
-        .render(document)
+        .render(document))
     }
 }
 
@@ -58,6 +61,7 @@ impl Default for Renderer {
 }
 
 struct RenderSession<'a> {
+    math: &'a MathRenderings,
     document_routes: &'a HashMap<ContentId, String>,
     syntax_highlighter: &'a SyntectAdapter,
     line_highlighter: &'a OnceLock<crate::highlight::LineHighlighter>,
@@ -70,8 +74,10 @@ impl<'a> RenderSession<'a> {
         syntax_highlighter: &'a SyntectAdapter,
         line_highlighter: &'a OnceLock<crate::highlight::LineHighlighter>,
         document_routes: &'a HashMap<ContentId, String>,
+        math: &'a MathRenderings,
     ) -> Self {
         Self {
+            math,
             document_routes,
             syntax_highlighter,
             line_highlighter,
@@ -81,6 +87,9 @@ impl<'a> RenderSession<'a> {
     }
 
     fn render(mut self, document: &Document) -> Html {
+        if !self.math.is_empty() {
+            let _ = writeln!(self.output, "<style>{}</style>", berlin_math::STYLESHEET);
+        }
         self.code_listings = CodeListings::for_document(document);
         self.render_blocks(&document.blocks);
         Html::new(self.output)
@@ -94,6 +103,8 @@ impl<'a> RenderSession<'a> {
 
     fn render_block(&mut self, block: &Block) {
         match block {
+            Block::Math { tex } => self.render_math(tex, true),
+            Block::Equation(equation) => self.render_equation(equation),
             Block::Paragraph { content } => self.render_paragraph(content),
             Block::Heading { level, id, content } => {
                 self.render_heading(*level, id.as_deref(), content)
@@ -128,6 +139,28 @@ impl<'a> RenderSession<'a> {
         self.output.push_str("<p>");
         self.render_inlines(content);
         self.output.push_str("</p>\n");
+    }
+
+    fn render_equation(&mut self, equation: &berlin_document::Equation) {
+        let id = escape_attribute(&equation.id.0);
+        let number = escape_text(&equation.number);
+        let _ = write!(self.output, "<div class=\"berlin-equation\" id=\"{id}\">");
+        self.render_math(&equation.tex, true);
+        let _ = writeln!(
+            self.output,
+            "<a class=\"berlin-equation-number\" href=\"#{id}\" aria-label=\"Equation {}\">({number})</a></div>",
+            escape_attribute(&equation.number)
+        );
+    }
+
+    fn render_math(&mut self, tex: &str, display: bool) {
+        if display {
+            self.output.push_str("<div class=\"berlin-math-display\" tabindex=\"0\" role=\"region\" aria-label=\"Equation\">");
+        }
+        self.output.push_str(self.math.get(tex, display));
+        if display {
+            self.output.push_str("</div>\n");
+        }
     }
 
     fn render_block_quote(&mut self, blocks: &[Block]) {
@@ -198,12 +231,27 @@ impl<'a> RenderSession<'a> {
     }
 
     fn render_footnote_definition(&mut self, name: &str, blocks: &[Block]) {
+        let label = escape_text(name);
         let name = escape_attribute(name);
         let _ = writeln!(
             self.output,
             "<section class=\"footnote-definition\" id=\"fn-{name}\">"
         );
-        self.render_blocks(blocks);
+        if let [Block::Paragraph { content }, remaining @ ..] = blocks {
+            let _ = write!(
+                self.output,
+                "<p><span class=\"footnote-label\">[{label}]</span> "
+            );
+            self.render_inlines(content);
+            self.output.push_str("</p>\n");
+            self.render_blocks(remaining);
+        } else {
+            let _ = write!(
+                self.output,
+                "<span class=\"footnote-label\">[{label}]</span> "
+            );
+            self.render_blocks(blocks);
+        }
         self.output.push_str("</section>\n");
     }
 
@@ -315,18 +363,23 @@ impl<'a> RenderSession<'a> {
 
     fn render_figure(&mut self, figure: &Figure) {
         let source = escape_attribute(&figure.source);
+        let alt = figure
+            .alt
+            .as_deref()
+            .map(|alt| format!(" alt=\"{}\"", escape_attribute(alt)))
+            .unwrap_or_default();
         match &figure.caption {
             Some(caption) => {
                 let _ = writeln!(
                     self.output,
                     "<figure><img style=\"max-width:100%;\" \
-                     src=\"{source}\"><figcaption>{caption}</figcaption></figure>"
+                     src=\"{source}\"{alt}><figcaption>{caption}</figcaption></figure>"
                 );
             }
             None => {
                 let _ = writeln!(
                     self.output,
-                    "<img style=\"width:456px;margin-top:5px;margin-bottom:5px;\" src=\"{source}\">"
+                    "<img style=\"width:456px;margin-top:5px;margin-bottom:5px;\" src=\"{source}\"{alt}>"
                 );
             }
         }
@@ -359,6 +412,10 @@ impl<'a> RenderSession<'a> {
 
     fn render_inline(&mut self, inline: &Inline) {
         match inline {
+            Inline::Math { tex } => self.render_math(tex, false),
+            Inline::CrossReference { target, content } => {
+                self.render_link(&format!("#{}", target.0), None, content)
+            }
             Inline::Text { value } => self.output.push_str(&escape_text(value)),
             Inline::Emphasis { content } => self.render_wrapped("em", content),
             Inline::Strong { content } => self.render_wrapped("strong", content),
@@ -491,10 +548,12 @@ fn plain_text(inlines: &[Inline]) -> String {
     let mut output = String::new();
     for inline in inlines {
         match inline {
+            Inline::Math { tex } => output.push_str(tex),
             Inline::Text { value } | Inline::Code { value } => output.push_str(value),
             Inline::Emphasis { content }
             | Inline::Strong { content }
             | Inline::Strikethrough { content }
+            | Inline::CrossReference { content, .. }
             | Inline::Link { content, .. } => output.push_str(&plain_text(content)),
             Inline::DocumentLink(link) => output.push_str(&plain_text(&link.content)),
             Inline::Image { description, .. } => output.push_str(&plain_text(description)),

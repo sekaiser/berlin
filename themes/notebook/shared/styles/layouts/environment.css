@@ -86,21 +86,7 @@ body:has(.notebook-overview) main { flex: 0 0 auto; }
 .study-contents a { font: .9rem/1.55 var(--font-reading); color: #52624f; }
 .study-contents[open] > summary { list-style: none; }
 .study-contents[open] > summary::-webkit-details-marker { display: none; }
-.study-observation { border-top: 1px solid var(--rule); margin-top: 38px; padding-top: 28px; }
-.study-observation h2 { font: 400 1.05rem/1.4 var(--font-reading); color: var(--ink); }
-.study-observation p { font: .9rem/1.6 var(--font-reading); }
 .study-end { grid-column: 1 / -1; margin-top: 48px; }
-.study-prose .code-listing {
-  margin: 28px 0; background: #f7f6ef; border: 1px solid #e0e2d4; border-radius: 3px;
-}
-.study-prose .code-toolbar { padding: 9px 14px; background: #eeeee3; border-bottom: 1px solid #e0e2d4; }
-.study-prose .code-listing:has(.language-nil) {
-  display: block; background: #f7f6ef; border: 1px solid #e0e2d4;
-}
-.study-prose .code-listing:has(.language-nil) .code-toolbar { padding: 9px 14px; align-items: center; }
-.study-prose .code-listing:has(.language-nil) .code-caption { flex-basis: auto; font: inherit; }
-.study-prose .code-listing:has(.language-nil) .code-language { display: block; }
-
 /* Overview pages share the opening, type hierarchy and warm content surface. */
 .notebook-page.notebook-overview { padding: 0; background: none; }
 .notebook-overview .journal-index-opening {
@@ -265,7 +251,6 @@ body:has(.notebook-overview) .site-footer { padding-inline: 52px; }
   .study-prose { font-size: 1.05rem; line-height: 1.75; }
   .study-introduction .abstract, .study-prose .frontmatter .abstract { font-size: 1.125rem; line-height: 1.7; padding-inline-start: 14px; }
   .study-prose h2 { font-size: 1.7rem; }
-  .study-prose .code-toolbar { padding-inline: 10px; }
   .study-end { margin-top: 36px; }
   .notebook-overview .journal-index-opening h1 { font-size: 3.2rem; }
   .notebook-overview .journal-index-opening .journal-lead { font-size: 1.05rem; }

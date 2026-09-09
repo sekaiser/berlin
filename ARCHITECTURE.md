@@ -15,6 +15,8 @@ branch. Social-platform API publishing is not implemented.
 | --- | --- |
 | [bln-document](crates/bln-document/) | Document types, metadata, provenance, and semantic validation. |
 | [markdown](crates/markdown/) | Markdown parsing, supported Hugo shortcodes, and HTML rendering of Markdown. |
+| [bln-math](crates/bln-math/) | Bounded, offline TeX-equation rendering to native MathML and its structural stylesheet. |
+| [bln-paper](crates/bln-paper/) | Pure, constrained Pandoc/BibTeX projection into semantic documents, retaining compiled labels and bibliography text. |
 | [bln-content](crates/bln-content/) | Validated document/feed collections, publication ordering, and tag indexes. |
 | [bln-core](crates/bln-core/) | Pipeline nodes, operation signatures, graph validation, and website settings. |
 | [pipeline-dsl](crates/pipeline-dsl/) | Rhai pipeline construction and document-mapping API. |
@@ -83,14 +85,56 @@ signatures and stored by node ID.
 
 `bln plan` displays a graph without executing it. `bln build --dry-run` still
 loads and processes inputs where supported, but skips output writes and Org
-export. It creates neither a transaction nor a receipt. Separate pipeline runs
-do not share a document cache.
+export. It creates neither a transaction, receipt, nor operation-cache entry.
+
+[ArtifactCache](cli/tasks/cache.rs) stores versioned, content-addressed operation
+results under `.berlin/cache/artifacts-v1/`. Consumers define complete input keys
+and validate typed results; storage checks integrity and installs entries
+atomically. Cache failures fall back to computation. Paper compilation uses
+per-source keys and conservative toolchain verification. CSS compilation records
+the bundler's actual reads and import resolutions. Dependency hints are verified
+against current files before looking up a content-addressed compiled stylesheet.
+Theme paths are logical paths within the merged styles directory, independent of
+temporary workspace names. Project overrides use that same resolution path.
+Cache hits still enter normal output staging and validation. `--no-cache`
+bypasses reads and writes. Other pipeline operations still execute each run;
+there is no graph-wide incremental scheduler. See [build caching](docs/build-caching.md).
 
 ## Rendering
 
 The HTML renderer converts semantic blocks directly to HTML. Code blocks use
 Syntect highlighting; listing IDs, line references, captions, and highlights are
 described in [Code listings](docs/code-listings.md).
+
+Equations remain `Inline::Math` or `Block::Math` values containing TeX. Both HTML
+projections use the same fallible MathML renderer; styles accompany math-containing
+fragments, with no browser script or external rendering process. Org export
+preserves math before Blackfriday's text escaping; Markdown validation reports
+unsupported expressions with source locations. Search and text-only channels
+retain the TeX. See [Mathematics](docs/mathematics.md) for supported authoring syntax
+and the boundary between equations, diagrams, and complete LaTeX documents.
+
+Org-authored TikZ compilation belongs to explicit authoring. The optional
+`support/emacs/berlin-diagrams.el` adapter uses Org for expansion/result insertion
+and Berlin's shared graphics service for compilation and SVG conversion. The
+standalone `render-diagram` CLI and typed `compile_diagrams` pipeline operation
+use the same service, explicit input snapshots and cache. pdfLaTeX and LuaLaTeX
+toolchains live in the optional `diagrams`/`papers` shells. Standalone graphics
+do not use the semantic paper package whitelist.
+Publishing consumes saved SVGs through the ordinary content-addressed attachment
+path. Neither the batch exporter nor `berlin-check` loads the authoring adapter.
+
+Paper compilation is pipeline-owned: `load_latex` snapshots sources and their
+declared includes, class wrappers, bibliographies and images; `compile_papers` runs the optional `papers` toolchain in
+temporary working directories. Build, watch and release require `--allow-tex`.
+The pure paper adapter converts Pandoc AST nodes and compiled BibTeX text into
+semantic documents, preserving TeX's label numbers. Paper TikZ pictures and PDF
+figures become SVG assets for HTML. External commands have deadlines, bounded
+captured output and Unix process-group cleanup. `merge_documents` combines
+these with other inputs. PDFs, figure assets and HTML share the output transaction;
+declared dependency edits are watched without manual import steps. `parse_documents`
+also accepts independently prepared semantic JSON.
+See [LaTeX papers](docs/papers.md) for the supported profile and trust boundary.
 
 The website task supplies projected metadata and rendered document bodies to
 Tera templates in the project's `pages/` directory. Template names and page
@@ -178,6 +222,15 @@ inventory contains no document bodies or source paths and is not published as a
 site asset. Native manifests use schema 2; schema-1 bundles and their IDs remain
 readable. Imported directories carry no document inventory.
 
+`build --production` and `release --production` finalize the staged website only
+after all its output operations complete. This built-in offline step rewrites
+local HTML/CSS URLs, versions assets from final dependency bytes, validates
+canonicals/local links/redirects, and creates sitemap/robots files. HTML uses
+`lol_html` with entity decoding; CSS reuses Lightning CSS. No arbitrary command
+hook or additional runtime executable is involved. Release preparation retains
+the same run's document inventory and seals only after those checks succeed.
+Normal preview builds and prepared-directory imports do not run this step.
+
 `release-diff` verifies two local bundles and compares file inventories, release
 metadata, and document revisions where both inventories are available. Missing
 document history is reported explicitly, not reconstructed from current inputs.
@@ -194,6 +247,17 @@ text, not source bodies. Preview is read-only; explicit export creates a new
 directory and never overwrites an existing review. It neither checks live state
 nor publishes, schedules, or records social posts. The full-document Rhai
 `render_linkedin` operation remains separate.
+
+`announcement review`, `record`, and `status` add a local manual-posting workflow
+to those exports. Exact-text approval IDs bind the account, release pair and
+document revision. Append-only approvals and user-reported publication records
+live under `.berlin/announcements`, using a dedicated lock and no-clobber writes,
+not the build/recovery lock. Edited drafts require new approval; repeat reports
+are idempotent and conflicting duplicates are refused. History remains readable
+without source files or release bundles. No social API or live check is performed;
+a reported post is not verified delivery. See the
+[announcement workflow](docs/announcement-workflow.md) for the evidence and
+duplicate-detection boundaries.
 
 The GitHub Pages adapter publishes only to a dedicated `gh-pages` branch and
 requires matching, pre-existing Pages configuration. Intent and outcomes are

@@ -137,12 +137,16 @@ fn handle_figure(
     shortcodes: &mut Vec<Shortcode>,
 ) -> Result<(), Error> {
     let src = get_string("src", &value).context("figure shortcode requires a 'src' argument")?;
+    let src = escape_attribute(src);
+    let alt = get_string("alt", &value)
+        .map(|alt| format!(" alt=\"{}\"", escape_attribute(alt)))
+        .unwrap_or_default();
     let template = if let Some(caption) = get_string("caption", &value) {
         format!(
-            r#"<figure><img style="max-width:100%;" src="{src}"><figcaption>{caption}</figcaption></figure>"#,
+            r#"<figure><img style="max-width:100%;" src="{src}"{alt}><figcaption>{caption}</figcaption></figure>"#,
         )
     } else {
-        format!(r#"<img style="width:456px;margin-top:5px;margin-bottom:5px;" src="{src}">"#)
+        format!(r#"<img style="width:456px;margin-top:5px;margin-bottom:5px;" src="{src}"{alt}>"#)
     };
 
     shortcodes.push(Shortcode {
@@ -153,6 +157,14 @@ fn handle_figure(
         document_link: None,
     });
     Ok(())
+}
+
+fn escape_attribute(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn handle_relref(

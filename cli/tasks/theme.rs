@@ -53,7 +53,11 @@ impl Theme {
     /// Files in styles/entries declare the public stylesheets. Other styles are
     /// import-only sources. CSS imports see the same override hierarchy.
     /// Only a temporary build workspace and the caller's staged output are written.
-    pub fn write_assets(&self, output_root: &Path) -> Result<(), Error> {
+    pub(super) fn write_assets(
+        &self,
+        output_root: &Path,
+        cache: Option<&super::cache::ArtifactCache>,
+    ) -> Result<(), Error> {
         let workspace = tempfile::Builder::new().prefix("berlin-theme-").tempdir()?;
         for (relative, source) in &self.files {
             if relative.starts_with("styles") {
@@ -67,6 +71,7 @@ impl Theme {
                 let css = super::css::compile_stylesheet(
                     &workspace.path().join(entry),
                     &workspace.path().join("styles"),
+                    cache,
                 )?;
                 Ok((entry.file_name().expect("entry has a filename"), css))
             })
@@ -287,7 +292,7 @@ mod tests {
             "<article>Theme</article>"
         );
         let output = root.path().join("output");
-        theme.write_assets(&output).unwrap();
+        theme.write_assets(&output, None).unwrap();
         assert!(
             fs::read_to_string(output.join("assets/css/notebook.css"))
                 .unwrap()
@@ -325,7 +330,7 @@ mod tests {
         let theme = Theme::load(root.path(), Path::new("theme")).unwrap();
         assert!(
             theme
-                .write_assets(&root.path().join("output"))
+                .write_assets(&root.path().join("output"), None)
                 .unwrap_err()
                 .to_string()
                 .contains("entry point")

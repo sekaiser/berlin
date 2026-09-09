@@ -13,6 +13,37 @@ use berlin_pipeline_dsl::compile;
 const SCRIPT: &str = include_str!("../../../support/fixtures/publishing/berlin.pipeline.rhai");
 
 #[test]
+fn paper_compilation_is_typed_and_validates_public_pdf_paths() {
+    let script = r#"pipeline site {
+        let papers = compile_papers(load_latex("papers/*.tex"), "_site/papers");
+        output render_linkedin(papers, "_site/drafts");
+    }"#;
+    let plans = compile(script).unwrap();
+    assert!(plans["site"].nodes().iter().any(
+        |node| matches!(&node.operation, berlin_core::Operation::CompilePapers { url_prefix }
+            if url_prefix == "/papers")
+            && node.operation.signature().produces_value
+            && node.operation.signature().writes_output
+    ));
+    assert!(compile(&script.replace("load_latex", "load_markdown")).is_err());
+    for prefix in [
+        "/",
+        "//host",
+        "/../secret",
+        "relative",
+        "/a?b",
+        "/a/",
+        "/%2e",
+    ] {
+        let script = script.replace(
+            "\"_site/papers\")",
+            &format!("\"_site/papers\", {prefix:?})"),
+        );
+        assert!(compile(&script).is_err(), "accepted {prefix}");
+    }
+}
+
+#[test]
 fn deployment_is_typed_metadata_not_an_executed_operation() {
     let source = SCRIPT.replace("render_website(website, \"_site\", presentation)",
         "render_website(website, \"_site\", presentation).deploy_to(github_pages(\"owner/notebook\"))");

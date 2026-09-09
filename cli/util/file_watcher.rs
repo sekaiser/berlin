@@ -83,6 +83,7 @@ impl PrintConfig {
 pub async fn watch_recv<O, F>(
     paths_to_watch: impl Fn() -> Result<Vec<PathBuf>, Error>,
     print_config: PrintConfig,
+    ignore_path: impl Fn(&std::path::Path) -> bool + Send + 'static,
     mut operation: O,
 ) -> Result<(), Error>
 where
@@ -90,7 +91,7 @@ where
     F: Future<Output = Result<(), Error>>,
 {
     let (event_tx, mut events) = DebouncedReceiver::new_with_sender();
-    let mut watcher = new_watcher(event_tx)?;
+    let mut watcher = new_watcher(event_tx, ignore_path)?;
     let mut watched_paths = HashSet::new();
     add_paths_to_watcher(&mut watcher, &paths_to_watch()?, &mut watched_paths)?;
     let mut changed_paths: Option<Vec<PathBuf>> = None;
@@ -124,10 +125,13 @@ where
             Ok(future) => match future.await {
                 Ok(()) => true,
                 Err(error) => {
+                    if error.is::<super::process::Interrupted>() {
+                        return Err(error);
+                    }
                     eprintln!(
                         "{}: {}",
                         colors::red_bold("error"),
-                        error.to_string().trim_start_matches("error: ")
+                        format!("{error:#}").trim_start_matches("error: ")
                     );
                     false
                 }
@@ -155,11 +159,19 @@ where
 
 fn new_watcher(
     sender: mpsc::UnboundedSender<notify::Result<Vec<PathBuf>>>,
+    ignore_path: impl Fn(&std::path::Path) -> bool + Send + 'static,
 ) -> Result<RecommendedWatcher, Error> {
     Ok(Watcher::new(
         move |result: notify::Result<notify::Event>| {
             let paths = match result {
-                Ok(event) if changes_source(event.kind) => Some(Ok(event.paths)),
+                Ok(event) if changes_source(event.kind) => {
+                    let paths = event
+                        .paths
+                        .into_iter()
+                        .filter(|path| !ignore_path(path))
+                        .collect::<Vec<_>>();
+                    (!paths.is_empty()).then_some(Ok(paths))
+                }
                 Ok(_) => None,
                 Err(error) => Some(Err(error)),
             };

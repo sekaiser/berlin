@@ -1,0 +1,70 @@
+/* Collection entries. Selection changes emphasis, not content, ordering or links. */
+.journal-entry {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; align-items: start;
+  padding: 32px 0 34px; border-bottom: 1px solid var(--rule);
+}
+.journal-entry-copy { min-width: 0; }
+.journal-entry:has(.journal-entry-visual) { grid-template-columns: 216px minmax(0, 1fr); }
+.journal-entry-visual { display: block; padding-top: 4px; border-radius: 3px; }
+.journal-entry-visual:hover { outline: 1px solid var(--accent-rule); outline-offset: 4px; }
+.journal-entry-visual:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.journal-entry-visual img { display: block; width: 100%; height: auto; border-radius: 3px; }
+.journal-date {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px;
+  margin: 0 0 12px; font: var(--metadata-font); color: var(--muted);
+}
+.journal-date span {
+  font: 600 .65rem/1.6 var(--font-interface); letter-spacing: .09em; text-transform: uppercase;
+}
+.journal-date time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.journal-date .journal-kind { color: var(--accent); padding-right: 10px; border-right: 1px solid var(--accent-rule); }
+.journal-entry h2, .journal-entry h3 {
+  margin: 0 0 12px; font: 400 clamp(1.65rem, 2.3vw, 1.85rem)/1.22 var(--font-display);
+  letter-spacing: -.035em; color: var(--ink); text-wrap: initial; overflow-wrap: anywhere;
+}
+.journal-entry:nth-of-type(even) h2, .journal-entry:nth-of-type(even) h3 { color: var(--accent); }
+.journal-entry h2 a, .journal-entry h3 a { text-decoration: none; }
+.journal-entry h2 a:hover, .journal-entry h3 a:hover,
+.journal-entry h2 a:focus-visible, .journal-entry h3 a:focus-visible { text-decoration: underline; }
+.journal-excerpt { max-width: 62ch; font: 1rem/1.7 var(--font-reading); color: var(--muted); }
+.journal-excerpt p { margin: 0 0 14px; }
+.journal-excerpt p:last-child { margin-bottom: 0; }
+.journal-excerpt img { display: block; max-height: 160px; object-fit: contain; object-position: left; }
+.journal-index-entries .journal-entry { gap: 36px; padding-block: 34px; }
+.journal-thread-notes .journal-entry { gap: 36px; }
+
+/* One deliberate accent within the same reading surface, not a separate card. */
+.journal-entry:has(+ .journal-entry--featured) { border-bottom-color: transparent; }
+.journal-entry.journal-entry--featured {
+  margin-top: 24px; padding-block: 30px 36px; gap: 32px;
+  border-top: 2px solid var(--accent-rule);
+}
+.journal-entry--featured:has(.journal-entry-visual) { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
+.journal-entry--featured .journal-entry-visual { align-self: center; }
+.journal-entry--featured .journal-entry-label {
+  margin: 0 0 14px; color: var(--accent);
+  font: .72rem/1.5 var(--font-interface); letter-spacing: .08em; text-transform: uppercase;
+}
+.journal-entry.journal-entry--featured :is(h2, h3) {
+  color: var(--ink); font-size: clamp(1.9rem, 2.8vw, 2.6rem); line-height: 1.13; margin-bottom: 18px;
+}
+.journal-entry--featured .journal-excerpt { color: var(--ink); }
+
+@media (max-width: 1100px) {
+  .journal-entry:has(.journal-entry-visual) { grid-template-columns: 180px minmax(0, 1fr); gap: 24px; }
+  .journal-entry--featured:has(.journal-entry-visual) { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
+}
+@media (max-width: 600px) {
+  .journal-entry, .journal-entry:has(.journal-entry-visual) { grid-template-columns: minmax(0, 1fr); gap: 20px; padding-block: 28px; }
+  .journal-entry-visual { width: min(240px, 100%); padding: 0; }
+  .journal-entry h2, .journal-entry h3 { font-size: 1.75rem; }
+  .journal-entry.journal-entry--featured { gap: 24px; margin-top: 18px; padding-block: 24px 28px; }
+  .journal-entry--featured .journal-entry-visual { width: min(320px, 100%); }
+  .journal-entry.journal-entry--featured :is(h2, h3) { font-size: 2rem; }
+}
+@media print {
+  .journal-entry { break-inside: avoid; }
+  .journal-entry.journal-entry--featured { border-top: 1px solid #888; }
+  .journal-entry--featured :is(.journal-entry-label, .journal-excerpt) { color: black; }
+  .journal-entry.journal-entry--featured :is(h2, h3) { color: black; font: 18pt/1.25 Georgia, serif; }
+}

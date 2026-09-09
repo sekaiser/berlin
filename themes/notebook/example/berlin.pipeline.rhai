@@ -11,4 +11,6 @@ pipeline site {
         author: "Example Author",
         description: "Synthetic examples for inspecting the notebook theme."
     }));
+    // Downloadable synthetic authoring examples; copied, never executed.
+    output copy_assets(load_assets("authoring/*.org"), "_site/examples/org");
 }

@@ -1,0 +1,51 @@
+:PROPERTIES:
+:ID: theme-traversal
+:END:
+#+TITLE: Following a value
+#+HUGO_SLUG: following-a-value
+#+AUTHOR: Example Author
+#+DATE: 2026-09-01
+
+#+begin_description
+A synthetic example of a captioned, step-by-step explanation with source links.
+#+end_description
+
+This synthetic example demonstrates an authored explanation, not an executed program.
+
+* Follow the value
+
+#+begin_export html
+<figure class="notebook-traversal" aria-labelledby="traversal-example-title">
+  <figcaption id="traversal-example-title"><span class="traversal-eyebrow">Reading the code</span>Follow a value from source to output</figcaption>
+  <ol class="traversal-steps" role="list">
+    <li>
+      <h3 class="traversal-step-title">Declare the message</h3>
+      <p>A string literal gives <code>message</code> its value.</p>
+      <a href="#code-snippet--traversal-example-L2">See the declaration</a>
+    </li>
+    <li>
+      <h3 class="traversal-step-title">Distinguish value from presentation</h3>
+      <div class="traversal-branches">
+        <div><span class="traversal-label">Source</span><p>The characters remain unchanged.</p><ul><li>Keep spaces.</li><li>Keep punctuation.</li></ul></div>
+        <div><span class="traversal-label">Reading view</span><p>Wrapping a listing changes its presentation, not the string.</p></div>
+      </div>
+      <p class="traversal-result">One value, two ways to inspect it.</p>
+    </li>
+    <li>
+      <h3 class="traversal-step-title">Print the message</h3>
+      <p><code>println!</code> formats the value for output.</p>
+      <a href="#code-snippet--traversal-example-L3">See the output statement</a>
+    </li>
+  </ol>
+</figure>
+#+end_export
+
+#+NAME: traversal-example
+#+BEGIN_SRC rust -n
+fn main() {
+    let message = "A value can be followed through a program.";
+    println!("{message}");
+}
+#+END_SRC
+
+The figure is static. Its source links work without a client-side script.

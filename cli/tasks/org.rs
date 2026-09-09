@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -124,12 +123,21 @@ fn run_ox_hugo(
     std::fs::create_dir_all(output_root.join("static"))?;
 
     let emacs = std::env::var("BERLIN_EMACS").unwrap_or_else(|_| "emacs".into());
-    let mut bundled = tempfile::Builder::new().suffix(".el").tempfile()?;
+    let bundled = tempfile::tempdir()?;
     let script = match exporter_override(project.root()) {
         Some(path) => path,
         None => {
-            bundled.write_all(DEFAULT_EXPORTER.as_bytes())?;
-            bundled.path().to_path_buf()
+            let script = bundled.path().join("export.el");
+            std::fs::write(&script, DEFAULT_EXPORTER)?;
+            std::fs::write(
+                bundled.path().join("references.el"),
+                include_str!("../../support/ox-hugo/references.el"),
+            )?;
+            std::fs::write(
+                bundled.path().join("code-results.el"),
+                include_str!("../../support/ox-hugo/code-results.el"),
+            )?;
+            script
         }
     };
     let source_map = tempfile::NamedTempFile::new()?;

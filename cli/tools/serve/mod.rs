@@ -6,7 +6,7 @@ use berlin_core::{Operation, PipelineLoader as _};
 
 use crate::args::ServeFlags;
 use crate::project::Project;
-use crate::tasks::run_pipeline;
+use crate::tasks::{ExecutionOptions, run_pipeline_with_options};
 use crate::util::file_watcher::PrintConfig;
 
 mod preview;
@@ -38,13 +38,18 @@ pub async fn serve(
     pipeline_files: Vec<std::path::PathBuf>,
 ) -> Result<(), Error> {
     let project = Project::load(pipeline_files)?;
+    let options = ExecutionOptions {
+        allow_tex: serve_flags.allow_tex,
+        no_cache: serve_flags.no_cache,
+        ..Default::default()
+    };
     if serve_flags.watch {
-        return serve_with_watch(project, serve_flags.port).await;
+        return serve_with_watch(project, serve_flags.port, options).await;
     }
 
     // Regular serve mode - build once and serve
     let target = website_output(&project)?;
-    run_pipeline(&project, "site")?;
+    run_pipeline_with_options(&project, "site", options)?;
     let ip_addr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let port = serve_flags.port;
 
@@ -54,7 +59,11 @@ pub async fn serve(
     Ok(())
 }
 
-async fn serve_with_watch(project: Project, port: u16) -> Result<(), Error> {
+async fn serve_with_watch(
+    project: Project,
+    port: u16,
+    options: ExecutionOptions,
+) -> Result<(), Error> {
     let target = website_output(&project)?;
     let watched_output = target.clone();
     let ip_addr = IpAddr::V4(Ipv4Addr::LOCALHOST);
@@ -65,9 +74,17 @@ async fn serve_with_watch(project: Project, port: u16) -> Result<(), Error> {
     ));
     let build_revision = revision.clone();
     let build_project = project.clone();
+    let ignored_root = project.root().to_owned();
+    let canonical_root = ignored_root.canonicalize()?;
+    let ignored_output = watched_output.clone();
+    let canonical_output = canonical_root.join(watched_output.strip_prefix(project.root())?);
     let watcher = crate::util::file_watcher::watch_recv(
         move || watch_paths(&project),
         PrintConfig::new("Watcher", "Build", true),
+        move |path| {
+            ignored_watch_path(path, &ignored_root, &ignored_output)
+                || ignored_watch_path(path, &canonical_root, &canonical_output)
+        },
         move |_changed_paths| {
             let project = build_project.clone();
             let revision = build_revision.clone();
@@ -79,7 +96,7 @@ async fn serve_with_watch(project: Project, port: u16) -> Result<(), Error> {
                             "Website output changed; restart serve to use the new directory"
                         );
                     }
-                    run_pipeline(&project, "site")?;
+                    run_pipeline_with_options(&project, "site", options)?;
                     revision.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     Ok::<_, Error>(())
                 })
@@ -138,6 +155,29 @@ fn watch_paths(project: &Project) -> Result<Vec<std::path::PathBuf>, Error> {
         .load("site")
         .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     for node in plan.nodes() {
+        if let Operation::LoadLatex { pattern }
+        | Operation::LoadData { pattern }
+        | Operation::LoadAssets { pattern } = &node.operation
+        {
+            let (source_root, relative) = crate::util::fs::source_location(project, pattern)?;
+            let base = crate::tasks::pattern_base(
+                &source_root,
+                relative
+                    .to_str()
+                    .ok_or_else(|| anyhow::anyhow!("LaTeX pattern is not UTF-8"))?,
+            );
+            // Watching the parent handles atomic editor saves and new .bib files.
+            let existing = base
+                .ancestors()
+                .find(|path| path.is_dir())
+                .ok_or_else(|| anyhow::anyhow!("LaTeX watch path has no existing parent"))?;
+            paths.push(existing.canonicalize()?);
+            if matches!(node.operation, Operation::LoadLatex { .. }) {
+                paths.extend(crate::tasks::paper::dependency_directories(
+                    project, pattern,
+                ));
+            }
+        }
         if let Operation::RenderWebsite { config } = &node.operation
             && let Some(selected) = &config.theme
         {
@@ -147,9 +187,90 @@ fn watch_paths(project: &Project) -> Result<Vec<std::path::PathBuf>, Error> {
     Ok(paths)
 }
 
+fn ignored_watch_path(
+    path: &std::path::Path,
+    root: &std::path::Path,
+    output: &std::path::Path,
+) -> bool {
+    if path.starts_with(output) {
+        return true;
+    }
+    let Ok(relative) = path.strip_prefix(root) else {
+        return false;
+    };
+    let mut components = relative.components();
+    let Some(first) = components.next().and_then(|part| part.as_os_str().to_str()) else {
+        return false;
+    };
+    match first {
+        ".git" => true,
+        ".berlin" => components
+            .next()
+            .is_none_or(|part| part.as_os_str() != "generated"),
+        name => {
+            name.starts_with(".berlin-stage-")
+                || name.starts_with(".berlin-backup-")
+                || name.starts_with(".berlin-journal-")
+                || name == ".berlin-transaction.json"
+                || name == ".berlin.lock"
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn watcher_ignores_output_and_state_but_keeps_org_exports() {
+        let root = std::path::Path::new("/project");
+        let output = root.join("public");
+        for path in [
+            "public/papers/new.pdf",
+            ".berlin-stage-abc/papers/new.pdf",
+            ".berlin-backup-abc",
+            ".berlin-journal-abc",
+            ".berlin/receipts/site.json",
+            ".git/index",
+            ".berlin-transaction.json",
+            ".berlin.lock",
+        ] {
+            assert!(
+                ignored_watch_path(&root.join(path), root, &output),
+                "{path}"
+            );
+        }
+        for path in [
+            "papers/paper.tex",
+            "papers/references.bib",
+            "berlin.pipeline.rhai",
+            ".berlin/generated/org/content/paper.md",
+        ] {
+            assert!(
+                !ignored_watch_path(&root.join(path), root, &output),
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn watcher_discovers_custom_latex_directories_and_missing_parents() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("research")).unwrap();
+        for pattern in ["research/*.tex", "research/future/*.tex"] {
+            let script = pipeline("_site").replace(
+                "parse_markdown(load_markdown(\"content/*.md\"))",
+                &format!("compile_papers(load_latex({pattern:?}), \"_site/papers\")"),
+            );
+            std::fs::write(root.path().join("berlin.pipeline.rhai"), script).unwrap();
+            let project = Project::new(root.path().to_owned(), vec![]);
+            assert!(
+                watch_paths(&project)
+                    .unwrap()
+                    .contains(&root.path().join("research").canonicalize().unwrap())
+            );
+        }
+    }
 
     fn pipeline(output: &str) -> String {
         format!(

@@ -236,7 +236,9 @@ fn directory_name(path: &Path) -> Result<PathBuf, Error> {
 }
 
 fn write_journal(project_root: &Path, journal: &CommitJournal) -> Result<(), Error> {
-    let mut temporary = tempfile::NamedTempFile::new_in(project_root)?;
+    let mut temporary = tempfile::Builder::new()
+        .prefix(".berlin-journal-")
+        .tempfile_in(project_root)?;
     serde_json::to_writer(&mut temporary, journal)?;
     temporary.as_file().sync_all()?;
     temporary

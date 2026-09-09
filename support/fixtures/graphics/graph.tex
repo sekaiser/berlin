@@ -1,0 +1,13 @@
+\documentclass[tikz,border=5pt]{standalone}
+\usepackage{fontspec}
+\setmainfont{Latin Modern Roman}
+\usetikzlibrary{graphs,graphdrawing,arrows.meta}
+\usegdlibrary{layered}
+\begin{document}
+\begin{tikzpicture}
+\graph[layered layout,level distance=12mm,sibling distance=15mm,
+  nodes={draw,rounded corners,inner sep=5pt},edges={-Stealth}] {
+  Source -> {Parse, Validate} -> Publish;
+};
+\end{tikzpicture}
+\end{document}

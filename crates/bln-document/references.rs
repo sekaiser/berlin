@@ -73,10 +73,10 @@ pub(super) fn validate(
             )));
         }
     }
-    Ok(())
+    crate::local_references::validate(document, &anchors)
 }
 
-fn visit_passages<'a>(
+pub(super) fn visit_passages<'a>(
     blocks: &'a [Block],
     section: Option<&'a ComponentId>,
     visitor: &mut impl FnMut(&'a [Inline], Option<&'a ComponentId>),
@@ -112,7 +112,11 @@ fn visit_passages<'a>(
                     visitor(caption, section);
                 }
             }
-            Block::Figure(_) | Block::Html { .. } | Block::ThematicBreak => {}
+            Block::Math { .. }
+            | Block::Equation(_)
+            | Block::Figure(_)
+            | Block::Html { .. }
+            | Block::ThematicBreak => {}
         }
     }
 }
@@ -124,6 +128,7 @@ fn visit_links<'a>(inlines: &'a [Inline], visitor: &mut impl FnMut(&'a DocumentL
             Inline::Emphasis { content }
             | Inline::Strong { content }
             | Inline::Strikethrough { content }
+            | Inline::CrossReference { content, .. }
             | Inline::Link { content, .. } => visit_links(content, visitor),
             _ => {}
         }
@@ -135,10 +140,12 @@ pub fn plain_text(inlines: &[Inline]) -> String {
     let mut text = String::new();
     for inline in inlines {
         match inline {
+            Inline::Math { tex } => text.push_str(tex),
             Inline::Text { value } | Inline::Code { value } => text.push_str(value),
             Inline::Emphasis { content }
             | Inline::Strong { content }
             | Inline::Strikethrough { content }
+            | Inline::CrossReference { content, .. }
             | Inline::Link { content, .. } => text.push_str(&plain_text(content)),
             Inline::DocumentLink(link) => text.push_str(&plain_text(&link.content)),
             Inline::Image { description, .. } => text.push_str(&plain_text(description)),

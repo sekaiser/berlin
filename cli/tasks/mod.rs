@@ -11,14 +11,19 @@ use berlin_core::ArtifactKind;
 use crate::project::Project;
 use crate::util::fs::load_files;
 
+pub(crate) mod announcement;
+mod cache;
 pub(crate) mod check;
 mod copy_static;
 mod css;
 mod executor;
 mod feed;
+pub(crate) mod graphics;
 mod org;
 mod origins;
 mod output;
+pub(crate) mod paper;
+mod production;
 pub(crate) mod publication;
 mod receipt;
 pub(crate) mod release;
@@ -35,6 +40,7 @@ struct SourceFile {
 
 #[derive(Clone, Debug)]
 enum RuntimeArtifact {
+    LatexSources(Vec<paper::Source>),
     OrgSources(Vec<PathBuf>),
     MarkdownSources(Vec<SourceFile>),
     Documents(DocumentCollection),
@@ -51,6 +57,7 @@ enum RuntimeArtifact {
 impl RuntimeArtifact {
     fn kind(&self) -> ArtifactKind {
         match self {
+            Self::LatexSources(_) => ArtifactKind::LatexSources,
             Self::OrgSources(_) => ArtifactKind::OrgSources,
             Self::MarkdownSources(_) => ArtifactKind::MarkdownSources,
             Self::Documents(_) => ArtifactKind::Documents,
@@ -83,10 +90,13 @@ impl SourceFile {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ExecutionOptions {
+    pub no_cache: bool,
+    pub allow_tex: bool,
     pub dry_run: bool,
+    pub production: bool,
 }
 
-fn pattern_base(root: &Path, pattern: &str) -> PathBuf {
+pub(crate) fn pattern_base(root: &Path, pattern: &str) -> PathBuf {
     let wildcard = pattern
         .char_indices()
         .find_map(|(index, character)| "*?[".contains(character).then_some(index));
@@ -112,15 +122,12 @@ fn load_runtime_sources(project: &Project, pattern: &str) -> Result<Vec<SourceFi
     files.into_iter().map(SourceFile::read).collect()
 }
 
-pub fn run_pipeline(project: &Project, pipeline: &str) -> Result<(), Error> {
-    run_pipeline_with_options(project, pipeline, ExecutionOptions::default())
-}
-
 pub(crate) fn prepare_release(
     project: &Project,
     pipeline: &str,
+    options: ExecutionOptions,
 ) -> Result<release::WebsiteRelease, Error> {
-    run::PipelineRun::new(project, pipeline, ExecutionOptions::default()).release()
+    run::PipelineRun::new(project, pipeline, options).release()
 }
 
 pub fn run_pipeline_with_options(

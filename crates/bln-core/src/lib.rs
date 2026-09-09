@@ -2,7 +2,9 @@
 
 mod deployment;
 mod pipeline;
+mod tex;
 pub use deployment::DeploymentTarget;
+pub use tex::TexEngine;
 mod website;
 
 pub use pipeline::ArtifactKind;

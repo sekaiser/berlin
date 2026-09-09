@@ -79,6 +79,11 @@ fn append(sections: &mut [Section], current: usize, text: &str) {
 fn collect_blocks(blocks: &[Block], current: usize, sections: &mut Vec<Section>) {
     for block in blocks {
         match block {
+            Block::Math { tex } => append(sections, current, tex),
+            Block::Equation(equation) => {
+                append(sections, current, &equation.tex);
+                append(sections, current, &equation.number);
+            }
             Block::Section {
                 id, title, blocks, ..
             } => {
@@ -130,6 +135,35 @@ fn collect_blocks(blocks: &[Block], current: usize, sections: &mut Vec<Section>)
 mod tests {
     use super::*;
     use berlin_content::{DocumentCollection, Feed};
+
+    #[test]
+    fn retains_equations_and_local_reference_labels_in_search_text() {
+        let mut sections = vec![Section {
+            heading: String::new(),
+            fragment: None,
+            text: String::new(),
+        }];
+        collect_blocks(
+            &[
+                Block::Equation(berlin_document::Equation {
+                    id: berlin_document::ComponentId("eq:work".into()),
+                    number: "2.1".into(),
+                    tex: "W=kc".into(),
+                }),
+                Block::Paragraph {
+                    content: vec![berlin_document::Inline::CrossReference {
+                        target: berlin_document::ComponentId("eq:work".into()),
+                        content: vec![berlin_document::Inline::Text {
+                            value: "Equation (2.1)".into(),
+                        }],
+                    }],
+                },
+            ],
+            0,
+            &mut sections,
+        );
+        assert_eq!(sections[0].text, "W=kc 2.1 Equation (2.1) ");
+    }
 
     fn document(id: &str, extra: &str, body: &str) -> Document {
         markdown::Parser::new()

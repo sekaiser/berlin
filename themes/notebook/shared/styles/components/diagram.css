@@ -1,0 +1,38 @@
+/* Opt-in image plate. The image, caption and attachment links remain source-owned. */
+.notebook-diagram {
+  margin: var(--figure-gap, 42px) 0; background: var(--surface-inset); color: var(--ink);
+  border: 1px solid var(--rule); border-top: 2px solid var(--moss-ink);
+}
+.notebook-diagram > figure { margin: 0; padding: 26px 26px 0; background: var(--diagram-canvas); }
+.notebook-diagram > figure > img {
+  display: block; width: var(--diagram-width, auto); max-width: 100%; height: auto;
+  margin: 0 auto; border: 0;
+}
+.notebook-diagram > figure > figcaption {
+  margin: 26px -26px 0; padding: 20px 26px;
+  background: var(--surface-inset); border-top: 1px solid var(--rule);
+  color: var(--ink); font: 400 1.12rem/1.5 var(--font-display);
+}
+.notebook-diagram > .diagram-legend { padding: 0 26px 20px; color: var(--muted); font: .9rem/1.65 var(--font-reading); }
+.notebook-diagram .diagram-legend :is(p, ul, ol) { margin: 0; max-width: none; }
+.notebook-diagram .diagram-legend li { margin: .35em 0; }
+.notebook-diagram > .diagram-actions { padding: 14px 26px; border-top: 1px solid var(--rule); font: var(--control-font); }
+.notebook-diagram .diagram-actions p { margin: 0; }
+.notebook-diagram a { color: var(--accent); text-underline-offset: .22em; }
+.notebook-diagram a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.notebook-diagram :not(pre) > code { color: var(--moss-ink); background: none; padding: 0; overflow-wrap: anywhere; }
+
+@media (max-width: 600px) {
+  .notebook-diagram > figure { padding: 16px 16px 0; }
+  .notebook-diagram > figure > figcaption { margin: 16px -16px 0; padding: 18px 16px; font-size: 1rem; }
+  .notebook-diagram > .diagram-legend { padding: 0 16px 18px; }
+  .notebook-diagram > .diagram-actions { padding: 8px 16px; }
+  .notebook-diagram .diagram-actions a { display: inline-block; padding-block: 8px; }
+}
+@media print {
+  .notebook-diagram { background: white; color: black; border-color: #888; }
+  .notebook-diagram > figure { background: white; }
+  .notebook-diagram > figure > figcaption { background: white; color: black; border-color: #888; font: 12pt/1.4 Georgia, serif; }
+  .notebook-diagram > .diagram-legend { color: black; font: 10pt/1.5 Georgia, serif; }
+  .notebook-diagram > .diagram-actions { display: none; }
+}

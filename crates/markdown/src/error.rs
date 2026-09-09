@@ -3,6 +3,12 @@
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("invalid mathematics in {source_uri}:{line}: {message}")]
+    InvalidMath {
+        source_uri: String,
+        line: usize,
+        message: String,
+    },
     #[error("invalid Markdown source URI '{source_uri}': {source}")]
     InvalidSourceUri {
         source_uri: String,
