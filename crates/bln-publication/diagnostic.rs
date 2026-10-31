@@ -39,6 +39,10 @@ pub enum Code {
     ResourceLimit,
     OutputConflict,
     HeadingDepthExceeded,
+    InvalidResource,
+    DuplicateResource,
+    UnknownResourceKind,
+    InvalidQuery,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, thiserror::Error)]

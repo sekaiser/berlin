@@ -12,6 +12,7 @@ mod excerpt;
 mod limits;
 mod model;
 mod registry;
+mod resources;
 
 pub use assembly::*;
 pub use canonical::{canonical_bytes, fingerprint, input_digest};
@@ -22,6 +23,7 @@ pub use excerpt::*;
 pub use limits::{BoundedWriter, PublicationLimits};
 pub use model::*;
 pub use registry::*;
+pub use resources::*;
 
 pub use berlin_publication_macros::{__view, Component};
 
