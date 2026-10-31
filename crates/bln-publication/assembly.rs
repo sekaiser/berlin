@@ -31,6 +31,7 @@ pub struct PublicationAssembly {
     sources: Vec<SourceRevision>,
     components: BTreeSet<ComponentKey>,
     composition_fingerprint: String,
+    excerpts: BTreeMap<(String, String), crate::ResolvedExcerpt>,
 }
 
 impl PublicationAssembly {
@@ -119,6 +120,64 @@ impl PublicationAssembly {
             &spec.metadata.id.0,
         )?;
         let sources: Vec<_> = revisions.into_values().collect();
+        let mut excerpts = BTreeMap::new();
+        fn resolve_excerpts(
+            call: &ComponentCall,
+            catalog: &PublicationCatalog,
+            registry: &ComponentRegistry,
+            excerpts: &mut BTreeMap<(String, String), crate::ResolvedExcerpt>,
+        ) -> Result<()> {
+            fn property(
+                value: &Property,
+                catalog: &PublicationCatalog,
+                registry: &ComponentRegistry,
+                excerpts: &mut BTreeMap<(String, String), crate::ResolvedExcerpt>,
+            ) -> Result<()> {
+                match value {
+                    Property::Excerpt(reference) => {
+                        let key = (reference.source.id.0.clone(), reference.section.clone());
+                        if let std::collections::btree_map::Entry::Vacant(entry) =
+                            excerpts.entry(key)
+                        {
+                            entry.insert(crate::excerpt::resolve_excerpt(
+                                catalog, reference, registry,
+                            )?);
+                        }
+                    }
+                    Property::List(values) => {
+                        for value in values {
+                            property(value, catalog, registry, excerpts)?;
+                        }
+                    }
+                    _ => {}
+                }
+                Ok(())
+            }
+            for value in call.properties.values() {
+                property(value, catalog, registry, excerpts)?;
+            }
+            for children in call.slots.values() {
+                for child in &children.0 {
+                    resolve_excerpts(child, catalog, registry, excerpts)?;
+                }
+            }
+            Ok(())
+        }
+        resolve_excerpts(&spec.root, &catalog, registry, &mut excerpts)
+            .map_err(|e| e.at(&spec.metadata.id.0, "root"))?;
+        let mut sources: BTreeMap<_, _> =
+            sources.into_iter().map(|s| (s.id.0.clone(), s)).collect();
+        for excerpt in excerpts.values() {
+            for id in &excerpt.linked_sources {
+                let entry = catalog.entry(id)?;
+                sources.entry(id.clone()).or_insert_with(|| SourceRevision {
+                    id: ContentId(id.clone()),
+                    source_sha256: entry.source_sha256.clone(),
+                    document_digest: entry.document_digest.clone(),
+                });
+            }
+        }
+        let sources: Vec<_> = sources.into_values().collect();
         let components: BTreeSet<_> = placements
             .iter()
             .map(|p| p.occurrence.component.clone())
@@ -136,6 +195,7 @@ impl PublicationAssembly {
             sources,
             components,
             composition_fingerprint,
+            excerpts,
         })
     }
     pub fn spec(&self) -> &PublicationSpec {
@@ -149,6 +209,18 @@ impl PublicationAssembly {
     }
     pub fn sources(&self) -> &[SourceRevision] {
         &self.sources
+    }
+    pub fn excerpt(&self, reference: &crate::ExcerptRef) -> Result<&crate::ResolvedExcerpt> {
+        self.excerpts
+            .get(&(reference.source.id.0.clone(), reference.section.clone()))
+            .ok_or_else(|| {
+                crate::Diagnostic::new(
+                    crate::Code::MissingExcerpt,
+                    crate::Stage::Resolution,
+                    "excerpt was not resolved in this assembly",
+                )
+                .source(&reference.source.id.0, Some(&reference.section))
+            })
     }
     pub fn composition_fingerprint(&self) -> &str {
         &self.composition_fingerprint

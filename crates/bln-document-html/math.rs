@@ -11,8 +11,12 @@ pub(super) struct MathRenderings {
 
 impl MathRenderings {
     pub fn for_document(document: &Document) -> Result<Self, Error> {
+        Self::for_blocks(&document.blocks)
+    }
+
+    pub fn for_blocks(blocks: &[Block]) -> Result<Self, Error> {
         let mut rendered = Self::default();
-        rendered.blocks(&document.blocks)?;
+        rendered.blocks(blocks)?;
         Ok(rendered)
     }
 

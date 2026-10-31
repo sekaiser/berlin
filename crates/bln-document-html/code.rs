@@ -15,6 +15,7 @@ use sha2::{Digest, Sha256};
 /// Unnamed listings fall back to content fingerprints scoped to this document.
 #[derive(Default)]
 pub(super) struct CodeListings {
+    namespace: String,
     occurrences: HashMap<String, usize>,
     explanations: HashMap<String, Vec<String>>,
     rendered_explanations: HashMap<String, usize>,
@@ -40,10 +41,13 @@ struct NoteCandidate {
 
 impl CodeListings {
     pub(super) fn for_document(document: &Document) -> Self {
+        Self::for_blocks(&document.blocks)
+    }
+    pub(super) fn for_blocks(blocks: &[Block]) -> Self {
         let mut targets = Vec::new();
         let mut links = Vec::new();
         let mut candidates = HashMap::new();
-        collect_references(&document.blocks, &mut targets, &mut links, &mut candidates);
+        collect_references(blocks, &mut targets, &mut links, &mut candidates);
         let mut listings = Self {
             explanations: targets
                 .into_iter()
@@ -91,6 +95,18 @@ impl CodeListings {
             }
         }
         listings
+    }
+
+    pub(super) fn with_namespace(mut self, namespace: &str) -> Self {
+        self.namespace = namespace.into();
+        self
+    }
+    fn qualify(&self, id: &str) -> String {
+        if self.namespace.is_empty() {
+            id.into()
+        } else {
+            format!("{}--{id}", self.namespace)
+        }
     }
 
     pub(super) fn inline_notes(&self, code: &CodeBlock) -> HashMap<String, Vec<InlineNote>> {
@@ -143,13 +159,14 @@ impl CodeListings {
     pub(super) fn write(
         &mut self,
         highlighter: &SyntectAdapter,
-        output: &mut String,
+        output: &mut crate::output::Output,
         code: &CodeBlock,
         caption: Option<&str>,
         line_highlighter: Option<&super::highlight::LineHighlighter>,
         notes: &HashMap<String, Vec<RenderedNote>>,
     ) -> fmt::Result {
-        let id = escape_attribute(&self.anchor(code));
+        let source_id = self.anchor(code);
+        let id = escape_attribute(&self.qualify(&source_id));
         let language = code.language.as_deref().filter(|value| !value.is_empty());
         let label = match language {
             None | Some("nil" | "text" | "plaintext") => "Text",
@@ -198,7 +215,7 @@ impl CodeListings {
 
     fn write_annotated(
         &self,
-        output: &mut String,
+        output: &mut crate::output::Output,
         id: &str,
         code: &CodeBlock,
         highlighter: &super::highlight::LineHighlighter,
@@ -236,7 +253,7 @@ impl CodeListings {
                 output,
                 "<div class=\"code-row{}\" id=\"{}\"><span class=\"code-line-anchor\" id=\"{id}-L{line}\"></span><pre><code>{html}</code></pre>",
                 if highlighted { " is-highlighted" } else { "" },
-                escape_attribute(&target)
+                escape_attribute(&self.qualify(&target))
             )?;
             if let Some(notes) = notes.get(&target) {
                 write!(
@@ -247,7 +264,7 @@ impl CodeListings {
                     write!(
                         output,
                         "<div class=\"code-explanation\" id=\"{}\">{}</div>",
-                        escape_attribute(&note.anchor),
+                        escape_attribute(&self.qualify(&note.anchor)),
                         note.html
                     )?;
                 }
@@ -264,7 +281,7 @@ impl CodeListings {
                     write!(
                         output,
                         "<a class=\"code-context-link\" href=\"#{}\">Context</a>",
-                        escape_attribute(anchor)
+                        escape_attribute(&self.qualify(anchor))
                     )?;
                 }
             }
@@ -294,7 +311,12 @@ impl CodeListings {
         }
     }
 
-    fn write_line_links(&self, output: &mut String, id: &str, code: &CodeBlock) -> fmt::Result {
+    fn write_line_links(
+        &self,
+        output: &mut crate::output::Output,
+        id: &str,
+        code: &CodeBlock,
+    ) -> fmt::Result {
         output.push_str("<div class=\"code-gutter\" aria-label=\"Code line links\">");
         for offset in 0..code.value.lines().count() {
             let highlighted = code
@@ -316,7 +338,7 @@ impl CodeListings {
                 write!(
                     output,
                     "<div class=\"{class}\" id=\"{}\" style=\"--line-offset:{offset}\">",
-                    escape_attribute(target)
+                    escape_attribute(&self.qualify(target))
                 )?;
             } else {
                 write!(
@@ -336,7 +358,7 @@ impl CodeListings {
                     write!(
                         output,
                         "<a class=\"code-note-link\" href=\"#{}\" aria-label=\"Explanation {} for line {line}\">{}</a>",
-                        escape_attribute(note),
+                        escape_attribute(&self.qualify(note)),
                         index + 1,
                         if notes.len() == 1 {
                             "Note".into()

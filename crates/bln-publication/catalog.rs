@@ -47,6 +47,7 @@ pub struct CatalogEntry {
     pub source_sha256: String,
     pub document_digest: String,
     pub original_url: Option<Url>,
+    pub anchors: BTreeSet<String>,
 }
 impl CatalogEntry {
     pub fn document(&self) -> &Document {
@@ -119,12 +120,21 @@ impl PublicationCatalog {
                     &document.relations,
                 ),
             )?;
+            let anchors = document
+                .anchor_ids()
+                .map_err(|e| {
+                    Diagnostic::new(Code::InvalidSource, Stage::Resolution, e.to_string())
+                        .source(&document.id.0, None)
+                })?
+                .into_iter()
+                .collect();
             entries.insert(
                 document.id.0.clone(),
                 CatalogEntry {
                     source_sha256: document.provenance.source_hash.clone(),
                     document_digest,
                     original_url,
+                    anchors,
                     document: Arc::new(document),
                 },
             );

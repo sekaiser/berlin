@@ -31,6 +31,12 @@ pub struct Document {
 }
 
 impl Document {
+    /// Authored semantic anchors validated by the normal source contract.
+    /// Generated presentation anchors are deliberately not stable selectors.
+    pub fn anchor_ids(&self) -> Result<std::collections::HashSet<String>, DocumentValidationError> {
+        code_references::validate(&self.blocks)
+    }
+
     pub fn validate(&self) -> Result<(), DocumentValidationError> {
         validate_identifier("content ID", &self.id.0)?;
         validate_metadata(&self.metadata)?;

@@ -22,6 +22,8 @@ use comrak::plugins::syntect::SyntectAdapter;
 use crate::Html;
 use crate::code::{CodeListings, InlineNote, RenderedNote};
 use crate::math::MathRenderings;
+use crate::output::Output;
+use crate::{FragmentContext, FragmentError, SemanticComponentPresenter};
 
 /// Projects Berlin semantic documents into HTML.
 pub struct Renderer {
@@ -31,6 +33,38 @@ pub struct Renderer {
 }
 
 impl Renderer {
+    /// Renders borrowed, prevalidated structural blocks with occurrence-specific
+    /// anchors and a fallible byte budget, leaving source documents untouched.
+    pub fn render_fragment(
+        &self,
+        blocks: &[Block],
+        context: &FragmentContext,
+        presenter: Option<&dyn SemanticComponentPresenter>,
+        limit: usize,
+    ) -> Result<Html, FragmentError> {
+        let math = MathRenderings::for_blocks(blocks).map_err(FragmentError::Math)?;
+        let mut session = RenderSession::new(
+            &self.syntax_highlighter,
+            &self.line_highlighter,
+            &self.document_routes,
+            &math,
+        );
+        session.output = Output::bounded(limit);
+        session.context = context.clone();
+        session.presenter = presenter;
+        session.code_listings = CodeListings::for_blocks(blocks).with_namespace(&context.namespace);
+        if !math.is_empty() {
+            let _ = writeln!(session.output, "<style>{}</style>", berlin_math::STYLESHEET);
+        }
+        session.render_blocks(blocks);
+        if let Some(error) = session.error {
+            return Err(error);
+        }
+        if session.output.failed {
+            return Err(FragmentError::OutputLimit);
+        }
+        Ok(Html::new(session.output.into_string()))
+    }
     /// Supplies channel-specific URLs; unresolved links render as labels, not broken URLs.
     pub fn with_document_routes(mut self, routes: HashMap<ContentId, String>) -> Self {
         self.document_routes = routes;
@@ -65,8 +99,11 @@ struct RenderSession<'a> {
     document_routes: &'a HashMap<ContentId, String>,
     syntax_highlighter: &'a SyntectAdapter,
     line_highlighter: &'a OnceLock<crate::highlight::LineHighlighter>,
-    output: String,
+    output: Output,
     code_listings: CodeListings,
+    context: FragmentContext,
+    presenter: Option<&'a dyn SemanticComponentPresenter>,
+    error: Option<FragmentError>,
 }
 
 impl<'a> RenderSession<'a> {
@@ -81,8 +118,11 @@ impl<'a> RenderSession<'a> {
             document_routes,
             syntax_highlighter,
             line_highlighter,
-            output: String::new(),
+            output: Output::default(),
             code_listings: CodeListings::default(),
+            context: FragmentContext::default(),
+            presenter: None,
+            error: None,
         }
     }
 
@@ -92,11 +132,14 @@ impl<'a> RenderSession<'a> {
         }
         self.code_listings = CodeListings::for_document(document);
         self.render_blocks(&document.blocks);
-        Html::new(self.output)
+        Html::new(self.output.into_string())
     }
 
     fn render_blocks(&mut self, blocks: &[Block]) {
         for block in blocks {
+            if self.output.failed || self.error.is_some() {
+                break;
+            }
             self.render_block(block);
         }
     }
@@ -142,7 +185,7 @@ impl<'a> RenderSession<'a> {
     }
 
     fn render_equation(&mut self, equation: &berlin_document::Equation) {
-        let id = escape_attribute(&equation.id.0);
+        let id = escape_attribute(&self.context.qualify(&equation.id.0));
         let number = escape_text(&equation.number);
         let _ = write!(self.output, "<div class=\"berlin-equation\" id=\"{id}\">");
         self.render_math(&equation.tex, true);
@@ -175,7 +218,8 @@ impl<'a> RenderSession<'a> {
             .caption
             .as_ref()
             .map(|content| self.render_fragment(content));
-        self.code_listings
+        if self
+            .code_listings
             .write(
                 self.syntax_highlighter,
                 &mut self.output,
@@ -184,7 +228,10 @@ impl<'a> RenderSession<'a> {
                 (!notes.is_empty()).then(|| self.line_highlighter.get_or_init(Default::default)),
                 &notes,
             )
-            .expect("writing highlighted code to a String cannot fail");
+            .is_err()
+        {
+            self.output.failed = true;
+        }
     }
 
     fn render_code_notes(&mut self, code: &CodeBlock) -> HashMap<String, Vec<RenderedNote>> {
@@ -218,9 +265,14 @@ impl<'a> RenderSession<'a> {
 
     /// Captures inline markup while retaining this document's reference context.
     fn render_fragment(&mut self, content: &[Inline]) -> String {
-        let document_output = std::mem::take(&mut self.output);
+        let fragment_output = self.output.fork();
+        let document_output = std::mem::replace(&mut self.output, fragment_output);
         self.render_inlines(content);
-        std::mem::replace(&mut self.output, document_output)
+        let fragment = std::mem::replace(&mut self.output, document_output);
+        if fragment.failed {
+            self.output.failed = true;
+        }
+        fragment.into_string()
     }
 
     fn render_html(&mut self, value: &str) {
@@ -232,10 +284,10 @@ impl<'a> RenderSession<'a> {
 
     fn render_footnote_definition(&mut self, name: &str, blocks: &[Block]) {
         let label = escape_text(name);
-        let name = escape_attribute(name);
+        let name = escape_attribute(&self.context.qualify(&format!("fn-{name}")));
         let _ = writeln!(
             self.output,
-            "<section class=\"footnote-definition\" id=\"fn-{name}\">"
+            "<section class=\"footnote-definition\" id=\"{name}\">"
         );
         if let [Block::Paragraph { content }, remaining @ ..] = blocks {
             let _ = write!(
@@ -284,6 +336,26 @@ impl<'a> RenderSession<'a> {
         properties: &BTreeMap<String, PropertyValue>,
         blocks: &[Block],
     ) {
+        if let Some(presenter) = self.presenter {
+            let fragment_output = self.output.fork();
+            let parent = std::mem::replace(&mut self.output, fragment_output);
+            self.render_blocks(blocks);
+            let children = std::mem::replace(&mut self.output, parent);
+            if children.failed {
+                self.output.failed = true;
+                return;
+            }
+            match presenter.present(
+                &ComponentId(self.context.qualify(&id.0)),
+                name,
+                properties,
+                Html::new(children.into_string()),
+            ) {
+                Ok(html) => self.output.push_str(&html),
+                Err(detail) => self.error = Some(FragmentError::Presentation(detail)),
+            }
+            return;
+        }
         let _ = write!(
             self.output,
             "<div id=\"{}\" data-component=\"{}\"",
@@ -306,10 +378,16 @@ impl<'a> RenderSession<'a> {
     }
 
     fn render_heading(&mut self, level: u8, id: Option<&str>, content: &[Inline]) {
+        let shifted = i16::from(level) + i16::from(self.context.heading_offset);
+        if !(1..=6).contains(&shifted) {
+            self.error = Some(FragmentError::HeadingDepth);
+            return;
+        }
+        let level = shifted as u8;
         let id = id.map(str::to_owned).unwrap_or_else(|| heading_id(content));
         let _ = write!(self.output, "<h{level}>");
         if !id.is_empty() {
-            let escaped = escape_attribute(&id);
+            let escaped = escape_attribute(&self.context.qualify(&id));
             let _ = write!(
                 self.output,
                 "<a href=\"#{escaped}\" aria-hidden=\"true\" class=\"anchor\" id=\"{escaped}\"></a>"
@@ -362,7 +440,7 @@ impl<'a> RenderSession<'a> {
     }
 
     fn render_figure(&mut self, figure: &Figure) {
-        let source = escape_attribute(&figure.source);
+        let source = escape_attribute(&self.context.destination(&figure.source));
         let alt = figure
             .alt
             .as_deref()
@@ -449,7 +527,7 @@ impl<'a> RenderSession<'a> {
         let _ = write!(
             self.output,
             "<span id=\"{}\" class=\"document-reference\">",
-            escape_attribute(&link.anchor.0)
+            escape_attribute(&self.context.qualify(&link.anchor.0))
         );
         if let Some(route) = self.document_routes.get(&link.target) {
             let destination = match &link.fragment {
@@ -465,13 +543,13 @@ impl<'a> RenderSession<'a> {
 
     fn render_link(&mut self, destination: &str, title: Option<&str>, content: &[Inline]) {
         let explanation = self.code_listings.explanation_anchor(destination);
-        let destination = escape_attribute(destination);
+        let destination = escape_attribute(&self.context.destination(destination));
         let _ = write!(self.output, "<a href=\"{destination}\"");
         if let Some(id) = explanation {
             let _ = write!(
                 self.output,
                 " class=\"code-reference\" id=\"{}\"",
-                escape_attribute(&id)
+                escape_attribute(&self.context.qualify(&id))
             );
         }
         if let Some(title) = title {
@@ -486,7 +564,7 @@ impl<'a> RenderSession<'a> {
         let _ = write!(
             self.output,
             "<img src=\"{}\" alt=\"{}\"",
-            escape_attribute(source),
+            escape_attribute(&self.context.destination(source)),
             escape_attribute(&plain_text(description))
         );
         if let Some(title) = title {
@@ -496,10 +574,11 @@ impl<'a> RenderSession<'a> {
     }
 
     fn render_footnote_reference(&mut self, name: &str) {
+        let destination = escape_attribute(&self.context.destination(&format!("#fn-{name}")));
         let name = escape_attribute(name);
         let _ = write!(
             self.output,
-            "<sup class=\"footnote-ref\"><a href=\"#fn-{name}\">{name}</a></sup>"
+            "<sup class=\"footnote-ref\"><a href=\"{destination}\">{name}</a></sup>"
         );
     }
 

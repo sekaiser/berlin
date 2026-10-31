@@ -12,7 +12,11 @@ path = "lib.rs"
 
 [dependencies]
 berlin_publication.workspace = true
+berlin_document.workspace = true
 berlin_document_html.workspace = true
 tera.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+berlin_content.workspace = true
