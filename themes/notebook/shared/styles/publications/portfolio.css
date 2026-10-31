@@ -3,7 +3,8 @@
 @import "../entries/reading.css";
 @import "../components/code.css";
 @import "../components/entry.css";
-.publication-page { margin: 0; color: var(--ink); background: var(--canvas); font-family: var(--font-reading); line-height: 1.7; }
+body.publication-page { margin: 0; }
+.publication-page { color: var(--ink); background: var(--canvas); font-family: var(--font-reading); line-height: 1.7; }
 .publication-page main { box-sizing: border-box; max-width: 1040px; margin: 3rem auto; padding: clamp(1.5rem, 5vw, 4rem); background: var(--paper); }
 .publication-page h1, .publication-page h2, .publication-page h3 { font-family: var(--font-display); line-height: 1.2; }
 .publication-page h1 { font-size: clamp(2.5rem, 5vw, 4.5rem); }

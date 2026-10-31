@@ -36,12 +36,21 @@ async function inspect(browser, project, size, width, height, javaScriptEnabled,
       await page.evaluate(()=>document.fonts.ready);
       if (enlarged) await page.addStyleTag({content:'html { font-size: 200% !important; }'});
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth), `${route}: overflow at ${size}`);
+      const spread = page.locator('.publication-page.notebook-page');
+      if (await spread.count()) {
+        const margins = await spread.evaluate(el => {
+          const rect = el.getBoundingClientRect();
+          return {left:rect.left, right:innerWidth-rect.right};
+        });
+        assert.ok(Math.abs(margins.left-margins.right) < 1,
+          `${route}: notebook spread must stay centered at ${size}: ${JSON.stringify(margins)}`);
+      }
     }
     const screenshot = name => page.screenshot({path:path.join(artifacts, `${name}-${size}-${javaScriptEnabled ? 'js' : 'no-js'}.png`)});
     if (project.variant === 'empty') {
       for (const route of ['', 'notes.html', 'feed.html', 'search.html']) {
         await visit(route);
-        assert.equal(await page.locator('.journal-entry,.journal-bookmark').count(),0);
+        assert.equal(await page.locator('.journal-entry,.publication-resource').count(),0);
         if(route==='feed.html') {
           assert.equal(await page.locator('.reading-tools').isVisible(),false);
           assert.ok(await page.getByText('No saved references yet.',{exact:true}).isVisible());
@@ -128,21 +137,21 @@ async function inspect(browser, project, size, width, height, javaScriptEnabled,
       await inspectDiagram(page,screenshot,size==='desktop' && javaScriptEnabled,enlarged);
       await inspectObservations(page,screenshot,width,size==='desktop' && javaScriptEnabled);
       await visit('feed.html');
-      assert.equal(await page.locator('.journal-bookmark:visible').count(),2);
+      assert.equal(await page.locator('.publication-resource:visible').count(),2);
       assert.equal(await page.locator('.reading-tools').isVisible(),javaScriptEnabled);
       if(javaScriptEnabled) {
         assert.equal(await page.locator('.reading-tag-options button').count(),20);
         await inspectTagFilter(page,'design');
         await page.getByRole('button',{name:'systems',exact:true}).click();
-        assert.equal(await page.locator('.journal-bookmark:visible').count(),1);
+        assert.equal(await page.locator('.publication-resource:visible').count(),1);
         await page.reload();
         if(enlarged) await page.addStyleTag({content:'html { font-size: 200% !important; }'});
         assert.equal(await page.getByRole('button',{pressed:true}).count(),2);
         await page.getByRole('searchbox').fill('not-present-anywhere');
-        assert.equal(await page.locator('.journal-bookmark:visible').count(),0);
+        assert.equal(await page.locator('.publication-resource:visible').count(),0);
         assert.ok(await page.locator('.reading-no-results').isVisible());
         await page.getByRole('button',{name:'Clear filters'}).click();
-        assert.equal(await page.locator('.journal-bookmark:visible').count(),2);
+        assert.equal(await page.locator('.publication-resource:visible').count(),2);
         assert.ok(await page.getByRole('searchbox').evaluate(el=>el===document.activeElement));
       }
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));

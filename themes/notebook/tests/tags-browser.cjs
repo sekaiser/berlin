@@ -20,7 +20,7 @@ async function inspectTagPalette(page, screenshot) {
 }
 
 async function inspectTagFilter(page, name) {
-  const link = page.locator(`#reading-entries .paper-tag[data-tag="${name}"]`).first();
+  const link = page.locator(`[data-reading-list] .publication-resource-items .paper-tag[data-tag="${name}"]`).first();
   const button = page.getByRole('button', {name, exact:true});
   assert.equal(await button.getAttribute('data-tag-color'), await link.getAttribute('data-tag-color'));
   const paper = element => getComputedStyle(element, '::before').backgroundColor;
