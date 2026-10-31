@@ -382,7 +382,7 @@ impl<'a> NodeExecutor<'a> {
         Ok(Some(RuntimeArtifact::Documents(documents.into())))
     }
 
-    fn compile_css(&self, node: &PipelineNode) -> Result<Option<RuntimeArtifact>, Error> {
+    fn compile_css(&mut self, node: &PipelineNode) -> Result<Option<RuntimeArtifact>, Error> {
         let sources = self.input(node, 0, |artifact| match artifact {
             RuntimeArtifact::CssSources(sources) => Some(sources),
             _ => None,
@@ -410,11 +410,12 @@ impl<'a> NodeExecutor<'a> {
                 .ok();
             let cache = (!self.options.no_cache && source_root.is_some())
                 .then(|| super::cache::ArtifactCache::new(self.project.root()));
-            let compiled = css::compile(
-                &source.path,
+            let (compiled, inputs) = css::compile_loaded(
+                source,
                 source_root.as_deref().unwrap_or(self.project.root()),
                 cache.as_ref(),
             )?;
+            self.consumed_inputs.extend(inputs);
             write_output(&self.output_root.join(output), &compiled)?;
         }
         Ok(None)
@@ -596,6 +597,73 @@ mod tests {
             std::fs::read_to_string(root.path().join("public/diagram.svg")).unwrap(),
             "captured artwork"
         );
+    }
+
+    #[test]
+    fn standalone_css_uses_loaded_entry_and_records_its_consumed_imports() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("styles")).unwrap();
+        let entry = root.path().join("styles/main.css");
+        let imported = root.path().join("styles/colors.css");
+        let original = "@import './colors.css'; .captured-entry { color: red; }";
+        let color = ".imported-entry { color: blue; }";
+        std::fs::write(&entry, original).unwrap();
+        std::fs::write(&imported, color).unwrap();
+        let project = Project::new(root.path().to_owned(), vec![]);
+        let program = berlin_pipeline_dsl::RhaiPipelineLoader::new("").unwrap();
+        let mut artifacts = HashMap::new();
+        let mut consumed_inputs = vec![];
+        let mut diagnostics = vec![];
+        let loaded = NodeExecutor {
+            project: &project,
+            program: &program,
+            artifacts: &artifacts,
+            consumed_inputs: &mut consumed_inputs,
+            diagnostics: &mut diagnostics,
+            output_root: root.path(),
+            options: ExecutionOptions::default(),
+        }
+        .execute(&PipelineNode::new(
+            "css",
+            Operation::LoadCss {
+                pattern: "styles/main.css".into(),
+            },
+        ))
+        .unwrap()
+        .unwrap();
+        artifacts.insert(NodeId::from("css"), loaded);
+        std::fs::write(&entry, ".late-entry { color: green; }").unwrap();
+        let compile = PipelineNode::new("compile", Operation::CompileCss)
+            .depends_on("css")
+            .output_to("public/styles.css");
+        for _ in 0..2 {
+            consumed_inputs.clear();
+            NodeExecutor {
+                project: &project,
+                program: &program,
+                artifacts: &artifacts,
+                consumed_inputs: &mut consumed_inputs,
+                diagnostics: &mut diagnostics,
+                output_root: root.path(),
+                options: ExecutionOptions::default(),
+            }
+            .execute(&compile)
+            .unwrap();
+            let output = std::fs::read_to_string(root.path().join("public/styles.css")).unwrap();
+            assert!(output.contains("captured-entry"), "{output}");
+            assert!(!output.contains("late-entry"));
+            assert!(output.contains("imported-entry"));
+            let input = consumed_inputs
+                .iter()
+                .find(|input| {
+                    input.path.canonicalize().unwrap() == imported.canonicalize().unwrap()
+                })
+                .expect("CSS import must be attributed");
+            assert_eq!(
+                input.sha256,
+                berlin_publication::input_digest(color.as_bytes())
+            );
+        }
     }
 
     fn document_input<'a>(

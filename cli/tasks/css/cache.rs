@@ -23,6 +23,7 @@ enum Destination {
     External(String),
 }
 
+#[cfg(test)]
 pub(super) fn compile<P: SourceProvider<Error = std::io::Error>>(
     source: &Path,
     root: &Path,
@@ -31,6 +32,24 @@ pub(super) fn compile<P: SourceProvider<Error = std::io::Error>>(
     cache: Option<&ArtifactCache>,
 ) -> Result<String, Error> {
     compile_inner(source, root, provider, mode, cache, false, || {})
+}
+
+pub(super) fn compile_loaded<P: SourceProvider<Error = std::io::Error>>(
+    source: &Path,
+    root: &Path,
+    provider: &P,
+    cache: Option<&ArtifactCache>,
+    before_compile: impl FnOnce(),
+) -> Result<String, Error> {
+    compile_inner(
+        source,
+        root,
+        provider,
+        Mode::Modules,
+        cache,
+        false,
+        before_compile,
+    )
 }
 
 pub(super) fn compile_snapshot<P: SourceProvider<Error = std::io::Error>>(

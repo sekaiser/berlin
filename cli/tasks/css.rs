@@ -33,13 +33,96 @@ impl Mode {
     }
 }
 
-pub(super) fn compile(
-    source: &Path,
+/// Compile the loaded entry while capturing the actual import bytes supplied
+/// to the bundler (including verified cache hits). Later entry edits cannot
+/// silently replace the explicit input, and imports enter the operational receipt.
+pub(super) fn compile_loaded(
+    source: &super::SourceFile,
     root: &Path,
-    cache: Option<&super::cache::ArtifactCache>,
-) -> Result<String, Error> {
-    let fs = FileProvider::new();
-    cache::compile(source, root, &fs, Mode::Modules, cache)
+    artifact_cache: Option<&super::cache::ArtifactCache>,
+) -> Result<(String, Vec<super::receipt::ConsumedInput>), Error> {
+    struct Sources<'a> {
+        entry: &'a super::SourceFile,
+        entry_path: PathBuf,
+        root: PathBuf,
+        files: FileProvider,
+        inputs: Mutex<BTreeMap<PathBuf, super::receipt::ConsumedInput>>,
+    }
+    impl SourceProvider for Sources<'_> {
+        type Error = std::io::Error;
+        fn read<'a>(&'a self, file: &Path) -> Result<&'a str, Self::Error> {
+            let path = file.canonicalize()?;
+            let relative = path.strip_prefix(&self.root).map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "CSS input leaves its declared root",
+                )
+            })?;
+            let text = if path == self.entry_path {
+                self.entry.text.as_str()
+            } else {
+                self.files.read(file)?
+            };
+            let input = super::receipt::ConsumedInput::new(
+                path.clone(),
+                format!("css/{}", relative.to_string_lossy().replace('\\', "/")),
+                text.as_bytes(),
+            );
+            let mut inputs = self
+                .inputs
+                .lock()
+                .map_err(|_| std::io::Error::other("CSS input tracking lock poisoned"))?;
+            if inputs
+                .get(&path)
+                .is_some_and(|prior| prior.sha256 != input.sha256)
+            {
+                return Err(std::io::Error::other(
+                    "CSS dependency changed while compiling",
+                ));
+            }
+            inputs.insert(path, input);
+            Ok(text)
+        }
+        fn resolve(
+            &self,
+            specifier: &str,
+            originating_file: &Path,
+        ) -> Result<ResolveResult, Self::Error> {
+            if specifier.starts_with('/') || url::Url::parse(specifier).is_ok() {
+                return Ok(ResolveResult::External(specifier.into()));
+            }
+            let path = originating_file.with_file_name(specifier);
+            if specifier.contains('\\') || !path.canonicalize()?.starts_with(&self.root) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "CSS import leaves its declared root",
+                ));
+            }
+            // Preserve alias-relative import semantics. Canonical targets are
+            // checked for confinement and recorded when their bytes are read.
+            Ok(ResolveResult::File(path))
+        }
+    }
+    let sources = Sources {
+        entry: source,
+        entry_path: source.path.canonicalize()?,
+        root: root.canonicalize()?,
+        files: FileProvider::new(),
+        inputs: Mutex::new(BTreeMap::new()),
+    };
+    let css = cache::compile_loaded(&source.path, root, &sources, artifact_cache, || {
+        // Discard failed cache-hint probe reads before recording a rebuilt closure.
+        if let Ok(mut inputs) = sources.inputs.lock() {
+            inputs.clear();
+        }
+    })?;
+    let inputs = sources
+        .inputs
+        .into_inner()
+        .map_err(|_| anyhow!("CSS input tracking lock poisoned"))?
+        .into_values()
+        .collect();
+    Ok((css, inputs))
 }
 
 /// Theme styles use ordinary CSS, not CSS modules. Remote imports remain browser
