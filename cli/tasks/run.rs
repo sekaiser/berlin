@@ -139,6 +139,12 @@ impl<'a> PipelineRun<'a> {
     }
 
     fn execute(&mut self, prepared: &PreparedPipeline) -> Result<(), Error> {
+        let composed = prepared.plan.nodes().iter().any(|node| {
+            matches!(
+                node.operation,
+                berlin_core::Operation::ComposePublication { .. }
+            )
+        });
         for node in prepared.plan.topological_order()? {
             let artifact = NodeExecutor {
                 consumed_inputs: &mut self.consumed_inputs,
@@ -150,6 +156,14 @@ impl<'a> PipelineRun<'a> {
                 diagnostics: &mut self.diagnostics,
             }
             .execute(node)?;
+            if composed
+                && matches!(&artifact,Some(RuntimeArtifact::MarkdownSources(sources)|RuntimeArtifact::DataSources(sources)) if sources.is_empty())
+            {
+                anyhow::bail!(
+                    "publication source node '{}' matched no files; prepare generated Org/paper inputs before checking or rendering the publication",
+                    node.id
+                );
+            }
             self.accept_output(node, artifact)?;
         }
         if self.options.production && !self.options.dry_run {

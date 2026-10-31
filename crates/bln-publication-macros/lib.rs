@@ -309,7 +309,17 @@ fn nodes(input: ParseStream) -> syn::Result<Vec<Node>> {
             if input.peek(syn::token::Brace) {
                 let body;
                 braced!(body in input);
-                if body.peek(Ident) && body.fork().parse::<Ident>()? == "slot" {
+                let lookahead = body.fork();
+                let named_slot = if lookahead.peek(Ident)
+                    && lookahead.parse::<Ident>()? == "slot"
+                    && lookahead.peek(Ident)
+                {
+                    lookahead.parse::<Ident>()?;
+                    lookahead.peek(syn::token::Brace)
+                } else {
+                    false
+                };
+                if named_slot {
                     while !body.is_empty() {
                         let slot: Ident = body.parse()?;
                         if slot != "slot" {

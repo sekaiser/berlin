@@ -341,6 +341,33 @@ fn a12_b01_b02_catalog_sharing_and_separate_source_mounts() {
 }
 
 #[test]
+fn f11_explicit_original_url_changes_are_consumed_render_inputs() {
+    let resolve = |url: &str| {
+        let c = PublicationCatalog::with_original_urls(
+            DocumentCollection::new(documents()),
+            PublicationOptions::default(),
+            BTreeMap::from([("a".into(), url.parse().unwrap())]),
+        )
+        .unwrap();
+        PublicationAssembly::resolve(&spec(), c, &ComponentRegistry::builtins()).unwrap()
+    };
+    let first = resolve("https://original.example/one");
+    let second = resolve("https://original.example/two");
+    assert_eq!(
+        first.composition_fingerprint(),
+        second.composition_fingerprint()
+    );
+    let manifest = |a: &PublicationAssembly| {
+        a.manifest(Channel::Html, BTreeMap::new(), "c".repeat(64))
+            .unwrap()
+    };
+    assert_ne!(
+        manifest(&first).render_input_fingerprint,
+        manifest(&second).render_input_fingerprint
+    );
+}
+
+#[test]
 fn b01_source_urls_reject_local_paths_credentials_and_preserve_prefixes() {
     for base in [
         "file:///private/notes",

@@ -66,6 +66,7 @@ pub struct RenderMetrics {
     pub environments_prepared: usize,
     pub peak_fragment_bytes: usize,
     pub components_rendered: usize,
+    pub source_descriptions_parsed: usize,
 }
 pub struct HtmlPublication {
     pub html: String,
@@ -275,6 +276,7 @@ impl PublicationHtmlRenderer {
                 }
             }
         }
+        let source_descriptions_parsed = descriptions.len();
         let mut session = Session {
             tera: &tera,
             renderer: self,
@@ -341,6 +343,7 @@ impl PublicationHtmlRenderer {
                 environments_prepared: 1,
                 peak_fragment_bytes,
                 components_rendered: session.rendered,
+                source_descriptions_parsed,
             },
         })
     }

@@ -18,6 +18,14 @@ let view = view! {
         }
     }
 };
+let spec = PublicationSpec::new(
+    PublicationMetadata {
+        id: PublicationId("storage".into()),
+        title: "Selected Storage Work".into(),
+        description: None,
+    },
+    view,
+)?;
 ```
 
 Component paths use Rust paths. Property values are Rust expressions, evaluated

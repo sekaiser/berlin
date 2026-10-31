@@ -75,8 +75,10 @@ pub(super) fn website(
             assembly.catalog().limits().output_bytes,
         )?;
     }
-    result.manifest.configuration_digest =
-        berlin_publication::fingerprint("website-config/v1", config)?;
+    result.manifest.configuration_digest = berlin_publication::fingerprint(
+        "website-config/v1",
+        &(&result.manifest.configuration_digest, config),
+    )?;
     snapshot.validate_entries(&result.stylesheets)?;
     let mut inputs = consumed_inputs
         .iter()

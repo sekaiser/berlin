@@ -252,9 +252,13 @@ impl PublicationAssembly {
     pub fn manifest(
         &self,
         channel: crate::Channel,
-        render_inputs: BTreeMap<String, String>,
+        mut render_inputs: BTreeMap<String, String>,
         configuration_digest: String,
     ) -> Result<PublicationManifest> {
+        render_inputs.insert(
+            "catalog/original-urls".into(),
+            self.catalog.original_urls_digest().into(),
+        );
         let render_input_fingerprint = fingerprint(
             "render-input/v1",
             &(

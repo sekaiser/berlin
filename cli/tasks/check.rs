@@ -39,6 +39,14 @@ pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<Report, Error
         .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     plan.validate()?;
     let document_root = publication_documents(&plan)?;
+    let composed = plan.nodes().iter().any(|node| {
+        &node.id == document_root
+            && matches!(
+                node.operation,
+                Operation::RenderPublicationWebsite { .. }
+                    | Operation::RenderPublicationText { .. }
+            )
+    });
     let required = document_branch(&plan, document_root)?;
     let mut artifacts = HashMap::new();
     let mut diagnostics = Vec::new();
@@ -75,8 +83,9 @@ pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<Report, Error
             }
             bail!("Document preparation did not produce an artifact");
         };
-        if let RuntimeArtifact::MarkdownSources(sources) = &artifact
-            && sources.is_empty()
+        if matches!(&artifact,RuntimeArtifact::MarkdownSources(sources) if sources.is_empty())
+            || (composed
+                && matches!(&artifact,RuntimeArtifact::DataSources(sources) if sources.is_empty()))
         {
             bail!(
                 "Markdown source node '{}' matched no files; export Org first if this pipeline reads generated Markdown",

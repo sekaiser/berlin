@@ -102,6 +102,106 @@ fn p09_check_is_write_free_and_checks_the_actual_presentation() {
 }
 
 #[test]
+fn f04_checks_and_dry_runs_do_not_require_a_temporary_theme_workspace() {
+    let project = project();
+    let root = project.path();
+    let before = snapshot(root);
+    for args in [
+        ["check", "--pipeline", "portfolio", "--json"],
+        ["build", "--pipeline", "portfolio", "--dry-run"],
+    ] {
+        let result = Command::new(env!("CARGO_BIN_EXE_bln"))
+            .env("BERLIN_DIR", root)
+            .env("BERLIN_THEME_DIR", repository().join("themes"))
+            .env("TMPDIR", root.join("nonexistent-temporary-directory"))
+            .args(args)
+            .output()
+            .unwrap();
+        success(result);
+    }
+    assert_eq!(snapshot(root), before);
+}
+
+#[test]
+fn f04_missing_generated_inputs_are_not_replaced_by_a_dry_run_placeholder() {
+    let project = project();
+    let root = project.path();
+    let script = root.join("berlin.pipeline.rhai");
+    fs::write(
+        &script,
+        fs::read_to_string(&script)
+            .unwrap()
+            .replace("content/*.md", "missing-generated/*.md"),
+    )
+    .unwrap();
+    let before = snapshot(root);
+    for args in [
+        ["check", "--pipeline", "portfolio", "--json"],
+        ["build", "--pipeline", "portfolio", "--dry-run"],
+    ] {
+        let result = run(root, &args);
+        assert!(!result.status.success());
+        let message = format!(
+            "{}{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(message.contains("matched no files"), "{message}");
+    }
+    assert_eq!(snapshot(root), before);
+}
+
+#[test]
+fn f10_f11_relocation_configuration_and_source_changes_have_distinct_effects() {
+    let first = project();
+    let second = project();
+    success(run(first.path(), &["build", "--pipeline", "portfolio"]));
+    success(run(second.path(), &["build", "--pipeline", "portfolio"]));
+    assert_eq!(
+        snapshot(&first.path().join("_portfolio")),
+        snapshot(&second.path().join("_portfolio")),
+        "project filesystem location changed public output"
+    );
+    let baseline = json(&first.path().join("_portfolio/publication.json"));
+    let script = first.path().join("berlin.pipeline.rhai");
+    fs::write(
+        &script,
+        fs::read_to_string(&script)
+            .unwrap()
+            .replace("Example Author", "Another Example Author"),
+    )
+    .unwrap();
+    success(run(first.path(), &["build", "--pipeline", "portfolio"]));
+    let configured = json(&first.path().join("_portfolio/publication.json"));
+    assert_eq!(
+        baseline["composition_fingerprint"],
+        configured["composition_fingerprint"]
+    );
+    assert_ne!(
+        baseline["render_input_fingerprint"],
+        configured["render_input_fingerprint"]
+    );
+    let source = first.path().join("content/storage.md");
+    fs::write(
+        &source,
+        fs::read_to_string(&source)
+            .unwrap()
+            .replace("completed prefix", "completed sequence"),
+    )
+    .unwrap();
+    success(run(first.path(), &["build", "--pipeline", "portfolio"]));
+    let changed = json(&first.path().join("_portfolio/publication.json"));
+    assert_ne!(
+        configured["composition_fingerprint"],
+        changed["composition_fingerprint"]
+    );
+    assert_ne!(
+        configured["render_input_fingerprint"],
+        changed["render_input_fingerprint"]
+    );
+}
+
+#[test]
 fn p09_preview_selects_the_output_and_watches_overrides_without_output_loops() {
     use std::io::{Read, Write};
     use std::net::{TcpListener, TcpStream};

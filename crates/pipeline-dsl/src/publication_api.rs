@@ -284,11 +284,7 @@ fn publication(
         .entry("description".into())
         .or_insert(Dynamic::UNIT);
     let metadata: PublicationMetadata = rhai::serde::from_dynamic(&Dynamic::from(metadata))?;
-    let spec = PublicationSpec {
-        schema_version: 1,
-        metadata,
-        root: root.lower(),
-    };
+    let spec = PublicationSpec::new(metadata, root.lower()).map_err(failure)?;
     let limits = state.0.borrow().limits.clone();
     state
         .0

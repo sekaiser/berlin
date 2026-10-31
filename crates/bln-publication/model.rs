@@ -238,6 +238,24 @@ pub struct Occurrence {
 }
 
 impl PublicationSpec {
+    /// Construct a publication from a builder, component call or `view!` result.
+    /// A publication has one root; helpers may still return multiple siblings.
+    pub fn new(metadata: PublicationMetadata, root: impl Into<ViewFragment>) -> Result<Self> {
+        let mut roots = root.into().0;
+        if roots.len() != 1 {
+            return Err(Diagnostic::new(
+                Code::InvalidProperty,
+                Stage::Construction,
+                "publication requires exactly one root component",
+            )
+            .at(&metadata.id.0, "root"));
+        }
+        Ok(Self {
+            schema_version: 1,
+            metadata,
+            root: roots.remove(0),
+        })
+    }
     /// Validates structural identities and budgets. Registry/schema and source
     /// validation are separate, mandatory steps before any rendering.
     pub fn occurrences(&self, limits: &PublicationLimits) -> Result<Vec<Occurrence>> {

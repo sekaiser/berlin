@@ -28,6 +28,9 @@ fn spec(root: ViewFragment) -> PublicationSpec {
 fn helper() -> ViewFragment {
     view! {Introduction(text:"helper")}
 }
+mod slot {
+    pub use berlin_publication::Introduction;
+}
 
 #[test]
 fn d01_nested_paths_loops_conditions_named_slots_and_helpers() {
@@ -105,6 +108,32 @@ fn builders_and_macro_lower_identically() {
     assert_eq!(
         typed,
         view! {Portfolio(){Introduction(text:"Intro")}}.0.remove(0)
+    );
+    let path = view! {Portfolio(){slot::Introduction(text:"namespaced component")}};
+    assert_eq!(path.0[0].slots["body"].0.len(), 1);
+}
+
+#[test]
+fn publication_constructor_accepts_a_typed_view_and_rejects_multiple_roots() {
+    let metadata = PublicationMetadata {
+        id: PublicationId("p".into()),
+        title: "P".into(),
+        description: None,
+    };
+    assert!(
+        PublicationSpec::new(
+            metadata.clone(),
+            view! {Portfolio(){Introduction(text:"Intro")}}
+        )
+        .is_ok()
+    );
+    assert!(PublicationSpec::new(metadata.clone(), ViewFragment::default()).is_err());
+    assert!(
+        PublicationSpec::new(
+            metadata,
+            view! {Introduction(text:"one") Introduction(text:"two")}
+        )
+        .is_err()
     );
 }
 

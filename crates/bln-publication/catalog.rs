@@ -61,6 +61,7 @@ struct CatalogSnapshot {
     drafts: BTreeSet<String>,
     options: PublicationOptions,
     input_digest: String,
+    original_urls_digest: String,
 }
 
 /// One index build and one owned document per source. Clones share the snapshot;
@@ -165,12 +166,20 @@ impl PublicationCatalog {
             )
             .source(id, None));
         }
+        let original_urls_digest = fingerprint(
+            "original-urls/v1",
+            &entries
+                .iter()
+                .map(|(id, entry)| (id, &entry.original_url))
+                .collect::<BTreeMap<_, _>>(),
+        )?;
         Ok(Self {
             snapshot: Arc::new(CatalogSnapshot {
                 entries,
                 drafts,
                 options,
                 input_digest,
+                original_urls_digest,
             }),
         })
     }
@@ -183,6 +192,14 @@ impl PublicationCatalog {
     }
     pub fn input_digest(&self) -> &str {
         &self.snapshot.input_digest
+    }
+    pub fn original_urls_digest(&self) -> &str {
+        &self.snapshot.original_urls_digest
+    }
+    /// One immutable index is constructed by each catalog constructor. Cloning
+    /// a catalog shares this snapshot rather than indexing the sources again.
+    pub fn index_builds(&self) -> usize {
+        1
     }
     pub fn len(&self) -> usize {
         self.snapshot.entries.len()
