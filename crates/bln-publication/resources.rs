@@ -466,6 +466,35 @@ pub struct ResourceSource {
     pub sha256: String,
     pub record: usize,
 }
+
+/// Consumed file evidence also exists when a source contains zero records.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResourceInputEvidence {
+    pub namespace: String,
+    pub logical_name: String,
+    pub sha256: String,
+}
+impl ResourceSource {
+    pub fn input(&self) -> ResourceInputEvidence {
+        ResourceInputEvidence {
+            namespace: self.namespace.clone(),
+            logical_name: self.logical_name.clone(),
+            sha256: self.sha256.clone(),
+        }
+    }
+}
+impl ResourceInputEvidence {
+    pub fn validate(&self) -> Result<()> {
+        ResourceSource {
+            namespace: self.namespace.clone(),
+            logical_name: self.logical_name.clone(),
+            sha256: self.sha256.clone(),
+            record: 1,
+        }
+        .validate()
+    }
+}
 impl ResourceSource {
     pub fn validate(&self) -> Result<()> {
         if self.namespace.is_empty()
@@ -545,6 +574,7 @@ pub struct DuplicateResourceTarget {
 pub struct ExternalResourceCollection {
     records: Vec<ExternalRecord>,
     duplicate_targets: Vec<DuplicateResourceTarget>,
+    input_sources: BTreeMap<(String, String), ResourceInputEvidence>,
 }
 impl ExternalResourceCollection {
     pub fn new(
@@ -565,6 +595,14 @@ impl ExternalResourceCollection {
         let mut charged = 0usize;
         for (resource, source) in records {
             source.validate()?;
+            let key = (source.namespace.clone(), source.logical_name.clone());
+            if let Some(previous) = result.input_sources.insert(key, source.input())
+                && previous.sha256 != source.sha256
+            {
+                return Err(invalid(
+                    "conflicting snapshots for one logical resource input",
+                ));
+            }
             let resource = resource
                 .normalized(limits, publication)
                 .map_err(|mut error| {
@@ -624,6 +662,43 @@ impl ExternalResourceCollection {
     }
     pub fn duplicate_targets(&self) -> &[DuplicateResourceTarget] {
         &self.duplicate_targets
+    }
+    pub fn with_input_sources(
+        mut self,
+        inputs: Vec<ResourceInputEvidence>,
+        limits: &ResourceLimits,
+    ) -> Result<Self> {
+        limits.validate()?;
+        if inputs.len() > limits.catalog_items {
+            return Err(limit("resource source file count exceeded"));
+        }
+        for input in inputs {
+            input.validate()?;
+            let key = (input.namespace.clone(), input.logical_name.clone());
+            if let Some(previous) = self.input_sources.insert(key, input.clone())
+                && previous != input
+            {
+                return Err(invalid(
+                    "conflicting snapshots for one logical resource input",
+                ));
+            }
+        }
+        if self.input_sources.len() > limits.catalog_items {
+            return Err(limit("resource source file count exceeded"));
+        }
+        let mut bytes = 0usize;
+        for input in self.input_sources.values() {
+            bytes = bytes
+                .checked_add(crate::canonical_bytes(input)?.len())
+                .ok_or_else(|| limit("resource input evidence size overflow"))?;
+            if bytes > limits.descriptor_bytes {
+                return Err(limit("resource input evidence byte limit exceeded"));
+            }
+        }
+        Ok(self)
+    }
+    pub fn input_sources(&self) -> impl Iterator<Item = &ResourceInputEvidence> {
+        self.input_sources.values()
     }
     pub fn len(&self) -> usize {
         self.records.len()

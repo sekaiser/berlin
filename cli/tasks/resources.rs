@@ -449,7 +449,13 @@ pub(super) fn parse(
             records.push((resource, input.evidence(index + 1)));
         }
     }
-    ExternalResourceCollection::new(records, limits, publication)
+    ExternalResourceCollection::new(records, limits, publication)?.with_input_sources(
+        inputs
+            .iter()
+            .map(|input| input.evidence(1).input())
+            .collect(),
+        limits,
+    )
 }
 
 #[cfg(test)]
@@ -735,7 +741,14 @@ mod tests {
             )
             .is_err()
         );
-        let empty = capture("empty.yaml", b"schema_version: 1\nresources: []\n");
+        let empty = capture(
+            "empty.yaml",
+            format!(
+                "schema_version: 1\nresources: []\n{}",
+                "# padding\n".repeat(20)
+            )
+            .as_bytes(),
+        );
         let mut limits = ResourceLimits {
             descriptor_bytes: empty.text.len() * 2,
             ..Default::default()

@@ -87,6 +87,7 @@ fn f17_excerpt_budget_counts_inline_nodes_before_copying() {
                     excerpt_nodes: maximum,
                     ..Default::default()
                 },
+                ..Default::default()
             },
         )
         .unwrap();
