@@ -9,6 +9,10 @@ license-file = "LICENSE"
 repository = "https://github.com/sekaiser/berlin"
 
 [workspace.dependencies]
+berlin_publication = { path = "./crates/bln-publication", version = "0.0.0" }
+berlin_publication_macros = { path = "./crates/bln-publication-macros", version = "0.0.0" }
+berlin_publication_html = { path = "./crates/bln-publication-html", version = "0.0.0" }
+berlin_publication_text = { path = "./crates/bln-publication-text", version = "0.0.0" }
 berlin_document = { path = "./crates/bln-document", version = "0.0.0" }
 berlin_document_html = { path = "./crates/bln-document-html", version = "0.0.0" }
 berlin_math = { path = "./crates/bln-math", version = "0.0.0" }

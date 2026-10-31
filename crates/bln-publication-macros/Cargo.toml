@@ -1,0 +1,12 @@
+[package]
+name = "berlin_publication_macros"
+version = "0.0.0"
+authors.workspace = true
+edition.workspace = true
+license-file.workspace = true
+repository.workspace = true
+description = "Typed composition macros for Berlin publications"
+
+[lib]
+path = "lib.rs"
+proc-macro = true
