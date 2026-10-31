@@ -24,7 +24,7 @@ pub(super) fn site(
         None => super::theme::Theme::project_only(project.root())?,
     };
     let snapshot = theme.snapshot()?;
-    consumed_inputs.extend(snapshot.consumed_inputs());
+    consumed_inputs.extend(snapshot.template_inputs());
     let renderer =
         PublicationHtmlRenderer::new(snapshot.component_templates()?, HtmlBindings::builtins())?;
     let options = berlin_publication_html::SiteHtmlOptions {
@@ -72,8 +72,9 @@ pub(super) fn site(
             }
         }
     }
-    snapshot.validate_entries(&result.stylesheets)?;
-    let mut paths = snapshot.output_paths(&result.stylesheets)?;
+    let prepared_assets = snapshot.prepare_assets(&result.stylesheets)?;
+    consumed_inputs.extend_from_slice(prepared_assets.consumed_inputs());
+    let mut paths = prepared_assets.output_paths();
     paths.extend(result.files.keys().map(std::path::PathBuf::from));
     paths.insert("publication.json".into());
     validate_assets(&paths, assets)?;
@@ -94,7 +95,7 @@ pub(super) fn site(
         return Ok(());
     }
     std::fs::create_dir_all(output)?;
-    snapshot.write_assets(output, &result.stylesheets)?;
+    prepared_assets.write(output)?;
     for (path, bytes) in result.files {
         let path = output.join(path);
         std::fs::create_dir_all(path.parent().context("site file has no parent")?)?;
@@ -151,7 +152,7 @@ pub(super) fn website(
         None => super::theme::Theme::project_only(project.root())?,
     };
     let snapshot = theme.snapshot()?;
-    consumed_inputs.extend(snapshot.consumed_inputs());
+    consumed_inputs.extend(snapshot.template_inputs());
     let renderer =
         PublicationHtmlRenderer::new(snapshot.component_templates()?, HtmlBindings::builtins())?;
     let mut result = renderer.render(
@@ -181,8 +182,9 @@ pub(super) fn website(
         "website-config/v1",
         &(&result.manifest.configuration_digest, config),
     )?;
-    snapshot.validate_entries(&result.stylesheets)?;
-    let mut paths = snapshot.output_paths(&result.stylesheets)?;
+    let prepared_assets = snapshot.prepare_assets(&result.stylesheets)?;
+    consumed_inputs.extend_from_slice(prepared_assets.consumed_inputs());
+    let mut paths = prepared_assets.output_paths();
     paths.extend(["index.html".into(), "publication.json".into()]);
     validate_assets(&paths, assets)?;
     let mut inputs = consumed_inputs
@@ -198,7 +200,7 @@ pub(super) fn website(
         return Ok(());
     }
     std::fs::create_dir_all(output)?;
-    snapshot.write_assets(output, &result.stylesheets)?;
+    prepared_assets.write(output)?;
     std::fs::write(output.join("index.html"), result.html)?;
     std::fs::write(
         output.join("publication.json"),

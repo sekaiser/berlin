@@ -39,6 +39,7 @@ impl PublicationAssembly {
         catalog: PublicationCatalog,
         registry: &ComponentRegistry,
     ) -> Result<Self> {
+        catalog.validate_local_links()?;
         let spec = registry.normalize(spec, catalog.limits())?;
         let occurrences = spec.occurrences(catalog.limits())?;
         let mut placements = Vec::new();

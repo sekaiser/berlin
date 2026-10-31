@@ -83,9 +83,25 @@ pub struct AuthoringReport {
 
 impl AuthoringReport {
     pub fn analyze(documents: &DocumentCollection) -> Result<Self, CollectionError> {
-        documents.validate()?;
-        let analysis = ReferenceIndex::analyze(documents);
-        let published: Vec<_> = documents.non_drafts().collect();
+        Self::analyze_documents(documents.as_slice().iter())
+    }
+    pub fn analyze_documents<'a>(
+        documents: impl IntoIterator<Item = &'a berlin_document::Document>,
+    ) -> Result<Self, CollectionError> {
+        let documents = documents.into_iter().collect::<Vec<_>>();
+        let mut ids = HashSet::new();
+        for document in &documents {
+            crate::validate_collection_document(document)?;
+            if !ids.insert(&document.id) {
+                return Err(CollectionError::DuplicateDocument(document.id.clone()));
+            }
+        }
+        let analysis = ReferenceIndex::analyze_documents(documents.iter().copied());
+        let published = documents
+            .iter()
+            .copied()
+            .filter(|d| !d.metadata.draft)
+            .collect::<Vec<_>>();
         let guide_ids: HashSet<_> = published
             .iter()
             .filter(|document| document.kind == DocumentKind::Guide)
@@ -208,6 +224,10 @@ mod tests {
         let documents =
             DocumentCollection::new(vec![document("note", &["absent", "also-absent", "absent"])]);
         let report = AuthoringReport::analyze(&documents).unwrap();
+        assert_eq!(
+            report,
+            AuthoringReport::analyze_documents(documents.as_slice().iter()).unwrap()
+        );
         let errors: Vec<_> = report
             .findings
             .iter()

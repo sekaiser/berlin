@@ -1,4 +1,8 @@
 use std::path::{Path, PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Mutex,
+};
 
 use anyhow::Context as _;
 use anyhow::Error;
@@ -50,6 +54,85 @@ pub(super) fn compile_stylesheet(
         root: root.canonicalize()?,
     };
     cache::compile(source, root, &sources, Mode::Stylesheet, cache)
+}
+
+/// Bundle only captured bytes, with a recorded local import closure. No working
+/// directory, temporary stylesheet tree, network request or source reread.
+pub(super) fn compile_stylesheet_snapshot(
+    source: &Path,
+    files: &BTreeMap<PathBuf, Vec<u8>>,
+) -> Result<(String, BTreeSet<PathBuf>), Error> {
+    struct Sources<'a> {
+        files: &'a BTreeMap<PathBuf, Vec<u8>>,
+        read: Mutex<BTreeSet<PathBuf>>,
+    }
+    impl SourceProvider for Sources<'_> {
+        type Error = std::io::Error;
+        fn read<'a>(&'a self, file: &Path) -> Result<&'a str, Self::Error> {
+            let bytes = self.files.get(file).ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("missing captured stylesheet: {}", file.display()),
+                )
+            })?;
+            let text = std::str::from_utf8(bytes)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            self.read
+                .lock()
+                .map_err(|_| std::io::Error::other("stylesheet input tracking lock poisoned"))?
+                .insert(file.to_owned());
+            Ok(text)
+        }
+        fn resolve(
+            &self,
+            specifier: &str,
+            originating_file: &Path,
+        ) -> Result<ResolveResult, Self::Error> {
+            if specifier.starts_with('/') || url::Url::parse(specifier).is_ok() {
+                return Ok(ResolveResult::External(specifier.into()));
+            }
+            let denied = || {
+                std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "CSS import leaves captured stylesheet directory",
+                )
+            };
+            if specifier.contains('\\') {
+                return Err(denied());
+            }
+            let joined = originating_file
+                .parent()
+                .ok_or_else(denied)?
+                .join(specifier);
+            let mut path = PathBuf::new();
+            for component in joined.components() {
+                match component {
+                    std::path::Component::Normal(part) => path.push(part),
+                    std::path::Component::CurDir => {}
+                    std::path::Component::ParentDir => {
+                        if !path.pop() {
+                            return Err(denied());
+                        }
+                    }
+                    _ => return Err(denied()),
+                }
+            }
+            if !path.starts_with("styles") {
+                return Err(denied());
+            }
+            Ok(ResolveResult::File(path))
+        }
+    }
+    let source_provider = Sources {
+        files,
+        read: Mutex::new(BTreeSet::new()),
+    };
+    let css = compile_with(source, &source_provider, Mode::Stylesheet.options()?)?;
+    let read = source_provider
+        .read
+        .into_inner()
+        .map_err(|_| anyhow!("stylesheet input tracking lock poisoned"))?;
+    Ok((css, read))
 }
 
 fn compile_with<'a, P: SourceProvider>(
@@ -121,6 +204,63 @@ fn parser_options<'i>() -> Result<ParserOptions<'i>, Error> {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn snapshot_bundles_only_captured_imports_and_records_the_closure() {
+        let files = BTreeMap::from([
+            (
+                PathBuf::from("styles/entries/project.css"),
+                b"@import '../tokens.css'; .example { color: var(--ink); }".to_vec(),
+            ),
+            (
+                PathBuf::from("styles/tokens.css"),
+                b":root { --ink: green; }".to_vec(),
+            ),
+            (
+                PathBuf::from("styles/unused.css"),
+                b"invalid unused stylesheet {{{".to_vec(),
+            ),
+        ]);
+        let (css, read) =
+            compile_stylesheet_snapshot(Path::new("styles/entries/project.css"), &files).unwrap();
+        assert!(css.contains("--ink:green"));
+        assert!(css.contains(".example{color:var(--ink)}"));
+        assert_eq!(
+            read,
+            BTreeSet::from([
+                PathBuf::from("styles/entries/project.css"),
+                PathBuf::from("styles/tokens.css")
+            ])
+        );
+    }
+
+    #[test]
+    fn snapshot_rejects_missing_imports_and_directory_escape() {
+        for import in ["missing.css", "../../secret.css", "..\\secret.css"] {
+            let files = BTreeMap::from([(
+                PathBuf::from("styles/project.css"),
+                format!("@import '{import}';").into_bytes(),
+            )]);
+            assert!(
+                compile_stylesheet_snapshot(Path::new("styles/project.css"), &files).is_err(),
+                "{import}"
+            );
+        }
+    }
+
+    #[test]
+    fn snapshot_matches_filesystem_compilation_without_rereading_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("project.css");
+        let original = b"@import url('https://example.test/base.css'); body { color: green; }";
+        fs::write(&source, original).unwrap();
+        let expected = compile_stylesheet(&source, directory.path(), None).unwrap();
+        let files = BTreeMap::from([(PathBuf::from("styles/project.css"), original.to_vec())]);
+        fs::write(&source, "body { color: red; }").unwrap();
+        let (actual, _) =
+            compile_stylesheet_snapshot(Path::new("styles/project.css"), &files).unwrap();
+        assert_eq!(actual, expected);
+    }
 
     #[test]
     fn theme_entries_bundle_local_imports_and_preserve_browser_urls() {

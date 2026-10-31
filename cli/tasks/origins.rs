@@ -82,8 +82,16 @@ pub(super) fn enrich(
     documents: &DocumentCollection,
     report: &mut AuthoringReport,
 ) {
+    enrich_documents(project, documents.as_slice().iter(), report)
+}
+pub(super) fn enrich_documents<'a>(
+    project: &Project,
+    documents: impl IntoIterator<Item = &'a Document>,
+    report: &mut AuthoringReport,
+) {
     let documents: HashMap<_, _> = documents
-        .non_drafts()
+        .into_iter()
+        .filter(|d| !d.metadata.draft)
         .map(|document| (&document.id, document))
         .collect();
     let mut origins = HashMap::new();

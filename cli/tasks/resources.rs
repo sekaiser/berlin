@@ -719,7 +719,14 @@ mod tests {
         };
         let input =
             ResourceInput::capture("reading", "reading.yaml", YAML.as_bytes(), &limits).unwrap();
-        assert!(parse(std::slice::from_ref(&input), &limits, &PublicationLimits::default()).is_ok());
+        assert!(
+            parse(
+                std::slice::from_ref(&input),
+                &limits,
+                &PublicationLimits::default()
+            )
+            .is_ok()
+        );
         assert!(
             parse(
                 &[input.clone(), input],

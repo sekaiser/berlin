@@ -67,6 +67,7 @@ fn write_text(output: &mut impl Write, check: &CheckOutput<'_>) -> io::Result<()
                     publication,
                     placements,
                     sources,
+                    authoring,
                     ..
                 },
         } => {
@@ -74,7 +75,10 @@ fn write_text(output: &mut impl Write, check: &CheckOutput<'_>) -> io::Result<()
                 output,
                 "Publication: {publication}; placements: {placements}; sources: {sources}"
             )?;
-            return Ok(());
+            match authoring {
+                Some(report) => report,
+                None => return Ok(()),
+            }
         }
         Outcome::Incomplete { message } => {
             writeln!(output, "Incomplete: {message}")?;

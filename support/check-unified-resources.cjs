@@ -32,6 +32,43 @@ for (const pipeline of ['portfolio','text','site','excerpts','excerpt_text']) ru
 const first=snapshot(path.join(project,'_site'));
 run('build','--pipeline','site');
 assert.deepEqual(snapshot(path.join(project,'_site')),first,'site rebuild is nondeterministic');
+// Only selected stylesheet bytes enter the operational fingerprint. An unused
+// override cannot break or alter a publication; a selected invalid import must
+// fail equally in check, dry-run and the real transaction.
+const styleDirectory=path.join(project,'styles/publications');
+fs.mkdirSync(styleDirectory,{recursive:true});
+const unusedStyle=path.join(styleDirectory,'unused.css');
+fs.writeFileSync(unusedStyle,"@import 'missing.css';");
+run('build','--pipeline','site');
+assert.deepEqual(snapshot(path.join(project,'_site')),first,'unused CSS altered the output');
+const activeStyle=path.join(styleDirectory,'portfolio.css');
+fs.writeFileSync(activeStyle,"@import 'missing.css';");
+const beforeInvalidCss=snapshot(project);
+for(const args of [['check','--pipeline','site','--json'],['build','--pipeline','site','--dry-run'],['build','--pipeline','site']]) {
+  const result=spawnSync(binary,args,{env,encoding:'utf8'});
+  assert.notEqual(result.status,0,`${args.join(' ')} accepted a missing CSS import`);
+  assert.match(result.stdout+result.stderr,/missing captured stylesheet/);
+  assert.deepEqual(snapshot(path.join(project,'_site')),first,'invalid CSS replaced installed output');
+}
+// Real builds may record a failed run outside the output; read-only commands
+// must not change any project byte.
+for(const args of [['check','--pipeline','site','--json'],['build','--pipeline','site','--dry-run']]) {
+  const before=snapshot(project);
+  spawnSync(binary,args,{env,encoding:'utf8'});
+  assert.deepEqual(snapshot(project),before,'read-only CSS validation changed the project');
+}
+assert(beforeInvalidCss['styles/publications/portfolio.css']);
+fs.rmSync(activeStyle);fs.rmSync(unusedStyle);
+const notePath=path.join(project,'content/storage-latency.md');
+const originalNote=fs.readFileSync(notePath,'utf8');
+fs.writeFileSync(notePath,originalNote+'\n[Missing target](id:absent-target)\n');
+const beforeBadLink=snapshot(project);
+const badLink=spawnSync(binary,['check','--pipeline','site','--json'],{env,encoding:'utf8'});
+assert.notEqual(badLink.status,0);
+const badLinkReport=JSON.parse(badLink.stdout);
+assert(badLinkReport.report.findings.some(finding=>finding.code==='unresolved_reference'&&finding.target==='absent-target'));
+assert.deepEqual(snapshot(project),beforeBadLink,'invalid-link check changed the project');
+fs.writeFileSync(notePath,originalNote);
 assert.equal(json('_portfolio/publication.json').composition_fingerprint,json('_text/manifest.json').publication.composition_fingerprint);
 assert.equal(json('_excerpt_text/manifest.json').profile,'linkedin_draft');
 for (const file of ['index.html','notes.html','about.html','feed.html','notes/storage-latency.html','notes/recovery-design.html','tags/storage.html','search/index.json','search/client.js','notes/old-storage-latency.html','attachments/handoff.svg','attachments/format.txt']) assert(fs.existsSync(path.join(project,'_site',file)),`missing ${file}`);

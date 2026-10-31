@@ -52,13 +52,19 @@ impl ReferenceIndex {
     /// Analyzes the same publication scope as `new`, without failing at its first
     /// unresolved link. Callers must validate document identities beforehand.
     pub fn analyze(documents: &DocumentCollection) -> ReferenceAnalysis {
-        let targets: HashSet<_> = documents
-            .non_drafts()
-            .map(|document| &document.id)
-            .collect();
+        Self::analyze_documents(documents.as_slice().iter())
+    }
+    pub fn analyze_documents<'a>(
+        documents: impl IntoIterator<Item = &'a berlin_document::Document>,
+    ) -> ReferenceAnalysis {
+        let documents = documents
+            .into_iter()
+            .filter(|d| !d.metadata.draft)
+            .collect::<Vec<_>>();
+        let targets: HashSet<_> = documents.iter().map(|document| &document.id).collect();
         let mut incoming = BTreeMap::<String, Vec<Backlink>>::new();
         let mut unresolved = Vec::new();
-        for document in documents.non_drafts() {
+        for document in documents {
             let mut seen = HashSet::new();
             for reference in document.references() {
                 let link = reference.link;

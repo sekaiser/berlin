@@ -21,13 +21,16 @@ pub(crate) enum Report {
         sources: usize,
         composition_fingerprint: String,
         diagnostics: Vec<super::receipt::Diagnostic>,
+        authoring: Option<AuthoringReport>,
     },
 }
 impl Report {
     pub fn has_errors(&self) -> bool {
         match self {
             Self::Authoring(report) => report.has_errors(),
-            Self::Publication { .. } => false,
+            Self::Publication { authoring, .. } => {
+                authoring.as_ref().is_some_and(AuthoringReport::has_errors)
+            }
         }
     }
 }
@@ -97,6 +100,12 @@ pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<Report, Error
             );
         }
         artifacts.insert(node.id.clone(), artifact);
+        if let Some(RuntimeArtifact::Catalog(catalog)) = artifacts.get(&node.id) {
+            let report = authoring_report(project, catalog)?;
+            if report.has_errors() {
+                return Ok(Report::Authoring(report));
+            }
+        }
     }
     if let Some(RuntimeArtifact::Composed(composed)) = artifacts
         .values()
@@ -124,6 +133,7 @@ pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<Report, Error
             sources,
             composition_fingerprint,
             diagnostics,
+            authoring: Some(authoring_report(project, composed.catalog())?),
         });
     }
     if let Some(RuntimeArtifact::PublicationAssembly(assembly)) = artifacts
@@ -138,6 +148,7 @@ pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<Report, Error
             sources: assembly.sources().len(),
             composition_fingerprint: assembly.composition_fingerprint().into(),
             diagnostics,
+            authoring: Some(authoring_report(project, assembly.catalog())?),
         });
     }
     let Some(RuntimeArtifact::Documents(documents)) = artifacts.get(document_root) else {
@@ -146,6 +157,15 @@ pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<Report, Error
     let mut report = AuthoringReport::analyze(documents)?;
     super::origins::enrich(project, documents, &mut report);
     Ok(Report::Authoring(report))
+}
+fn authoring_report(
+    project: &Project,
+    catalog: &berlin_publication::PublicationCatalog,
+) -> Result<AuthoringReport, Error> {
+    let mut report = AuthoringReport::analyze_documents(catalog.local_documents())?;
+    report.excluded_drafts = catalog.excluded_drafts();
+    super::origins::enrich_documents(project, catalog.local_documents(), &mut report);
+    Ok(report)
 }
 
 fn publication_documents(plan: &PipelinePlan) -> Result<&NodeId, Error> {

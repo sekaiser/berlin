@@ -84,6 +84,7 @@ impl ResourceEntry {
 
 #[derive(Debug)]
 struct CatalogSnapshot {
+    link_validation: std::sync::OnceLock<Result<()>>,
     entries: BTreeMap<ResourceId, ResourceEntry>,
     drafts: BTreeSet<String>,
     options: PublicationOptions,
@@ -104,6 +105,36 @@ pub struct PublicationCatalog {
 }
 
 impl PublicationCatalog {
+    pub fn excluded_drafts(&self) -> usize {
+        self.snapshot.drafts.len()
+    }
+    pub fn local_documents(&self) -> impl Iterator<Item = &Document> {
+        self.resources().filter_map(|entry| match entry.handle() {
+            ResourceHandle::Local(local) => Some(local.document()),
+            ResourceHandle::External(_) => None,
+        })
+    }
+    pub fn validate_local_links(&self) -> Result<()> {
+        self.snapshot
+            .link_validation
+            .get_or_init(|| {
+                for document in self.local_documents() {
+                    for reference in document.references() {
+                        let target = ResourceId::local(&reference.link.target.0)?;
+                        if !self.snapshot.entries.contains_key(&target) {
+                            return Err(Diagnostic::new(
+                                Code::UnresolvedReference,
+                                Stage::Resolution,
+                                "local link target is absent from the eligible catalog",
+                            )
+                            .source(&document.id.0, Some(&reference.link.anchor.0)));
+                        }
+                    }
+                }
+                Ok(())
+            })
+            .clone()
+    }
     pub fn new(documents: DocumentCollection, options: PublicationOptions) -> Result<Self> {
         Self::with_resources(documents, ExternalResourceCollection::default(), options)
     }
@@ -481,6 +512,7 @@ impl PublicationCatalog {
         )?;
         Ok(Self {
             snapshot: Arc::new(CatalogSnapshot {
+                link_validation: std::sync::OnceLock::new(),
                 entries,
                 drafts,
                 options,

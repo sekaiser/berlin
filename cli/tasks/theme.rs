@@ -127,21 +127,63 @@ pub(super) struct ThemeSnapshot {
     files: BTreeMap<PathBuf, Vec<u8>>,
     paths: BTreeMap<PathBuf, PathBuf>,
 }
+pub(super) struct PreparedAssets {
+    files: BTreeMap<PathBuf, Vec<u8>>,
+    inputs: Vec<super::receipt::ConsumedInput>,
+}
+impl PreparedAssets {
+    pub fn consumed_inputs(&self) -> &[super::receipt::ConsumedInput] {
+        &self.inputs
+    }
+    pub fn output_paths(&self) -> BTreeSet<PathBuf> {
+        self.files.keys().cloned().collect()
+    }
+    pub fn write(&self, output: &Path) -> Result<(), Error> {
+        for (name, bytes) in &self.files {
+            let destination = output.join(name);
+            fs::create_dir_all(
+                destination
+                    .parent()
+                    .context("prepared asset has no parent")?,
+            )?;
+            fs::write(destination, bytes)?;
+        }
+        Ok(())
+    }
+}
 impl ThemeSnapshot {
-    pub fn output_paths(&self, entries: &BTreeSet<String>) -> Result<BTreeSet<PathBuf>, Error> {
-        self.validate_entries(entries)?;
-        let mut paths = self
-            .files
-            .keys()
-            .filter(|p| p.starts_with("static"))
-            .cloned()
-            .collect::<BTreeSet<_>>();
-        paths.extend(
-            entries
-                .iter()
-                .map(|name| Path::new("assets/css").join(name)),
-        );
-        Ok(paths)
+    pub fn template_inputs(&self) -> Vec<super::receipt::ConsumedInput> {
+        self.consumed_inputs()
+            .into_iter()
+            .filter(|input| input.logical_name.starts_with("pages/"))
+            .collect()
+    }
+    pub fn prepare_assets(&self, entries: &BTreeSet<String>) -> Result<PreparedAssets, Error> {
+        let mut files = BTreeMap::new();
+        let mut read = BTreeSet::new();
+        for entry in entries {
+            let source = self.publication_entry(entry)?;
+            let (css, inputs) = super::css::compile_stylesheet_snapshot(&source, &self.files)?;
+            files.insert(Path::new("assets/css").join(entry), css.into_bytes());
+            read.extend(inputs);
+        }
+        for (name, bytes) in &self.files {
+            if name.starts_with("static") {
+                files.insert(name.clone(), bytes.clone());
+                read.insert(name.clone());
+            }
+        }
+        let inputs = read
+            .into_iter()
+            .map(|name| {
+                super::receipt::ConsumedInput::new(
+                    self.paths[&name].clone(),
+                    name.to_string_lossy().replace('\\', "/"),
+                    &self.files[&name],
+                )
+            })
+            .collect();
+        Ok(PreparedAssets { files, inputs })
     }
     pub fn consumed_inputs(&self) -> Vec<super::receipt::ConsumedInput> {
         self.files
@@ -172,12 +214,6 @@ impl ThemeSnapshot {
             })
             .collect()
     }
-    pub fn validate_entries(&self, entries: &BTreeSet<String>) -> Result<(), Error> {
-        for entry in entries {
-            self.publication_entry(entry)?;
-        }
-        Ok(())
-    }
     fn publication_entry(&self, entry: &str) -> Result<PathBuf, Error> {
         // Bindings name public filenames, never source paths. Publications have
         // opt-in entries; existing shared entries can still be explicitly used.
@@ -196,47 +232,6 @@ impl ThemeSnapshot {
             }
         }
         bail!("missing required component CSS entry '{entry}'")
-    }
-    pub fn write_assets(&self, output: &Path, entries: &BTreeSet<String>) -> Result<(), Error> {
-        let entries = entries
-            .iter()
-            .map(|name| Ok((name, self.publication_entry(name)?)))
-            .collect::<Result<Vec<_>, Error>>()?;
-        let workspace = tempfile::Builder::new()
-            .prefix("berlin-publication-theme-")
-            .tempdir()?;
-        for (name, bytes) in &self.files {
-            if name.starts_with("styles") {
-                let destination = workspace.path().join(name);
-                fs::create_dir_all(
-                    destination
-                        .parent()
-                        .context("snapshot path requires a parent")?,
-                )?;
-                fs::write(destination, bytes)?;
-            }
-        }
-        fs::create_dir_all(output.join("assets/css"))?;
-        for (name, source) in entries {
-            let css = super::css::compile_stylesheet(
-                &workspace.path().join(source),
-                &workspace.path().join("styles"),
-                None,
-            )?;
-            fs::write(output.join("assets/css").join(name), css)?;
-        }
-        for (name, bytes) in &self.files {
-            if name.starts_with("static") {
-                let destination = output.join(name);
-                fs::create_dir_all(
-                    destination
-                        .parent()
-                        .context("static path requires a parent")?,
-                )?;
-                fs::write(destination, bytes)?;
-            }
-        }
-        Ok(())
     }
 }
 
@@ -279,8 +274,13 @@ mod snapshot_tests {
         let snapshot = Theme::load(&project, &theme).unwrap().snapshot().unwrap();
         let composed = root.path().join("composed");
         let required = BTreeSet::from(["portfolio.css".into()]);
-        snapshot.validate_entries(&required).unwrap();
-        snapshot.write_assets(&composed, &required).unwrap();
+        let prepared = snapshot.prepare_assets(&required).unwrap();
+        assert_eq!(prepared.consumed_inputs().len(), 1);
+        assert_eq!(
+            prepared.consumed_inputs()[0].logical_name,
+            "styles/publications/portfolio.css"
+        );
+        prepared.write(&composed).unwrap();
         assert!(composed.join("assets/css/portfolio.css").is_file());
         assert!(!composed.join("assets/css/site.css").exists());
         for invalid in [
@@ -293,7 +293,7 @@ mod snapshot_tests {
         ] {
             assert!(
                 snapshot
-                    .validate_entries(&BTreeSet::from([invalid.into()]))
+                    .prepare_assets(&BTreeSet::from([invalid.into()]))
                     .is_err(),
                 "{invalid}"
             );
@@ -338,7 +338,9 @@ mod snapshot_tests {
         );
         let output = root.path().join("staged");
         snapshot
-            .write_assets(&output, &BTreeSet::from(["portfolio.css".into()]))
+            .prepare_assets(&BTreeSet::from(["portfolio.css".into()]))
+            .unwrap()
+            .write(&output)
             .unwrap();
         assert_eq!(
             fs::read_to_string(output.join("static/example.txt")).unwrap(),
