@@ -21,6 +21,8 @@ pub enum PropertyType {
     Boolean,
     Integer,
     Source,
+    Resource,
+    ResourceKind,
     Excerpt,
     Enum(Vec<String>),
     Optional(Box<PropertyType>),
@@ -34,8 +36,12 @@ impl PropertyType {
             | (Self::Boolean, Property::Boolean(_))
             | (Self::Integer, Property::Integer(_))
             | (Self::Source, Property::Source(_))
+            | (Self::Resource, Property::Resource(_))
             | (Self::Excerpt, Property::Excerpt(_)) => true,
             (Self::Enum(variants), Property::Text(text)) => variants.contains(text),
+            (Self::ResourceKind, Property::Text(text)) => {
+                text.parse::<crate::ResourceKind>().is_ok()
+            }
             (Self::Optional(_), Property::None) => true,
             (Self::Optional(inner), value) => inner.accepts(value),
             (Self::List(inner), Property::List(values)) => values.iter().all(|v| inner.accepts(v)),

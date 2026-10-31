@@ -144,6 +144,7 @@ pub enum Property {
     Boolean(bool),
     Integer(i64),
     Source(ContentRef),
+    Resource(crate::ResourceRef),
     Excerpt(ExcerptRef),
     List(Vec<Property>),
     None,
@@ -334,6 +335,30 @@ impl Budget {
         match value {
             Property::Text(text) => self.string(text, limits),
             Property::Source(source) => self.source(source, limits),
+            Property::Resource(reference) => {
+                self.string(reference.id.as_str(), limits)?;
+                for hash in [
+                    &reference.expected_revision,
+                    &reference.expected_source_hash,
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    if hash.len() != 64
+                        || !hash
+                            .bytes()
+                            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+                    {
+                        return Err(Diagnostic::new(
+                            Code::InvalidProperty,
+                            Stage::Construction,
+                            "resource pins must be lowercase SHA-256 digests",
+                        ));
+                    }
+                    self.string(hash, limits)?;
+                }
+                Ok(())
+            }
             Property::Excerpt(excerpt) => {
                 self.source(&excerpt.source, limits)?;
                 self.string(&excerpt.section, limits)

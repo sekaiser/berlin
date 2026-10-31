@@ -308,6 +308,7 @@ dependencies = [
  "berlin_document",
  "berlin_document_html",
  "berlin_publication",
+ "berlin_publication_text",
  "html-escape",
  "lol_html",
  "markdown",

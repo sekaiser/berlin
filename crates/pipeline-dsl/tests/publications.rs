@@ -80,6 +80,79 @@ fn documents() -> DocumentCollection {
 }
 
 #[test]
+fn unified_e05_rust_and_rhai_resource_components_have_identical_normalized_composition() {
+    let external=ExternalResourceCollection::new(vec![(serde_json::from_value(serde_json::json!({
+        "id":"repo","kind":"repository","url":"https://example.test/repo","title":"Repository"
+    })).unwrap(),ResourceSource{namespace:"reading".into(),logical_name:"resources.yaml".into(),sha256:"b".repeat(64),record:1})],&ResourceLimits::default(),&PublicationLimits::default()).unwrap();
+    let catalog = PublicationCatalog::with_resources(
+        documents(),
+        external,
+        PublicationOptions {
+            source_site_url: Some("https://example.test/notebook".parse().unwrap()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let source = r#"fn mixed(c) {
+        let r=resource_ref(c,"external:repo");
+        let local=resource_ref(c,"local:a");
+        let intro=view_component("berlin.introduction@1",#{text:"Body"},#{});
+        let first=view_component("berlin.resource_card@1",#{resource:r,annotation:"First",presentation:"compact"},#{});
+        let second=view_component("berlin.resource_card@1",#{resource:r,annotation:"Second"},#{body:[intro]});
+        let reading=view_component("berlin.reading_list@1",#{title:"Reading"},#{items:[first,second]});
+        let citation=view_component("berlin.citation@1",#{resource:r,style:"short"},#{});
+        let group=view_component("berlin.resource_group@1",#{kind_hint:"repository"},#{items:[citation]});
+        let feature=view_component("berlin.featured_work@1",#{source:r},#{});
+        let related=view_component("berlin.related_work@1",#{sources:[r,local]},#{});
+        let root=view_component("berlin.portfolio@1",#{},#{body:[reading,group,feature,related]});
+        publication(#{id:"mixed",title:"Mixed"},root)
+    }"#;
+    let dynamic = RhaiPipelineLoader::new(source)
+        .unwrap()
+        .compose_catalog(&FunctionRef::new("mixed"), catalog.clone())
+        .unwrap();
+    let r = ResourceRef::external("repo").unwrap();
+    let root = view! {Portfolio(){
+        ReadingList(title:Some("Reading".into())) {slot items {
+            ResourceCard(resource:r.clone(),annotation:Some("First".into()),presentation:Some(CardPresentation::Compact))
+            ResourceCard(resource:r.clone(),annotation:Some("Second".into())){Introduction(text:"Body")}
+        }}
+        ResourceGroup(kind_hint:Some("repository".parse::<ResourceKind>().unwrap())) {slot items {Citation(resource:r.clone(),style:Some(CitationStyle::Short))}}
+        FeaturedWork(source:r.clone())
+        RelatedWork(sources:vec![r,ResourceRef::local("a").unwrap()])
+    }};
+    let typed = PublicationAssembly::resolve(
+        &PublicationSpec::new(
+            PublicationMetadata {
+                id: PublicationId("mixed".into()),
+                title: "Mixed".into(),
+                description: None,
+            },
+            root,
+        )
+        .unwrap(),
+        catalog,
+        &ComponentRegistry::builtins(),
+    )
+    .unwrap();
+    assert_eq!(typed.spec(), dynamic.spec());
+    assert_eq!(
+        typed.composition_fingerprint(),
+        dynamic.composition_fingerprint()
+    );
+    let invalid = source.replace(
+        "resource:r,style:\"short\"",
+        "resource:r,style:\"arbitrary-class\"",
+    );
+    assert!(
+        RhaiPipelineLoader::new(&invalid)
+            .unwrap()
+            .compose_catalog(&FunctionRef::new("mixed"), typed.catalog().clone())
+            .is_err()
+    );
+}
+
+#[test]
 fn unified_d11_rust_and_rhai_queries_share_order_and_both_digests() {
     let external=ExternalResourceCollection::new(vec![(serde_json::from_value(serde_json::json!({
         "id":"repository","kind":"repository","url":"https://example.test/repository?x=1&y=2#Section",
@@ -208,7 +281,7 @@ fn d05_d08_rust_and_runtime_rhai_use_the_same_normalized_contract() {
                 .into_call()
                 .with_body(
                     FeaturedWork {
-                        source: catalog.work_ref("a").unwrap(),
+                        source: ResourceRef::local("a").unwrap(),
                         annotation: None,
                     }
                     .into_call(),

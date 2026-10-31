@@ -154,6 +154,16 @@ impl PublicationCatalog {
             .as_ref()
             .map(mount_url)
             .transpose()?;
+        if base
+            .as_ref()
+            .is_some_and(|url| url.as_str().len() > options.resource_limits.url_bytes)
+        {
+            return Err(Diagnostic::new(
+                Code::ResourceLimit,
+                Stage::Resolution,
+                "source URL byte limit exceeded",
+            ));
+        }
         let mut entries = BTreeMap::new();
         let mut drafts = BTreeSet::new();
         let mut seen = BTreeSet::new();
@@ -193,6 +203,16 @@ impl PublicationCatalog {
                 drafts.insert(document.id.0);
                 continue;
             }
+            let kind = ResourceKind::from_document(&document.kind)?;
+            if document.metadata.tags.len() > options.resource_limits.topics_per_resource
+                || document.metadata.authors.len() > options.resource_limits.authors_per_resource
+            {
+                return Err(Diagnostic::new(
+                    Code::ResourceLimit,
+                    Stage::Resolution,
+                    "local resource topic/author count exceeded",
+                ));
+            }
             document.validate().map_err(|_| {
                 Diagnostic::new(
                     Code::InvalidSource,
@@ -225,6 +245,13 @@ impl PublicationCatalog {
                 ));
             }
             let original_url = if let Some(url) = mappings.get(&document.id.0) {
+                if url.as_str().len() > options.resource_limits.url_bytes {
+                    return Err(Diagnostic::new(
+                        Code::ResourceLimit,
+                        Stage::Resolution,
+                        "original URL byte limit exceeded",
+                    ));
+                }
                 validate_public_url(url)?;
                 Some(url.clone())
             } else if let Some(base) = &base {
@@ -238,6 +265,16 @@ impl PublicationCatalog {
             } else {
                 None
             };
+            if let Some(url) = &original_url {
+                if url.as_str().len() > options.resource_limits.url_bytes {
+                    return Err(Diagnostic::new(
+                        Code::ResourceLimit,
+                        Stage::Resolution,
+                        "original URL byte limit exceeded",
+                    ));
+                }
+                charge_catalog(url.as_str(), &options, &mut descriptor_bytes)?;
+            }
             // Post-mapping semantics include metadata but exclude local source
             // path/format. Source bytes are pinned separately by source_sha256.
             let document_digest = fingerprint(
@@ -299,7 +336,7 @@ impl PublicationCatalog {
                 schema_version: 1,
                 id: resource_id.clone(),
                 origin: ResourceOrigin::Local,
-                kind: ResourceKind::from_document(&document.kind)?,
+                kind,
                 title: document.metadata.title.clone().unwrap_or_default(),
                 description: document.metadata.description.clone(),
                 authors: document.metadata.authors.clone(),
@@ -373,6 +410,7 @@ impl PublicationCatalog {
                 revision: record.revision.clone(),
             };
             charge_descriptor(&descriptor, &record.source, &options, &mut descriptor_bytes)?;
+            charge_catalog(resource.as_ref(), &options, &mut descriptor_bytes)?;
             entries.insert(
                 id,
                 ResourceEntry {
@@ -507,6 +545,17 @@ impl PublicationCatalog {
                 "resource revision differs from its pinned reference",
             ));
         }
+        if reference
+            .expected_source_hash
+            .as_ref()
+            .is_some_and(|sha| sha != &entry.source.sha256)
+        {
+            return Err(Diagnostic::new(
+                Code::SourceDigestMismatch,
+                Stage::Resolution,
+                "resource input hash differs from its pinned reference",
+            ));
+        }
         Ok(entry)
     }
     pub fn resources(&self) -> impl Iterator<Item = &ResourceEntry> {
@@ -595,11 +644,11 @@ fn charge_descriptor(
     charge_catalog(&(descriptor, source), options, total)
 }
 fn charge_catalog(
-    value: &impl Serialize,
+    value: &(impl Serialize + ?Sized),
     options: &PublicationOptions,
     total: &mut usize,
 ) -> Result<()> {
-    let bytes = crate::canonical_bytes(value)?.len();
+    let bytes = crate::canonical_bytes(&value)?.len();
     *total = total.checked_add(bytes).ok_or_else(|| {
         Diagnostic::new(
             Code::ResourceLimit,

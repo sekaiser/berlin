@@ -24,3 +24,4 @@ html-escape.workspace = true
 
 [dev-dependencies]
 berlin_content.workspace = true
+berlin_publication_text.workspace = true

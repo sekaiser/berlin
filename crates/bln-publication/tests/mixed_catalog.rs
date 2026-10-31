@@ -37,6 +37,107 @@ fn collection(records: Vec<(ExternalResource, ResourceSource)>) -> ExternalResou
     )
     .unwrap()
 }
+
+#[test]
+fn c12_local_document_cites_external_resource_without_a_synthetic_document() {
+    let mut local = doc("a");
+    local.blocks = vec![Block::Section {
+        id: berlin_document::ComponentId("argument".into()),
+        level: 2,
+        role: None,
+        title: vec![Inline::Text {
+            value: "Argument".into(),
+        }],
+        blocks: vec![Block::Paragraph {
+            content: vec![Inline::Link {
+                destination: "https://example.test/paper".into(),
+                title: None,
+                content: vec![Inline::Text {
+                    value: "Supporting paper".into(),
+                }],
+            }],
+        }],
+    }];
+    let mut paper = external("paper");
+    paper.0.kind = "paper".parse().unwrap();
+    paper.0.url = "https://example.test/paper".into();
+    let catalog = mixed(vec![local], collection(vec![paper]));
+    let section = catalog.section_ref("a", "argument").unwrap();
+    let root = view! {Portfolio(){
+        Excerpt(source:section)
+        Citation(resource:ResourceRef::external("paper").unwrap())
+    }};
+    let assembly = PublicationAssembly::resolve(
+        &PublicationSpec::new(
+            PublicationMetadata {
+                id: PublicationId("argument".into()),
+                title: "Argument".into(),
+                description: None,
+            },
+            root,
+        )
+        .unwrap(),
+        catalog,
+        &ComponentRegistry::builtins(),
+    )
+    .unwrap();
+    assert_eq!(
+        assembly.catalog().by_origin(ResourceOrigin::Local).count(),
+        1
+    );
+    assert_eq!(
+        assembly
+            .catalog()
+            .by_origin(ResourceOrigin::External)
+            .count(),
+        1
+    );
+    assert_eq!(assembly.sources().len(), 2);
+    assert!(
+        assembly
+            .catalog()
+            .get(&ResourceId::external("paper").unwrap())
+            .unwrap()
+            .handle()
+            .try_local_document()
+            .is_err()
+    );
+}
+
+#[test]
+fn catalog_retained_urls_are_bounded_before_indexing() {
+    let mut opts = options();
+    opts.resource_limits.url_bytes = 20;
+    assert_eq!(
+        PublicationCatalog::with_resources(
+            DocumentCollection::new(vec![doc("a")]),
+            ExternalResourceCollection::default(),
+            opts
+        )
+        .unwrap_err()
+        .code,
+        Code::ResourceLimit
+    );
+    let mut opts = options();
+    opts.resource_limits.url_bytes = 70;
+    let mapping = std::collections::BTreeMap::from([(
+        "a".into(),
+        format!("https://example.test/{}", "x".repeat(80))
+            .parse()
+            .unwrap(),
+    )]);
+    assert_eq!(
+        PublicationCatalog::with_resource_urls(
+            DocumentCollection::new(vec![doc("a")]),
+            ExternalResourceCollection::default(),
+            opts,
+            mapping
+        )
+        .unwrap_err()
+        .code,
+        Code::ResourceLimit
+    );
+}
 fn options() -> PublicationOptions {
     PublicationOptions {
         source_site_url: Some("https://example.test/notebook".parse().unwrap()),
@@ -221,7 +322,7 @@ fn c06_c07_full_original_link_scope_and_missing_mount_diagnostics() {
     )
     .unwrap();
     let source = FeaturedWork::builder()
-        .source(no_mapping.work_ref("a").unwrap())
+        .source(ResourceRef::local("a").unwrap())
         .build();
     let spec = PublicationSpec::new(
         PublicationMetadata {
@@ -246,9 +347,18 @@ fn c11_catalog_count_and_canonical_descriptor_limits_are_exact() {
     let bytes = catalog
         .resources()
         .map(|e| {
-            canonical_bytes(&(e.descriptor(), e.source()))
-                .unwrap()
-                .len()
+            let retained = match e.handle() {
+                ResourceHandle::Local(_) => {
+                    canonical_bytes(&e.original_url().unwrap()).unwrap().len()
+                }
+                ResourceHandle::External(record) => {
+                    canonical_bytes(record.resource.as_ref()).unwrap().len()
+                }
+            };
+            retained
+                + canonical_bytes(&(e.descriptor(), e.source()))
+                    .unwrap()
+                    .len()
         })
         .sum::<usize>()
         + catalog

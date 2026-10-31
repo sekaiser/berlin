@@ -12,4 +12,13 @@
 .publication-tags { display: flex; flex-wrap: wrap; gap: .5rem 1rem; list-style: none; padding: 0; }
 .publication-callout { border-left: 3px solid var(--accent-rule); padding: .5rem 1.5rem; margin-block: 2rem; }
 .publication-page img { max-width: 100%; height: auto; }
+.publication-resource { display: flow-root; margin-block: 2rem; padding-block: 1.5rem; border-top: 1px solid var(--rule); }
+.publication-resource h2, .publication-resource h3, .publication-resource h4 { margin-block: .3rem .6rem; }
+.publication-resource-kind, .publication-resource-meta, .publication-resource time { font-family: var(--font-interface); font-size: .85rem; }
+.publication-resource-kind { letter-spacing: .06em; text-transform: uppercase; }
+.publication-resource-preview { float: right; width: min(34%, 220px); margin: 0 0 1rem 1.5rem; }
+.publication-resource--compact { margin-block: 1rem; padding-block: 1rem; }
+.publication-citation { padding-left: 1.5rem; text-indent: -1.5rem; overflow-wrap: anywhere; }
+.publication-reading-list, .publication-resource-group { margin-block: 3rem; }
+.publication-page a:focus-visible { outline: 2px solid var(--ink); outline-offset: .25rem; }
 @media (max-width: 600px) { .publication-page main { margin: 0; } }

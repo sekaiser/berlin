@@ -27,6 +27,10 @@ impl HtmlBindings {
             "excerpt",
             "related_work",
             "callout",
+            "resource_card",
+            "citation",
+            "reading_list",
+            "resource_group",
         ] {
             bindings.0.insert(
                 format!("berlin.{name}@1").parse().expect("built-in key"),
@@ -77,11 +81,20 @@ pub struct HtmlPublication {
 
 #[derive(Serialize)]
 struct SourceView<'a> {
-    id: &'a berlin_document::ContentId,
+    id: &'a ResourceId,
     title: &'a str,
-    url: &'a url::Url,
+    url: &'a str,
+    origin: ResourceOrigin,
+    kind: &'a str,
+    kind_class: &'static str,
+    kind_label: &'static str,
+    description: Option<&'a str>,
+    authors: &'a [String],
+    publisher: Option<&'a str>,
     published: Option<&'a berlin_document::PublicationDate>,
+    added: Option<&'a berlin_document::PublicationDate>,
     tags: &'a [String],
+    preview: Option<ResourcePreview>,
 }
 
 /// Compiled once from an immutable effective snapshot. Each root clones this
@@ -231,20 +244,21 @@ impl PublicationHtmlRenderer {
         let mut tera = self.tera.clone();
         tera.register_function("render_slot", SlotBridge(state.clone()));
         let routes = assembly
-            .sources()
-            .iter()
-            .map(|source| {
-                let entry = assembly.catalog().entry(&source.id.0)?;
-                Ok((
-                    source.id.clone(),
-                    entry
-                        .original_url
-                        .as_ref()
-                        .ok_or_else(|| error(Code::UnsafeUrl, "missing source URL"))?
-                        .to_string(),
-                ))
+            .catalog()
+            .resources()
+            .filter_map(|entry| {
+                if entry.descriptor().origin == ResourceOrigin::Local {
+                    entry.original_url().map(|url| {
+                        (
+                            berlin_document::ContentId(entry.descriptor().id.leaf().into()),
+                            url.to_owned(),
+                        )
+                    })
+                } else {
+                    None
+                }
             })
-            .collect::<Result<HashMap<_, _>>>()?;
+            .collect::<HashMap<_, _>>();
         let mut descriptions = HashMap::new();
         for placement in assembly
             .placements()
@@ -252,15 +266,12 @@ impl PublicationHtmlRenderer {
             .filter(|p| p.occurrence.component.to_string() == "berlin.featured_work@1")
         {
             for reference in &placement.sources {
-                if descriptions.contains_key(&reference.id.0) {
+                if descriptions.contains_key(reference.id.as_str()) {
                     continue;
                 }
-                if let Some(description) = &assembly
-                    .catalog()
-                    .resolve(reference)?
-                    .document()
-                    .metadata
-                    .description
+                let resource = assembly.catalog().resolve_resource(reference)?;
+                if let ResourceHandle::Local(entry) = resource.handle()
+                    && let Some(description) = &entry.document().metadata.description
                 {
                     if description.len() > assembly.catalog().limits().string_bytes {
                         return Err(error(
@@ -272,7 +283,7 @@ impl PublicationHtmlRenderer {
                     let document = markdown::Parser::new()
                         .parse(&source)
                         .map_err(|e| error(Code::InvalidSource, e.to_string()))?;
-                    descriptions.insert(reference.id.0.clone(), document.blocks);
+                    descriptions.insert(reference.id.as_str().to_owned(), document.blocks);
                 }
             }
         }
@@ -605,7 +616,18 @@ impl Session<'_> {
         let key = &call.component;
         let heading = if key.name() == "portfolio" {
             1
-        } else if ["section", "featured_work", "excerpt", "related_work"].contains(&key.name()) {
+        } else if [
+            "section",
+            "featured_work",
+            "excerpt",
+            "related_work",
+            "resource_card",
+            "citation",
+            "reading_list",
+            "resource_group",
+        ]
+        .contains(&key.name())
+        {
             parent_heading + 1
         } else {
             parent_heading
@@ -620,11 +642,12 @@ impl Session<'_> {
                 &placement.occurrence.path,
             ));
         }
-        let children_heading = if key.name() == "section" || key.name() == "portfolio" {
-            heading
-        } else {
-            parent_heading
-        };
+        let children_heading =
+            if ["section", "portfolio", "reading_list", "resource_group"].contains(&key.name()) {
+                heading
+            } else {
+                parent_heading
+            };
         for (name, children) in &call.slots {
             let mut output = BoundedWriter::new(self.assembly.catalog().limits().output_bytes);
             for child in &children.0 {
@@ -653,11 +676,17 @@ impl Session<'_> {
             );
         }
         if key.to_string() == "berlin.featured_work@1" {
-            let Property::Source(reference) = &call.properties["source"] else {
+            let Property::Resource(reference) = &call.properties["source"] else {
                 return Err(error(Code::InvalidProperty, "expected source"));
             };
-            let entry = self.assembly.catalog().resolve(reference)?;
-            let description = if let Some(blocks) = self.descriptions.get(&reference.id.0) {
+            let resource = self.assembly.catalog().resolve_resource(reference)?;
+            let description = if let Some(blocks) = self.descriptions.get(reference.id.as_str()) {
+                let ResourceHandle::Local(entry) = resource.handle() else {
+                    return Err(error(
+                        Code::InvalidSource,
+                        "semantic description requires local content",
+                    ));
+                };
                 let original = entry
                     .original_url
                     .as_ref()
@@ -749,9 +778,35 @@ impl Session<'_> {
             store_slot(&self.state, &owner, "excerpt", html)?;
         }
         let binding = &self.renderer.bindings.0[key];
+        // Resource kinds may select only these renderer-owned names. Authored
+        // kind strings are never interpolated into template paths.
+        let variant = if key.to_string() == "berlin.resource_card@1" {
+            let Property::Resource(reference) = &call.properties["resource"] else {
+                return Err(error(Code::InvalidProperty, "expected resource reference"));
+            };
+            match self
+                .assembly
+                .catalog()
+                .resolve_resource(reference)?
+                .descriptor()
+                .kind
+                .as_str()
+            {
+                "repository" => Some("components/berlin/resource_card.repository.v1.tera"),
+                "paper" => Some("components/berlin/resource_card.paper.v1.tera"),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        let template = variant
+            .filter(|name| self.tera.templates.contains_key(*name))
+            .unwrap_or(&binding.template);
+        crate::audit::audit(self.tera, template)
+            .map_err(|e| template_error(Code::TemplateContextFailure, template, e))?;
         render_template(
             self.tera,
-            &binding.template,
+            template,
             &context(
                 self.assembly,
                 self.site,
@@ -779,6 +834,7 @@ impl Session<'_> {
             Property::Integer(i) => (*i).into(),
             Property::None => Value::Null,
             Property::Source(source) => self.source(source)?,
+            Property::Resource(resource) => self.resource(resource)?,
             Property::Excerpt(excerpt) => self.source(&excerpt.source)?,
             Property::List(values) => Value::Array(
                 values
@@ -789,22 +845,75 @@ impl Session<'_> {
         })
     }
     fn source(&self, source: &ContentRef) -> Result<Value> {
-        let entry = self.assembly.catalog().resolve(source)?;
-        let doc = entry.document();
+        self.resource(&ResourceRef::try_from(source)?)
+    }
+    fn resource(&self, reference: &ResourceRef) -> Result<Value> {
+        let entry = self.assembly.catalog().resolve_resource(reference)?;
+        let descriptor = entry.descriptor();
+        let url = entry
+            .original_url()
+            .ok_or_else(|| error(Code::UnsafeUrl, "missing original resource URL"))?;
+        let (kind_class, kind_label) = match descriptor.kind.as_str() {
+            "repository" => ("repository", "Repository"),
+            "paper" => ("paper", "Paper"),
+            "article" => ("article", "Article"),
+            "guide" => ("guide", "Guide"),
+            "note" => ("note", "Note"),
+            "documentation" => ("documentation", "Documentation"),
+            "video" => ("video", "Video"),
+            "website" => ("website", "Website"),
+            "social_post" => ("social-post", "Social post"),
+            _ => ("custom", "Resource"),
+        };
+        let (publisher, preview) = match entry.handle() {
+            ResourceHandle::External(record) => (
+                record.resource.publisher.as_deref(),
+                record.resource.preview.clone(),
+            ),
+            ResourceHandle::Local(local) => {
+                let preview = local
+                    .document()
+                    .metadata
+                    .preview
+                    .as_ref()
+                    .map(|preview| {
+                        let original = local
+                            .original_url
+                            .as_ref()
+                            .ok_or_else(|| error(Code::UnsafeUrl, "missing preview source URL"))?;
+                        let mount = self
+                            .assembly
+                            .catalog()
+                            .options()
+                            .source_site_url
+                            .as_ref()
+                            .map(mount_url)
+                            .transpose()?;
+                        Ok(ResourcePreview {
+                            url: resolve_source_url(&preview.source, original, mount.as_ref())?
+                                .to_string(),
+                            alt: preview.alt.clone(),
+                        })
+                    })
+                    .transpose()?;
+                (None, preview)
+            }
+        };
         let view = SourceView {
-            id: &doc.id,
-            title: doc
-                .metadata
-                .title
-                .as_deref()
-                .filter(|title| !title.trim().is_empty())
-                .ok_or_else(|| error(Code::InvalidSource, "selected source requires a title"))?,
-            url: entry
-                .original_url
-                .as_ref()
-                .ok_or_else(|| error(Code::UnsafeUrl, "missing original URL"))?,
-            published: doc.metadata.published.as_ref(),
-            tags: &doc.metadata.tags,
+            id: &descriptor.id,
+            title: &descriptor.title,
+            url,
+            origin: descriptor.origin,
+            kind: descriptor.kind.as_str(),
+            kind_class,
+            kind_label,
+            description: descriptor.description.as_deref(),
+            authors: &descriptor.authors,
+            publisher,
+            published: descriptor.published.as_ref(),
+            added: descriptor.added.as_ref(),
+            tags: &descriptor.topics,
+            preview,
         };
         serde_json::to_value(view).map_err(|e| error(Code::InvalidProperty, e.to_string()))
     }

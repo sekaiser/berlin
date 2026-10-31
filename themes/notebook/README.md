@@ -26,6 +26,15 @@ Berlin neither downloads nor silently updates it.
 
 ## Composed publications
 
+The shared registry includes resource cards, citations, reading lists and resource
+groups, alongside portfolios, sections, introductions, featured/related work,
+callouts and local structural excerpts. Resource cards and citations accept both
+tagged local and external references. External descriptions and annotations are
+plain text; no external page content is fetched or treated as trusted HTML.
+Cards optionally select the closed `resource_card.repository.v1.tera` and
+`resource_card.paper.v1.tera` bindings when supplied by a theme; otherwise they
+use `resource_card.v1.tera`. Custom kinds always use the generic card.
+
 The theme also supplies version-1 portfolio components under
 `shared/pages/components/berlin/`, the page wrapper
 `shared/pages/publications/page.tera`, and

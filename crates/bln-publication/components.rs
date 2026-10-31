@@ -1,6 +1,6 @@
 use crate::{
     Component, ComponentProperty, ComponentRegistry, ContentRef, ExcerptRef, Property,
-    PropertyType, RegistryBuilder, ViewFragment,
+    PropertyType, RegistryBuilder, ResourceKind, ResourceRef, ViewFragment,
 };
 
 macro_rules! scalar {
@@ -19,6 +19,15 @@ scalar!(String, Text, Text);
 scalar!(bool, Boolean, Boolean);
 scalar!(i64, Integer, Integer);
 scalar!(ContentRef, Source, Source);
+scalar!(ResourceRef, Resource, Resource);
+impl ComponentProperty for ResourceKind {
+    fn property_type() -> PropertyType {
+        PropertyType::ResourceKind
+    }
+    fn into_property(self) -> Property {
+        Property::Text(self.as_str().into())
+    }
+}
 scalar!(ExcerptRef, Excerpt, Excerpt);
 macro_rules! signed {
     ($($ty:ty),*) => {$(impl ComponentProperty for $ty {
@@ -90,7 +99,7 @@ pub struct Introduction {
 #[derive(Component)]
 #[component(runtime = crate, key = "berlin.featured_work@1", channels(html, text))]
 pub struct FeaturedWork {
-    pub source: ContentRef,
+    pub source: ResourceRef,
     pub annotation: Option<String>,
 }
 #[derive(Component)]
@@ -102,7 +111,7 @@ pub struct Excerpt {
 #[derive(Component)]
 #[component(runtime = crate, key = "berlin.related_work@1", channels(html, text))]
 pub struct RelatedWork {
-    pub sources: Vec<ContentRef>,
+    pub sources: Vec<ResourceRef>,
     pub title: Option<String>,
 }
 #[derive(Component)]
@@ -110,6 +119,72 @@ pub struct RelatedWork {
 pub struct Callout {
     pub kind: CalloutKind,
     pub title: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum CardPresentation {
+    Default,
+    Compact,
+}
+impl ComponentProperty for CardPresentation {
+    fn property_type() -> PropertyType {
+        PropertyType::Enum(vec!["default".into(), "compact".into()])
+    }
+    fn into_property(self) -> Property {
+        Property::Text(
+            match self {
+                Self::Default => "default",
+                Self::Compact => "compact",
+            }
+            .into(),
+        )
+    }
+}
+#[derive(Clone, Copy, Debug)]
+pub enum CitationStyle {
+    Short,
+    Full,
+}
+impl ComponentProperty for CitationStyle {
+    fn property_type() -> PropertyType {
+        PropertyType::Enum(vec!["short".into(), "full".into()])
+    }
+    fn into_property(self) -> Property {
+        Property::Text(
+            match self {
+                Self::Short => "short",
+                Self::Full => "full",
+            }
+            .into(),
+        )
+    }
+}
+#[derive(Component)]
+#[component(runtime=crate,key="berlin.resource_card@1",channels(html,text),slot(name="body"))]
+pub struct ResourceCard {
+    pub resource: ResourceRef,
+    pub annotation: Option<String>,
+    pub presentation: Option<CardPresentation>,
+}
+#[derive(Component)]
+#[component(runtime=crate,key="berlin.citation@1",channels(html,text))]
+pub struct Citation {
+    pub resource: ResourceRef,
+    pub style: Option<CitationStyle>,
+    pub annotation: Option<String>,
+}
+#[derive(Component)]
+#[component(runtime=crate,key="berlin.reading_list@1",channels(html,text),slot(name="items",required))]
+pub struct ReadingList {
+    pub title: Option<String>,
+    pub intro: Option<String>,
+}
+#[derive(Component)]
+#[component(runtime=crate,key="berlin.resource_group@1",channels(html,text),slot(name="items",required))]
+pub struct ResourceGroup {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub kind_hint: Option<ResourceKind>,
 }
 
 impl ComponentRegistry {
@@ -122,6 +197,12 @@ impl ComponentRegistry {
         builder.register::<Excerpt>().expect("built-in schema");
         builder.register::<RelatedWork>().expect("built-in schema");
         builder.register::<Callout>().expect("built-in schema");
+        builder.register::<ResourceCard>().expect("built-in schema");
+        builder.register::<Citation>().expect("built-in schema");
+        builder.register::<ReadingList>().expect("built-in schema");
+        builder
+            .register::<ResourceGroup>()
+            .expect("built-in schema");
         builder.finish()
     }
 }

@@ -540,13 +540,32 @@ pub struct ResourceRef {
     pub id: ResourceId,
     #[serde(default)]
     pub expected_revision: Option<String>,
+    #[serde(default)]
+    pub expected_source_hash: Option<String>,
 }
 impl ResourceRef {
     pub fn new(id: ResourceId) -> Self {
         Self {
             id,
             expected_revision: None,
+            expected_source_hash: None,
         }
+    }
+    pub fn local(id: &str) -> Result<Self> {
+        Ok(Self::new(ResourceId::local(id)?))
+    }
+    pub fn external(id: &str) -> Result<Self> {
+        Ok(Self::new(ResourceId::external(id)?))
+    }
+}
+impl TryFrom<&crate::ContentRef> for ResourceRef {
+    type Error = Diagnostic;
+    fn try_from(reference: &crate::ContentRef) -> Result<Self> {
+        Ok(Self {
+            id: ResourceId::local(&reference.id.0)?,
+            expected_revision: reference.expected_document_digest.clone(),
+            expected_source_hash: reference.expected_source_hash.clone(),
+        })
     }
 }
 

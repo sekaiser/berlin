@@ -97,7 +97,7 @@ fn measure(label: &str, sources: usize, repeats: usize, depth: usize) {
             (0..sources)
                 .map(|n| {
                     FeaturedWork::builder()
-                        .source(catalog.work_ref(&format!("source-{n}")).unwrap())
+                        .source(ResourceRef::local(&format!("source-{n}")).unwrap())
                         .build()
                 })
                 .collect(),

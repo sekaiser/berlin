@@ -1,24 +1,23 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use berlin_document::ContentId;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ComponentCall, ComponentKey, ComponentRegistry, ContentRef, Occurrence, Property,
-    PublicationCatalog, PublicationSpec, Result, fingerprint,
+    ComponentCall, ComponentKey, ComponentRegistry, Occurrence, Property, PublicationCatalog,
+    PublicationSpec, ResourceId, ResourceRef, ResourceSource, Result, fingerprint,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct SourceRevision {
-    pub id: ContentId,
-    pub source_sha256: String,
-    pub document_digest: String,
+pub struct ResourceRevision {
+    pub id: ResourceId,
+    pub source: ResourceSource,
+    pub record_digest: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Placement {
     pub occurrence: Occurrence,
-    pub sources: Vec<ContentRef>,
+    pub sources: Vec<ResourceRef>,
 }
 
 /// Construction is private to validated resolution. The original catalog is
@@ -28,7 +27,7 @@ pub struct PublicationAssembly {
     spec: PublicationSpec,
     catalog: PublicationCatalog,
     placements: Vec<Placement>,
-    sources: Vec<SourceRevision>,
+    sources: Vec<ResourceRevision>,
     components: BTreeSet<ComponentKey>,
     composition_fingerprint: String,
     excerpts: BTreeMap<(String, String), crate::ResolvedExcerpt>,
@@ -45,24 +44,61 @@ impl PublicationAssembly {
         let mut placements = Vec::new();
         let mut revisions = BTreeMap::new();
         let mut occurrences = occurrences.into_iter();
-        fn references(property: &Property, sources: &mut Vec<ContentRef>) {
+        fn references(
+            property: &Property,
+            catalog: &PublicationCatalog,
+            sources: &mut Vec<ResourceRef>,
+        ) -> Result<()> {
             match property {
-                Property::Source(source) => sources.push(source.clone()),
-                Property::Excerpt(excerpt) => sources.push(excerpt.source.clone()),
+                Property::Resource(reference) => sources.push(reference.clone()),
+                Property::Source(source) => {
+                    catalog.resolve(source)?;
+                    sources.push(ResourceRef::try_from(source)?);
+                }
+                Property::Excerpt(excerpt) => {
+                    catalog.resolve(&excerpt.source)?;
+                    sources.push(ResourceRef::try_from(&excerpt.source)?);
+                }
                 Property::List(values) => {
                     for value in values {
-                        references(value, sources);
+                        references(value, catalog, sources)?;
                     }
                 }
                 _ => {}
             }
+            Ok(())
+        }
+        fn revision(
+            catalog: &PublicationCatalog,
+            source: &ResourceRef,
+        ) -> Result<ResourceRevision> {
+            let entry = catalog.resolve_resource(source)?;
+            if entry.descriptor().title.trim().is_empty() {
+                return Err(crate::Diagnostic::new(
+                    crate::Code::InvalidSource,
+                    crate::Stage::Resolution,
+                    "selected resource requires a title",
+                ));
+            }
+            if entry.original_url().is_none() {
+                return Err(crate::Diagnostic::new(
+                    crate::Code::UnsafeUrl,
+                    crate::Stage::Resolution,
+                    "selected resource requires an original URL mapping",
+                ));
+            }
+            Ok(ResourceRevision {
+                id: source.id.clone(),
+                source: entry.source().clone(),
+                record_digest: entry.descriptor().revision.clone(),
+            })
         }
         fn visit(
             call: &ComponentCall,
             catalog: &PublicationCatalog,
             occurrences: &mut impl Iterator<Item = Occurrence>,
             placements: &mut Vec<Placement>,
-            revisions: &mut BTreeMap<String, SourceRevision>,
+            revisions: &mut BTreeMap<ResourceId, ResourceRevision>,
             publication: &str,
         ) -> Result<()> {
             let occurrence = occurrences
@@ -70,43 +106,13 @@ impl PublicationAssembly {
                 .expect("validated traversal is unchanged");
             let mut sources = Vec::new();
             for property in call.properties.values() {
-                references(property, &mut sources);
+                references(property, catalog, &mut sources)
+                    .map_err(|e| e.at(publication, &occurrence.path))?;
             }
             for source in &sources {
-                let entry = catalog
-                    .resolve(source)
-                    .map_err(|e| e.at(publication, &occurrence.path))?;
-                if entry
-                    .document()
-                    .metadata
-                    .title
-                    .as_deref()
-                    .is_none_or(|title| title.trim().is_empty())
-                {
-                    return Err(crate::Diagnostic::new(
-                        crate::Code::InvalidSource,
-                        crate::Stage::Resolution,
-                        "selected source requires a title",
-                    )
-                    .source(&source.id.0, None)
-                    .at(publication, &occurrence.path));
-                }
-                revisions
-                    .entry(source.id.0.clone())
-                    .or_insert_with(|| SourceRevision {
-                        id: source.id.clone(),
-                        source_sha256: entry.source_sha256.clone(),
-                        document_digest: entry.document_digest.clone(),
-                    });
-                if entry.original_url.is_none() {
-                    return Err(crate::Diagnostic::new(
-                        crate::Code::UnsafeUrl,
-                        crate::Stage::Resolution,
-                        "source references require source_site_url or an explicit original URL",
-                    )
-                    .source(&source.id.0, None)
-                    .at(publication, &occurrence.path));
-                }
+                let resolved =
+                    revision(catalog, source).map_err(|e| e.at(publication, &occurrence.path))?;
+                revisions.entry(source.id.clone()).or_insert(resolved);
             }
             placements.push(Placement {
                 occurrence,
@@ -180,16 +186,13 @@ impl PublicationAssembly {
         }
         resolve_excerpts(&spec.root, &catalog, registry, &mut excerpts)
             .map_err(|e| e.at(&spec.metadata.id.0, "root"))?;
-        let mut sources: BTreeMap<_, _> =
-            sources.into_iter().map(|s| (s.id.0.clone(), s)).collect();
+        let mut sources: BTreeMap<_, _> = sources.into_iter().map(|s| (s.id.clone(), s)).collect();
         for excerpt in excerpts.values() {
             for id in &excerpt.linked_sources {
-                let entry = catalog.entry(id)?;
-                sources.entry(id.clone()).or_insert_with(|| SourceRevision {
-                    id: ContentId(id.clone()),
-                    source_sha256: entry.source_sha256.clone(),
-                    document_digest: entry.document_digest.clone(),
-                });
+                let reference = ResourceRef::local(id)?;
+                sources
+                    .entry(reference.id.clone())
+                    .or_insert(revision(&catalog, &reference)?);
             }
         }
         let sources: Vec<_> = sources.into_values().collect();
@@ -204,8 +207,18 @@ impl PublicationAssembly {
             .iter()
             .map(|key| registry.schema(key))
             .collect::<Result<Vec<_>>>()?;
-        let composition_fingerprint =
-            fingerprint("composition/v1", &(&spec, &placements, &sources, schemas))?;
+        let composition_fingerprint = fingerprint(
+            "resource-composition/v1",
+            &(
+                &spec,
+                &placements,
+                sources
+                    .iter()
+                    .map(|s| (&s.id, &s.record_digest))
+                    .collect::<Vec<_>>(),
+                schemas,
+            ),
+        )?;
         Ok(Self {
             spec,
             catalog,
@@ -225,7 +238,7 @@ impl PublicationAssembly {
     pub fn placements(&self) -> &[Placement] {
         &self.placements
     }
-    pub fn sources(&self) -> &[SourceRevision] {
+    pub fn sources(&self) -> &[ResourceRevision] {
         &self.sources
     }
     pub fn excerpt(&self, reference: &crate::ExcerptRef) -> Result<&crate::ResolvedExcerpt> {
@@ -260,17 +273,17 @@ impl PublicationAssembly {
             self.catalog.original_urls_digest().into(),
         );
         let render_input_fingerprint = fingerprint(
-            "render-input/v1",
+            "resource-render-input/v1",
             &(
                 self.composition_fingerprint(),
                 channel,
-                "1",
+                "2",
                 &render_inputs,
                 &configuration_digest,
             ),
         )?;
         Ok(PublicationManifest {
-            schema_version: 1,
+            schema_version: 2,
             publication_id: self.spec.metadata.id.clone(),
             metadata_digest: fingerprint("metadata/v1", &self.spec.metadata)?,
             normalized_spec_digest: self.spec.normalized_digest()?,
@@ -278,7 +291,7 @@ impl PublicationAssembly {
             sources: self.sources.clone(),
             components: self.components.clone(),
             channel,
-            renderer_contract: 1,
+            renderer_contract: 2,
             composition_fingerprint: self.composition_fingerprint.clone(),
             configuration_digest,
             render_inputs,
@@ -296,7 +309,7 @@ pub struct PublicationManifest {
     pub metadata_digest: String,
     pub normalized_spec_digest: String,
     pub placements: Vec<Placement>,
-    pub sources: Vec<SourceRevision>,
+    pub sources: Vec<ResourceRevision>,
     pub components: BTreeSet<ComponentKey>,
     pub channel: crate::Channel,
     pub renderer_contract: u32,
@@ -338,11 +351,11 @@ impl PublicationManifest {
         }
         self.render_inputs.extend(inputs);
         self.render_input_fingerprint = fingerprint(
-            "render-input/v1",
+            "resource-render-input/v1",
             &(
                 &self.composition_fingerprint,
                 self.channel,
-                "1",
+                "2",
                 &self.render_inputs,
                 &self.configuration_digest,
             ),

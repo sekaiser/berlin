@@ -266,7 +266,7 @@ fn a10_source_and_mapping_pins_are_distinct() {
 
 fn spec() -> PublicationSpec {
     let card = FeaturedWork {
-        source: ContentRef::new("a"),
+        source: ResourceRef::local("a").unwrap(),
         annotation: Some("Editorial note".into()),
     }
     .into_call();

@@ -78,14 +78,15 @@ fn a02_a04_registration_versions_and_duplicate_contracts() {
 #[test]
 fn typed_and_dynamic_components_share_defaults_and_schema() {
     let typed = FeaturedWork {
-        source: ContentRef::new("source"),
+        source: ResourceRef::local("source").unwrap(),
         annotation: None,
     }
     .into_call();
     let mut dynamic = ComponentCall::new("berlin.featured_work@1".parse().unwrap());
-    dynamic
-        .properties
-        .insert("source".into(), Property::Source(ContentRef::new("source")));
+    dynamic.properties.insert(
+        "source".into(),
+        Property::Resource(ResourceRef::local("source").unwrap()),
+    );
     normalize(&mut dynamic).unwrap();
     assert_eq!(dynamic, typed);
     let mut callout = Callout {

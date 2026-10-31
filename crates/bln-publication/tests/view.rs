@@ -192,6 +192,27 @@ fn d02_d04_compiler_contract_and_renamed_runtime() {
             false,
         ),
         ("html", r#"let _=view!{<div>};"#, false),
+        (
+            "resource_pass",
+            r#"let _=view!{ResourceCard(resource:ResourceRef::external("repo").unwrap())};"#,
+            true,
+        ),
+        (
+            "resource_wrong_ref",
+            r#"let _=view!{ResourceCard(resource:ContentRef::new("local"))};"#,
+            false,
+        ),
+        (
+            "excerpt_wrong_ref",
+            r#"let _=view!{Excerpt(source:ResourceRef::external("repo").unwrap())};"#,
+            false,
+        ),
+        ("resource_missing", r#"let _=view!{Citation()};"#, false),
+        (
+            "resource_bad_slot",
+            r#"let _=view!{ReadingList(){slot body{Introduction(text:"x")}}};"#,
+            false,
+        ),
         ("syntax", r#"let _=view!{Introduction(text "x")};"#, false),
     ];
     let temp = tempfile::tempdir().unwrap();

@@ -41,15 +41,12 @@ pub fn render(
         .filter(|p| p.occurrence.component.to_string() == "berlin.featured_work@1")
     {
         for reference in &placement.sources {
-            if descriptions.contains_key(&reference.id.0) {
+            if descriptions.contains_key(reference.id.as_str()) {
                 continue;
             }
-            if let Some(description) = &assembly
-                .catalog()
-                .resolve(reference)?
-                .document()
-                .metadata
-                .description
+            let resource = assembly.catalog().resolve_resource(reference)?;
+            if let ResourceHandle::Local(entry) = resource.handle()
+                && let Some(description) = &entry.document().metadata.description
             {
                 if description.len() > assembly.catalog().limits().string_bytes {
                     return Err(failure(
@@ -61,7 +58,7 @@ pub fn render(
                 let document = markdown::Parser::new()
                     .parse(&source)
                     .map_err(|e| failure(Code::InvalidSource, e.to_string()))?;
-                descriptions.insert(reference.id.0.clone(), document.blocks);
+                descriptions.insert(reference.id.as_str().to_owned(), document.blocks);
             }
         }
     }
@@ -132,12 +129,18 @@ impl Session<'_> {
                     this.slot(call, "body", output)?;
                 }
                 "berlin.featured_work@1" => {
-                    let Property::Source(reference) = &call.properties["source"] else {
+                    let Property::Resource(reference) = &call.properties["source"] else {
                         return Err(failure(Code::InvalidProperty, "expected source reference"));
                     };
-                    this.source(reference, output)?;
-                    if let Some(blocks) = this.descriptions.get(&reference.id.0) {
-                        let entry = this.assembly.catalog().resolve(reference)?;
+                    this.resource(reference, output)?;
+                    if let Some(blocks) = this.descriptions.get(reference.id.as_str()) {
+                        let resource = this.assembly.catalog().resolve_resource(reference)?;
+                        let ResourceHandle::Local(entry) = resource.handle() else {
+                            return Err(failure(
+                                Code::InvalidSource,
+                                "semantic description requires local content",
+                            ));
+                        };
                         let original = entry
                             .original_url
                             .as_ref()
@@ -175,6 +178,16 @@ impl Session<'_> {
                         })?;
                         output.write_all(b"\n\n").map_err(write_error)?;
                         fragment::write_blocks(blocks, &context, output).map_err(write_error)?;
+                    }
+                    if reference.id.origin() == ResourceOrigin::External
+                        && let Some(description) = &this
+                            .assembly
+                            .catalog()
+                            .resolve_resource(reference)?
+                            .descriptor()
+                            .description
+                    {
+                        write!(output, "\n\n{description}").map_err(write_error)?;
                     }
                     annotation(call, output)?;
                 }
@@ -249,14 +262,68 @@ impl Session<'_> {
                         if index > 0 {
                             output.write_all(b"\n").map_err(write_error)?;
                         }
-                        let Property::Source(source) = source else {
+                        let Property::Resource(source) = source else {
                             return Err(failure(
                                 Code::InvalidProperty,
                                 "expected source reference",
                             ));
                         };
-                        this.source(source, output)?;
+                        this.resource(source, output)?;
                     }
+                }
+                "berlin.resource_card@1" => {
+                    let Property::Resource(reference) = &call.properties["resource"] else {
+                        return Err(failure(Code::InvalidProperty, "expected resource"));
+                    };
+                    let entry = this.assembly.catalog().resolve_resource(reference)?;
+                    write!(output, "{} — ", entry.descriptor().kind.as_str())
+                        .map_err(write_error)?;
+                    this.resource(reference, output)?;
+                    if let Some(description) = &entry.descriptor().description {
+                        write!(output, "\n\n{description}").map_err(write_error)?;
+                    }
+                    annotation(call, output)?;
+                    if !call.slots["body"].0.is_empty() {
+                        output.write_all(b"\n\n").map_err(write_error)?;
+                        this.slot(call, "body", output)?;
+                    }
+                }
+                "berlin.citation@1" => {
+                    let Property::Resource(reference) = &call.properties["resource"] else {
+                        return Err(failure(Code::InvalidProperty, "expected citation resource"));
+                    };
+                    let entry = this.assembly.catalog().resolve_resource(reference)?;
+                    let descriptor = entry.descriptor();
+                    if optional(call, "style")? != Some("short") {
+                        if !descriptor.authors.is_empty() {
+                            write!(output, "{}. ", descriptor.authors.join("; "))
+                                .map_err(write_error)?;
+                        }
+                        if let Some(date) = &descriptor.published {
+                            write!(output, "({date}). ").map_err(write_error)?;
+                        }
+                        if let ResourceHandle::External(record) = entry.handle()
+                            && let Some(publisher) = &record.resource.publisher
+                        {
+                            write!(output, "{publisher}. ").map_err(write_error)?;
+                        }
+                    }
+                    this.resource(reference, output)?;
+                    annotation(call, output)?;
+                }
+                "berlin.reading_list@1" | "berlin.resource_group@1" => {
+                    if let Some(title) = optional(call, "title")? {
+                        write!(output, "{title}\n\n").map_err(write_error)?;
+                    }
+                    let intro = if call.component.name() == "reading_list" {
+                        "intro"
+                    } else {
+                        "description"
+                    };
+                    if let Some(intro) = optional(call, intro)? {
+                        write!(output, "{intro}\n\n").map_err(write_error)?;
+                    }
+                    this.slot(call, "items", output)?;
                 }
                 key => {
                     return Err(failure(
@@ -288,18 +355,14 @@ impl Session<'_> {
         Ok(())
     }
     fn source(&self, source: &ContentRef, output: &mut BoundedWriter) -> Result<()> {
-        let entry = self.assembly.catalog().resolve(source)?;
-        let title = entry
-            .document()
-            .metadata
-            .title
-            .as_deref()
-            .ok_or_else(|| failure(Code::InvalidSource, "selected source requires a title"))?;
+        self.resource(&ResourceRef::try_from(source)?, output)
+    }
+    fn resource(&self, reference: &ResourceRef, output: &mut BoundedWriter) -> Result<()> {
+        let entry = self.assembly.catalog().resolve_resource(reference)?;
         let url = entry
-            .original_url
-            .as_ref()
-            .ok_or_else(|| failure(Code::UnsafeUrl, "source requires an original URL"))?;
-        write!(output, "{title}\n{url}").map_err(write_error)
+            .original_url()
+            .ok_or_else(|| failure(Code::UnsafeUrl, "resource requires original URL"))?;
+        write!(output, "{}\n{url}", entry.descriptor().title).map_err(write_error)
     }
 }
 fn text<'a>(call: &'a ComponentCall, key: &str) -> Result<&'a str> {

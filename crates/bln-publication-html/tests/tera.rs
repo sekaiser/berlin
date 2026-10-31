@@ -78,6 +78,7 @@ fn assembly_with_limits(opening: &str, limits: PublicationLimits) -> Publication
         PublicationOptions {
             source_site_url: Some("https://example.test/notebook".parse().unwrap()),
             limits,
+            ..Default::default()
         },
     )
     .unwrap();
@@ -86,7 +87,7 @@ fn assembly_with_limits(opening: &str, limits: PublicationLimits) -> Publication
     }
     .into_call();
     let card = FeaturedWork {
-        source: catalog.work_ref("source").unwrap(),
+        source: ResourceRef::local("source").unwrap(),
         annotation: Some("My annotation <&>".into()),
     }
     .into_call();
@@ -115,7 +116,7 @@ fn assembly_with_limits(opening: &str, limits: PublicationLimits) -> Publication
             ),
         ),
         RelatedWork {
-            sources: vec![catalog.work_ref("source").unwrap()],
+            sources: vec![ResourceRef::local("source").unwrap()],
             title: Some("Original work".into()),
         }
         .into_call(),

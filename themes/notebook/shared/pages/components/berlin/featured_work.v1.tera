@@ -3,5 +3,6 @@
   {% if props.source.published %}<time datetime="{{ props.source.published }}">{{ props.source.published }}</time>{% endif %}
   {% if props.source.tags %}<ul class="publication-tags" aria-label="Tags">{% for tag in props.source.tags %}<li>{{ tag }}</li>{% endfor %}</ul>{% endif %}
   {{ render_slot(owner=view.id, name="source_description") }}
+  {% if props.source.origin == "external" and props.source.description %}<p>{{ props.source.description }}</p>{% endif %}
   {% if props.annotation %}<div class="publication-annotation">{% for paragraph in props.annotation_paragraphs %}<p>{{ paragraph }}</p>{% endfor %}</div>{% endif %}
 </article>

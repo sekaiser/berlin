@@ -38,6 +38,7 @@ fn catalog(limits: PublicationLimits) -> PublicationCatalog {
         PublicationOptions {
             source_site_url: Some("https://source.example/notebook".parse().unwrap()),
             limits,
+            ..Default::default()
         },
     )
     .unwrap()
@@ -62,7 +63,7 @@ fn assemble(root: ComponentCall, catalog: PublicationCatalog) -> PublicationAsse
 #[test]
 fn e01_e02_e03_e04_all_builtins_render_directly_and_keep_code_literal_text_and_urls() {
     let c = catalog(PublicationLimits::default());
-    let reference = c.work_ref("source").unwrap();
+    let reference = ResourceRef::local("source").unwrap();
     let root = Portfolio {}.into_call().with_body(ViewFragment(vec![
         Introduction {
             text: "Editorial <intro> & notes".into(),

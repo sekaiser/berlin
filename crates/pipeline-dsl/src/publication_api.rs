@@ -173,6 +173,7 @@ pub(super) fn register(engine: &mut Engine) {
                     .ok_or_else(|| failure("pin values must be SHA-256 strings"))?;
                 match name.as_str() {
                     "record_revision" => reference.expected_revision = Some(value.into()),
+                    "source_sha256" => reference.expected_source_hash = Some(value.into()),
                     _ => return Err(failure(format!("unknown pin field '{name}'"))),
                 }
             }
@@ -258,18 +259,8 @@ fn decode(value: Dynamic, depth: usize) -> ScriptResult<Property> {
     if value.is::<ContentRef>() {
         return Ok(Property::Source(value.cast()));
     }
-    // Existing local-only component contracts remain checked while P05 widens
-    // resource-oriented components. External refs cannot masquerade as content.
     if value.is::<ResourceRef>() {
-        let reference = value.cast::<ResourceRef>();
-        if reference.id.origin() != ResourceOrigin::Local {
-            return Err(failure("component requires local semantic content"));
-        }
-        return Ok(Property::Source(ContentRef {
-            id: berlin_document::ContentId(reference.id.leaf().into()),
-            expected_source_hash: None,
-            expected_document_digest: reference.expected_revision,
-        }));
+        return Ok(Property::Resource(value.cast()));
     }
     if value.is::<ExcerptRef>() {
         return Ok(Property::Excerpt(value.cast()));

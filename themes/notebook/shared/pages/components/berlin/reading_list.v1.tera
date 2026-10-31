@@ -1,0 +1,5 @@
+<section class="publication-reading-list" id="{{ view.anchor }}">
+  {% if props.title %}<h{{ view.heading_level }}>{{ props.title }}</h{{ view.heading_level }}>{% endif %}
+  {% if props.intro %}<p class="publication-reading-intro">{{ props.intro }}</p>{% endif %}
+  <div class="publication-resource-items">{{ render_slot(owner=view.id, name="items") }}</div>
+</section>
