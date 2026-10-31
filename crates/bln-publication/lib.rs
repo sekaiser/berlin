@@ -22,3 +22,18 @@ pub use excerpt::*;
 pub use limits::{BoundedWriter, PublicationLimits};
 pub use model::*;
 pub use registry::*;
+
+pub use berlin_publication_macros::{__view, Component};
+
+/// Compose typed components. The facade forwards its hygienic runtime path,
+/// including when this crate is renamed by a downstream Cargo dependency.
+#[macro_export]
+macro_rules! view {
+    ($($view:tt)*) => { $crate::__view!($crate; $($view)*) };
+}
+
+#[doc(hidden)]
+pub mod __private {
+    pub struct Missing;
+    pub struct Set;
+}

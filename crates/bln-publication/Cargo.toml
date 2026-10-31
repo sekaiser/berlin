@@ -11,6 +11,7 @@ description = "Channel-neutral publication composition and source resolution"
 path = "lib.rs"
 
 [dependencies]
+berlin_publication_macros = { path = "../bln-publication-macros" }
 berlin_document.workspace = true
 berlin_content.workspace = true
 serde.workspace = true
@@ -18,4 +19,7 @@ serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 url.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 

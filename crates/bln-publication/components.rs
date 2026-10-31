@@ -1,8 +1,6 @@
-use std::collections::BTreeMap;
-
 use crate::{
-    Channel, Component, ComponentProperty, ComponentRegistry, ComponentSchema, ContentRef,
-    ExcerptRef, Property, PropertySchema, PropertyType, RegistryBuilder, SlotSchema, ViewFragment,
+    Component, ComponentProperty, ComponentRegistry, ContentRef, ExcerptRef, Property,
+    PropertyType, RegistryBuilder, ViewFragment,
 };
 
 macro_rules! scalar {
@@ -22,6 +20,13 @@ scalar!(bool, Boolean, Boolean);
 scalar!(i64, Integer, Integer);
 scalar!(ContentRef, Source, Source);
 scalar!(ExcerptRef, Excerpt, Excerpt);
+macro_rules! signed {
+    ($($ty:ty),*) => {$(impl ComponentProperty for $ty {
+        fn property_type() -> PropertyType {PropertyType::Integer}
+        fn into_property(self) -> Property {Property::Integer(self as i64)}
+    })*};
+}
+signed!(i8, i16, i32, isize);
 impl<T: ComponentProperty> ComponentProperty for Option<T> {
     fn property_type() -> PropertyType {
         PropertyType::Optional(Box::new(T::property_type()))
@@ -69,32 +74,43 @@ impl ComponentProperty for CalloutKind {
     }
 }
 
-// One field declaration supplies both schema and typed lowering. P08 replaces
-// this local definition helper with the public derive, preserving this contract.
-macro_rules! component {
-    ($name:ident, $key:literal, $body:literal, { $($field:ident: $ty:ty),* $(,)? }) => {
-        pub struct $name { $(pub $field: $ty),* }
-        impl Component for $name {
-            fn schema() -> ComponentSchema {
-                ComponentSchema {
-                    key: $key.parse().expect("constant built-in key"),
-                    properties: BTreeMap::from([$( (stringify!($field).into(), PropertySchema { kind: <$ty>::property_type(), default: <$ty>::default_property() }) ),*]),
-                    slots: if $body { BTreeMap::from([("body".into(), SlotSchema { minimum: 1, maximum: 10_000 })]) } else { BTreeMap::new() },
-                    channels: [Channel::Html, Channel::Text].into_iter().collect(),
-                }
-            }
-            fn properties(self) -> BTreeMap<String, Property> { BTreeMap::from([$( (stringify!($field).into(), self.$field.into_property()) ),*]) }
-        }
-    };
+#[derive(Component)]
+#[component(runtime = crate, key = "berlin.portfolio@1", channels(html, text), slot(name = "body", required))]
+pub struct Portfolio {}
+#[derive(Component)]
+#[component(runtime = crate, key = "berlin.section@1", channels(html, text), slot(name = "body", required))]
+pub struct Section {
+    pub title: String,
 }
-
-component!(Portfolio, "berlin.portfolio@1", true, {});
-component!(Section, "berlin.section@1", true, { title: String });
-component!(Introduction, "berlin.introduction@1", false, { text: String });
-component!(FeaturedWork, "berlin.featured_work@1", false, { source: ContentRef, annotation: Option<String> });
-component!(Excerpt, "berlin.excerpt@1", false, { source: ExcerptRef, annotation: Option<String> });
-component!(RelatedWork, "berlin.related_work@1", false, { sources: Vec<ContentRef>, title: Option<String> });
-component!(Callout, "berlin.callout@1", true, { kind: CalloutKind, title: Option<String> });
+#[derive(Component)]
+#[component(runtime = crate, key = "berlin.introduction@1", channels(html, text))]
+pub struct Introduction {
+    pub text: String,
+}
+#[derive(Component)]
+#[component(runtime = crate, key = "berlin.featured_work@1", channels(html, text))]
+pub struct FeaturedWork {
+    pub source: ContentRef,
+    pub annotation: Option<String>,
+}
+#[derive(Component)]
+#[component(runtime = crate, key = "berlin.excerpt@1", channels(html, text))]
+pub struct Excerpt {
+    pub source: ExcerptRef,
+    pub annotation: Option<String>,
+}
+#[derive(Component)]
+#[component(runtime = crate, key = "berlin.related_work@1", channels(html, text))]
+pub struct RelatedWork {
+    pub sources: Vec<ContentRef>,
+    pub title: Option<String>,
+}
+#[derive(Component)]
+#[component(runtime = crate, key = "berlin.callout@1", channels(html, text), slot(name = "body", required))]
+pub struct Callout {
+    pub kind: CalloutKind,
+    pub title: Option<String>,
+}
 
 impl ComponentRegistry {
     pub fn builtins() -> Self {

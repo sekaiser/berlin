@@ -212,6 +212,12 @@ fn d10_reused_large_children_remain_shared_until_bounded_lowering() {
         publication(#{id:"p",title:"P"},root)
     } pipeline text {output render_publication_text(compose_publication(parse_markdown(load_markdown("*.md")),Fn("p"),publication_options(#{})),"_text",text_config(#{}));}"#;
     let loader = RhaiPipelineLoader::new(source).unwrap();
-    let result = loader.compose_publication(&FunctionRef::new("p"), &documents(), &PublicationOptions::default()).unwrap();
+    let result = loader
+        .compose_publication(
+            &FunctionRef::new("p"),
+            &documents(),
+            &PublicationOptions::default(),
+        )
+        .unwrap();
     assert_eq!(result.placements().len(), 2);
 }

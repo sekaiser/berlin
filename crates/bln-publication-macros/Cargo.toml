@@ -10,3 +10,8 @@ description = "Typed composition macros for Berlin publications"
 [lib]
 path = "lib.rs"
 proc-macro = true
+
+[dependencies]
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"

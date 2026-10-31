@@ -289,9 +289,11 @@ version = "0.0.0"
 dependencies = [
  "berlin_content",
  "berlin_document",
+ "berlin_publication_macros",
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
  "thiserror",
  "url",
 ]
