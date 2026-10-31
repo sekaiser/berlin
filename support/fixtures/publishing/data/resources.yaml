@@ -1,0 +1,8 @@
+schema_version: 1
+resources:
+  - id: example-link
+    kind: article
+    url: https://example.com/article
+    title: Example link
+    added: '2026-01-01'
+    topics: [publishing]

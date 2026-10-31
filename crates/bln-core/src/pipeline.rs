@@ -403,6 +403,7 @@ impl PipelinePlan {
                 return Err(PipelineValidationError::DuplicateNode(node.id.clone()));
             }
 
+            validate_operation_shape(node)?;
             validate_source_pattern(node)?;
             validate_paper_url(node)?;
             validate_output(node, &mut output_paths)?;
@@ -553,10 +554,8 @@ fn validate_output_path(
     Ok(())
 }
 
-fn validate_node_inputs(
-    node: &PipelineNode,
-    nodes_by_id: &HashMap<NodeId, &PipelineNode>,
-) -> Result<(), PipelineValidationError> {
+// Validate variable arity before signature() can allocate its input vector.
+fn validate_operation_shape(node: &PipelineNode) -> Result<(), PipelineValidationError> {
     if let Operation::RenderHtml { asset_mounts, .. } = &node.operation {
         let mut mounts = Vec::<PathBuf>::new();
         if asset_mounts.len() > 64 {
@@ -610,6 +609,13 @@ fn validate_node_inputs(
             });
         }
     }
+    Ok(())
+}
+
+fn validate_node_inputs(
+    node: &PipelineNode,
+    nodes_by_id: &HashMap<NodeId, &PipelineNode>,
+) -> Result<(), PipelineValidationError> {
     let signature = node.operation.signature();
     if !signature.inputs.is_empty() && node.dependencies.is_empty() {
         return Err(PipelineValidationError::MissingInput(node.id.clone()));

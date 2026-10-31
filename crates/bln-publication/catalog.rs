@@ -656,7 +656,13 @@ impl PublicationCatalog {
         crate::model::identifier(section)?;
         Ok(ExcerptRef {
             source: self.work_ref(id)?,
-            section: section.into(),
+            section: Some(section.into()),
+        })
+    }
+    pub fn document_excerpt(&self, id: &str) -> Result<ExcerptRef> {
+        Ok(ExcerptRef {
+            source: self.work_ref(id)?,
+            section: None,
         })
     }
     pub fn resolve(&self, reference: &ContentRef) -> Result<&CatalogEntry> {

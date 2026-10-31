@@ -1,2 +1,0 @@
-{% extends "_base.tera" %}
-{% block content %}<h1>Photos</h1><p>No photographs in this fixture.</p>{% endblock content %}

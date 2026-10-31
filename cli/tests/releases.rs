@@ -7,6 +7,10 @@ use std::{
 fn run(root: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_bln"))
         .env("BERLIN_DIR", root)
+        .env(
+            "BERLIN_THEME_DIR",
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../themes"),
+        )
         .args(args)
         .output()
         .unwrap()
@@ -38,7 +42,7 @@ fn fixture() -> tempfile::TempDir {
     );
     let path = root.path().join("berlin.pipeline.rhai");
     let script = fs::read_to_string(&path).unwrap().replace(".berlin/generated/org/content/notes/*.md", "content/*.md")
-        .replace("render_website(website, \"_site\", presentation)", "render_website(website, \"_site\", presentation).deploy_to(github_pages(\"owner/site\"))");
+        .replace(".with_assets(load_assets(\".berlin/generated/org/static/attachments/**/*\").named(\"org_assets\"),\"attachments\");", ".with_assets(load_assets(\".berlin/generated/org/static/attachments/**/*\").named(\"org_assets\"),\"attachments\").deploy_to(github_pages(\"owner/site\"));");
     fs::write(path, script).unwrap();
     fs::create_dir_all(root.path().join("content")).unwrap();
     fs::write(root.path().join("content/note.md"), "---\nid: note\ntitle: Note\ndescription: A test note\nauthor: [Author]\ndate: 2026-09-08\n---\nOriginal article\n").unwrap();
@@ -163,7 +167,7 @@ fn prepared_directory_requires_a_valid_website_declaration() {
     for script in [
         source.replace(".deploy_to(github_pages(\"owner/site\"))", ""),
         source.replace("https://example.com", "http://localhost:8081"),
-        source.replace("\"_site/static\"", "\"other/static\""),
+        source.replace("pipeline site {", "pipeline site { output copy_assets(load_assets(\"static/**/*\"),\"other/static\").named(\"outside\");"),
     ] {
         fs::write(&config, script).unwrap();
         assert!(

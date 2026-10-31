@@ -43,6 +43,7 @@ pub(crate) fn resolve_excerpt(
     let run = || {
         let entry = catalog.resolve(&reference.source)?;
         let document = entry.document();
+        crate::canonical::encoded_size(&document.blocks, catalog.limits().fragment_bytes)?;
         let original_url = entry.original_url.clone().ok_or_else(|| {
             Diagnostic::new(
                 Code::UnsafeUrl,
@@ -87,17 +88,21 @@ pub(crate) fn resolve_excerpt(
             }
             Ok(())
         })?;
-        let selected = sections.get(reference.section.as_str()).ok_or_else(|| {
-            Diagnostic::new(
-                Code::MissingExcerpt,
-                Stage::Resolution,
-                format!(
-                    "no stable section '{}'; provide an explicit source section ID",
-                    reference.section
-                ),
-            )
-        })?;
-        let mut blocks = vec![(**selected).clone()];
+        let mut blocks = if let Some(section) = &reference.section {
+            let selected = sections.get(section.as_str()).ok_or_else(|| {
+                Diagnostic::new(
+                    Code::MissingExcerpt,
+                    Stage::Resolution,
+                    format!(
+                        "no stable section '{}'; provide an explicit source section ID",
+                        section
+                    ),
+                )
+            })?;
+            vec![(**selected).clone()]
+        } else {
+            document.blocks.clone()
+        };
         let mut needed = BTreeSet::new();
         let mut included = BTreeSet::new();
         walk_blocks(&blocks, &mut |b| {
@@ -275,7 +280,7 @@ pub(crate) fn resolve_excerpt(
             nodes_visited: nodes,
         })
     };
-    run().map_err(|e: Diagnostic| e.source(&reference.source.id.0, Some(&reference.section)))
+    run().map_err(|e: Diagnostic| e.source(&reference.source.id.0, reference.section.as_deref()))
 }
 
 fn validate_anchor(anchor: &str, known: &BTreeSet<String>) -> Result<()> {

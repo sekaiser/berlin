@@ -156,7 +156,7 @@ mod tests {
             scripted_plan("site")
                 .nodes()
                 .iter()
-                .find(|node| node.id.as_str() == "website")
+                .find(|node| node.id.as_str() == "html")
                 .map(|node| node.operation.output_kind()),
             Some(berlin_core::ArtifactKind::Website)
         );
@@ -165,7 +165,7 @@ mod tests {
                 .nodes()
                 .last()
                 .map(|node| node.operation.output_kind()),
-            Some(berlin_core::ArtifactKind::LinkedInDrafts)
+            Some(berlin_core::ArtifactKind::PublicationText)
         );
     }
 }

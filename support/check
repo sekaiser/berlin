@@ -12,6 +12,8 @@ node --test support/web/redirect.test.cjs
 node --test cli/tools/serve/live.test.cjs
 cargo build --quiet --bin bln
 support/check-publications
+support/check-unified-resources
+export BERLIN_THEME_DIR="$repository/themes"
 node --test themes/notebook/test.cjs themes/notebook/tests/*.test.cjs
 BERLIN_TEST_BINARY="$repository/target/debug/bln" BERLIN_TEST_REPOSITORY="$repository" \
     emacs --batch --load support/ox-hugo/tests.el --load support/emacs/tests.el \
@@ -46,7 +48,7 @@ test -s "$check_project/_site/notes/example-article.html"
 test -s "$check_project/_site/notes/former-example-article.html"
 test -s "$check_project/_site/static/example.txt"
 node "$repository/support/check-attachments.cjs" "$check_project"
-test -s "$check_project/_site/css/styles.css"
+test -s "$check_project/_site/assets/css/notebook.css"
 test -s "$check_project/.berlin/linkedin/manifest.json"
 for pipeline in org site linkedin; do
     test -s "$check_project/.berlin/receipts/$pipeline.json"

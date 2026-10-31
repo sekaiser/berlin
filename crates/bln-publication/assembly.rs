@@ -30,7 +30,7 @@ pub struct PublicationAssembly {
     sources: Vec<ResourceRevision>,
     components: BTreeSet<ComponentKey>,
     composition_fingerprint: String,
-    excerpts: BTreeMap<(String, String), crate::ResolvedExcerpt>,
+    excerpts: BTreeMap<(String, Option<String>), crate::ResolvedExcerpt>,
 }
 
 impl PublicationAssembly {
@@ -148,13 +148,13 @@ impl PublicationAssembly {
             call: &ComponentCall,
             catalog: &PublicationCatalog,
             registry: &ComponentRegistry,
-            excerpts: &mut BTreeMap<(String, String), crate::ResolvedExcerpt>,
+            excerpts: &mut BTreeMap<(String, Option<String>), crate::ResolvedExcerpt>,
         ) -> Result<()> {
             fn property(
                 value: &Property,
                 catalog: &PublicationCatalog,
                 registry: &ComponentRegistry,
-                excerpts: &mut BTreeMap<(String, String), crate::ResolvedExcerpt>,
+                excerpts: &mut BTreeMap<(String, Option<String>), crate::ResolvedExcerpt>,
             ) -> Result<()> {
                 match value {
                     Property::Excerpt(reference) => {
@@ -252,7 +252,7 @@ impl PublicationAssembly {
                     crate::Stage::Resolution,
                     "excerpt was not resolved in this assembly",
                 )
-                .source(&reference.source.id.0, Some(&reference.section))
+                .source(&reference.source.id.0, reference.section.as_deref())
             })
     }
     pub fn composition_fingerprint(&self) -> &str {

@@ -1,2 +1,0 @@
-{% extends "_base.tera" %}
-{% block content %}<h1>Feed</h1>{% for item in feed %}<p>{{ item.title }}</p>{% endfor %}{% endblock content %}

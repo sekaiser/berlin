@@ -215,6 +215,19 @@ pub(super) fn register(engine: &mut Engine) {
         },
     );
     engine.register_fn("view_component", view_component);
+    engine.register_fn(
+        "document_excerpt",
+        |catalog: PublicationCatalog, id: ImmutableString| -> ScriptResult<ExcerptRef> {
+            let id = id.as_str().parse::<ResourceId>().map_err(failure)?;
+            catalog
+                .get(&id)
+                .map_err(failure)?
+                .handle()
+                .try_local_document()
+                .map_err(failure)?;
+            catalog.document_excerpt(id.leaf()).map_err(failure)
+        },
+    );
     engine.register_fn("publication", publication);
     register_helpers(engine);
 }

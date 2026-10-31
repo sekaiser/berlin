@@ -133,7 +133,9 @@ impl ContentRef {
 #[serde(deny_unknown_fields)]
 pub struct ExcerptRef {
     pub source: ContentRef,
-    pub section: String,
+    /// None selects the complete semantic document; Some selects a stable section.
+    #[serde(default)]
+    pub section: Option<String>,
 }
 
 /// Dynamic properties carry typed reference values, never unchecked JSON/HTML.
@@ -376,7 +378,10 @@ impl Budget {
             }
             Property::Excerpt(excerpt) => {
                 self.source(&excerpt.source, limits)?;
-                self.string(&excerpt.section, limits)
+                match &excerpt.section {
+                    Some(section) => self.string(section, limits),
+                    None => Ok(()),
+                }
             }
             Property::List(values) => {
                 if values.len() > limits.query_sources {

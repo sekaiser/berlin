@@ -4,6 +4,38 @@ use sha2::{Digest, Sha256};
 
 use crate::{Code, Diagnostic, Result, Stage};
 
+/// Validate serialized storage before copying a semantic payload. Counts bytes
+/// without allocating another representation of the input.
+pub(crate) fn encoded_size(value: &impl Serialize, limit: usize) -> Result<usize> {
+    struct Counter {
+        bytes: usize,
+        limit: usize,
+    }
+    impl std::io::Write for Counter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if bytes.len() > self.limit.saturating_sub(self.bytes) {
+                return Err(std::io::Error::other(
+                    "serialized input byte limit exceeded",
+                ));
+            }
+            self.bytes += bytes.len();
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut counter = Counter { bytes: 0, limit };
+    serde_json::to_writer(&mut counter, value).map_err(|_| {
+        Diagnostic::new(
+            Code::ResourceLimit,
+            Stage::Construction,
+            "serialized input byte limit exceeded",
+        )
+    })?;
+    Ok(counter.bytes)
+}
+
 /// UTF-8 JSON: recursively sorted map keys, ordered arrays, no floats and no
 /// implicit Unicode normalization. Property types further restrict their domain.
 pub fn canonical_bytes(value: &impl Serialize) -> Result<Vec<u8>> {

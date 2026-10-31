@@ -55,6 +55,7 @@ impl ResourceQuery {
         Self::default()
     }
     pub fn normalized(&self, catalog: &PublicationCatalog) -> Result<Self> {
+        crate::canonical::encoded_size(self, catalog.limits().property_bytes)?;
         let limits = &catalog.options().resource_limits;
         if self.limit == Some(0)
             || self

@@ -39,23 +39,23 @@ fn excerpt_publication(catalog) {
 }
 
 pipeline portfolio {
-    let documents = parse_markdown(load_markdown("content/*.md"));
-    let composed = compose_publication(documents, Fn("system_design"), publication_options(#{source_site_url: "https://example.test/notebook"}));
-    output render_publication_website(composed, "_portfolio", website_config(#{theme: "@notebook", url: "https://example.test/portfolio", author: "Example Author"}));
+    let documents = documents(load_markdown("content/*.md"));
+    let composed = compose(catalog([documents], publication_options(#{source_site_url: "https://example.test/notebook"})), Fn("system_design"));
+    output render_html(composed, "_portfolio", html_config(#{theme: "@notebook", url: "https://example.test/portfolio", author: "Example Author"}));
 }
 pipeline curated {
-    let composed = compose_publication(parse_markdown(load_markdown("content/*.md")), Fn("curated"), publication_options(#{source_site_url: "https://example.test/notebook"}));
-    output render_publication_website(composed, "_curated", website_config(#{theme: "@notebook", url: "https://example.test/curated"}));
+    let composed = compose(catalog([documents(load_markdown("content/*.md"))], publication_options(#{source_site_url: "https://example.test/notebook"})), Fn("curated"));
+    output render_html(composed, "_curated", html_config(#{theme: "@notebook", url: "https://example.test/curated"}));
 }
 pipeline excerpts {
-    let composed = compose_publication(parse_markdown(load_markdown("content/*.md")), Fn("excerpt_publication"), publication_options(#{source_site_url: "https://example.test/notebook"}));
-    output render_publication_website(composed, "_excerpts", website_config(#{theme: "@notebook", url: "https://example.test/excerpts"}));
+    let composed = compose(catalog([documents(load_markdown("content/*.md"))], publication_options(#{source_site_url: "https://example.test/notebook"})), Fn("excerpt_publication"));
+    output render_html(composed, "_excerpts", html_config(#{theme: "@notebook", url: "https://example.test/excerpts"}));
 }
 pipeline text {
-    let composed = compose_publication(parse_markdown(load_markdown("content/*.md")), Fn("system_design"), publication_options(#{source_site_url: "https://example.test/notebook"}));
-    output render_publication_text(composed, "_text", text_config(#{profile: "plain"}));
+    let composed = compose(catalog([documents(load_markdown("content/*.md"))], publication_options(#{source_site_url: "https://example.test/notebook"})), Fn("system_design"));
+    output render_text(composed, "_text", text_config(#{profile: "plain"}));
 }
 pipeline excerpt_text {
-    let composed = compose_publication(parse_markdown(load_markdown("content/*.md")), Fn("excerpt_publication"), publication_options(#{source_site_url: "https://example.test/notebook"}));
-    output render_publication_text(composed, "_excerpt_text", text_config(#{profile: "linkedin_draft"}));
+    let composed = compose(catalog([documents(load_markdown("content/*.md"))], publication_options(#{source_site_url: "https://example.test/notebook"})), Fn("excerpt_publication"));
+    output render_text(composed, "_excerpt_text", text_config(#{profile: "linkedin_draft"}));
 }

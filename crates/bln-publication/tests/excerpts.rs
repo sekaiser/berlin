@@ -65,8 +65,48 @@ fn prepare(document: Document) -> Result<PublicationAssembly> {
 fn reference() -> ExcerptRef {
     ExcerptRef {
         source: ContentRef::new("source"),
-        section: "selected".into(),
+        section: Some("selected".into()),
     }
+}
+
+#[test]
+fn whole_document_selection_preserves_opening_and_sections_in_one_shared_fragment() {
+    let doc = source(vec![
+        paragraph(vec![Inline::Text {
+            value: "Opening before any section.".into(),
+        }]),
+        section(vec![paragraph(vec![Inline::Text {
+            value: "Section body.".into(),
+        }])]),
+    ]);
+    let catalog = PublicationCatalog::new(
+        DocumentCollection::new(vec![doc]),
+        PublicationOptions {
+            source_site_url: Some("https://example.test".parse().unwrap()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let whole = catalog.document_excerpt("source").unwrap();
+    assert_eq!(whole.section, None);
+    let spec = PublicationSpec::new(
+        PublicationMetadata {
+            id: PublicationId("whole".into()),
+            title: "Whole article".into(),
+            description: None,
+        },
+        view! {Portfolio(){
+            Excerpt(source:whole.clone(),key:"first")
+            Excerpt(source:whole.clone(),key:"second")
+        }},
+    )
+    .unwrap();
+    let assembly =
+        PublicationAssembly::resolve(&spec, catalog, &ComponentRegistry::builtins()).unwrap();
+    let resolved = assembly.excerpt(&whole).unwrap();
+    assert_eq!(resolved.blocks().len(), 2);
+    assert!(std::ptr::eq(resolved, assembly.excerpt(&whole).unwrap()));
+    assert!(assembly.catalog().section_ref("source", "").is_err());
 }
 
 #[test]
