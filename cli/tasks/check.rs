@@ -9,7 +9,30 @@ use berlin_core::{NodeId, Operation, PipelineLoader, PipelinePlan};
 use super::{ExecutionOptions, RuntimeArtifact, executor::NodeExecutor};
 use crate::project::Project;
 
-pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<AuthoringReport, Error> {
+#[derive(serde::Serialize)]
+#[serde(untagged)]
+pub(crate) enum Report {
+    Authoring(AuthoringReport),
+    Publication {
+        kind: &'static str,
+        schema_version: u8,
+        publication: String,
+        placements: usize,
+        sources: usize,
+        composition_fingerprint: String,
+        diagnostics: Vec<super::receipt::Diagnostic>,
+    },
+}
+impl Report {
+    pub fn has_errors(&self) -> bool {
+        match self {
+            Self::Authoring(report) => report.has_errors(),
+            Self::Publication { .. } => false,
+        }
+    }
+}
+
+pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<Report, Error> {
     let program = crate::pipeline::load_pipeline_program(project)?;
     let plan = program
         .load(pipeline)
@@ -41,8 +64,17 @@ pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<AuthoringRepo
             output_root: project.root(),
             diagnostics: &mut diagnostics,
         }
-        .execute(node)?
-        .context("Document preparation did not produce an artifact")?;
+        .execute(node)?;
+        let Some(artifact) = artifact else {
+            if matches!(
+                node.operation,
+                Operation::RenderPublicationWebsite { .. }
+                    | Operation::RenderPublicationText { .. }
+            ) {
+                continue;
+            }
+            bail!("Document preparation did not produce an artifact");
+        };
         if let RuntimeArtifact::MarkdownSources(sources) = &artifact
             && sources.is_empty()
         {
@@ -53,19 +85,40 @@ pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<AuthoringRepo
         }
         artifacts.insert(node.id.clone(), artifact);
     }
+    if let Some(RuntimeArtifact::PublicationAssembly(assembly)) = artifacts
+        .values()
+        .find(|artifact| matches!(artifact, RuntimeArtifact::PublicationAssembly(_)))
+    {
+        return Ok(Report::Publication {
+            kind: "publication",
+            schema_version: 1,
+            publication: assembly.spec().metadata.id.0.clone(),
+            placements: assembly.placements().len(),
+            sources: assembly.sources().len(),
+            composition_fingerprint: assembly.composition_fingerprint().into(),
+            diagnostics,
+        });
+    }
     let Some(RuntimeArtifact::Documents(documents)) = artifacts.get(document_root) else {
         bail!("Website input '{document_root}' did not produce documents");
     };
     let mut report = AuthoringReport::analyze(documents)?;
     super::origins::enrich(project, documents, &mut report);
-    Ok(report)
+    Ok(Report::Authoring(report))
 }
 
 fn publication_documents(plan: &PipelinePlan) -> Result<&NodeId, Error> {
     let outputs: Vec<_> = plan
         .nodes()
         .iter()
-        .filter(|node| matches!(node.operation, Operation::RenderWebsite { .. }))
+        .filter(|node| {
+            matches!(
+                node.operation,
+                Operation::RenderWebsite { .. }
+                    | Operation::RenderPublicationWebsite { .. }
+                    | Operation::RenderPublicationText { .. }
+            )
+        })
         .collect();
     let [website] = outputs.as_slice() else {
         bail!(
@@ -73,6 +126,9 @@ fn publication_documents(plan: &PipelinePlan) -> Result<&NodeId, Error> {
             outputs.len()
         );
     };
+    if !matches!(website.operation, Operation::RenderWebsite { .. }) {
+        return Ok(&website.id);
+    }
     let assembly_id = website
         .dependencies
         .first()
@@ -106,6 +162,9 @@ fn document_branch(plan: &PipelinePlan, root: &NodeId) -> Result<HashSet<NodeId>
             | Operation::MergeDocuments
             | Operation::ParseMarkdown
             | Operation::MapDocuments { .. } => {}
+            Operation::ComposePublication { .. }
+            | Operation::RenderPublicationWebsite { .. }
+            | Operation::RenderPublicationText { .. } => {}
             _ => bail!(
                 "check cannot execute document input '{}' ({:?}); it only reads Markdown/semantic documents, merges collections and applies mappings. Export Org or import papers explicitly first.",
                 node.id,

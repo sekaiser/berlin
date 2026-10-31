@@ -2,13 +2,24 @@
 //! Only off-origin web navigation is rewritten; other URL schemes remain untouched.
 
 use anyhow::{Context, Error};
-use lol_html::{RewriteStrSettings, element, rewrite_str};
+use lol_html::{HtmlRewriter, Settings, element};
 use url::Url;
 
-pub(super) fn open_external_in_new_tabs(html: &str, site_url: &Url) -> Result<String, Error> {
-    rewrite_str(
-        html,
-        RewriteStrSettings::new().append_element_content_handler(element!("a[href]", |link| {
+pub(in crate::tasks) fn open_external_in_new_tabs(
+    html: &str,
+    site_url: &Url,
+) -> Result<String, Error> {
+    open_external_in_new_tabs_bounded(html, site_url, usize::MAX)
+}
+pub(in crate::tasks) fn open_external_in_new_tabs_bounded(
+    html: &str,
+    site_url: &Url,
+    maximum: usize,
+) -> Result<String, Error> {
+    let mut output = berlin_publication::BoundedWriter::new(maximum);
+    let mut failure = None;
+    let mut rewriter = HtmlRewriter::new(
+        Settings::new().append_element_content_handler(element!("a[href]", |link| {
             let href = link.get_attribute("href").expect("selector requires href");
             let href = html_escape::decode_html_entities(&href);
             let Ok(destination) = site_url.join(href.trim()) else {
@@ -34,8 +45,23 @@ pub(super) fn open_external_in_new_tabs(html: &str, site_url: &Url) -> Result<St
             }
             Ok(())
         })),
-    )
-    .context("Unable to apply external website link behavior")
+        |bytes: &[u8]| {
+            use std::io::Write;
+            if failure.is_none() {
+                failure = output.write_all(bytes).err();
+            }
+        },
+    );
+    rewriter
+        .write(html.as_bytes())
+        .context("Unable to apply external website link behavior")?;
+    rewriter
+        .end()
+        .context("Unable to finish external website link behavior")?;
+    if let Some(error) = failure {
+        return Err(error.into());
+    }
+    Ok(String::from_utf8(output.into_bytes())?)
 }
 
 #[cfg(test)]

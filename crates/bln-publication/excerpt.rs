@@ -64,6 +64,15 @@ pub(crate) fn resolve_excerpt(
             if nodes > catalog.limits().excerpt_nodes {
                 return Err(limit());
             }
+            // Account for inline trees before cloning the selected section.
+            // A single paragraph must not hide an unbounded dependency graph.
+            visit_block_inlines(block, &mut |_| {
+                nodes += 1;
+                if nodes > catalog.limits().excerpt_nodes {
+                    return Err(limit());
+                }
+                Ok(())
+            })?;
             if let Block::Section { id, .. } = block
                 && sections.insert(id.0.as_str(), block).is_some()
             {

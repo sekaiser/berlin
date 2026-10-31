@@ -43,6 +43,7 @@ pub struct CheckFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ServeFlags {
+    pub pipeline: String,
     pub no_cache: bool,
     pub allow_tex: bool,
     pub port: u16,
@@ -262,6 +263,7 @@ fn plan_subcommand() -> Command {
 
 fn serve_subcommand() -> Command {
     Command::new("serve")
+        .arg(pipeline_arg("Select a website pipeline to preview"))
         .arg(no_cache_arg())
         .arg(allow_tex_arg())
         .arg(pipeline_file_arg())
@@ -377,6 +379,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
             pipeline: selected_pipeline(args),
         }),
         ("serve", args) => BerlinSubcommand::Serve(ServeFlags {
+            pipeline: selected_pipeline(args),
             no_cache: args.get_flag("no-cache"),
             allow_tex: args.get_flag("allow-tex"),
             port: *args.get_one::<u16>("port").expect("port has a default"),

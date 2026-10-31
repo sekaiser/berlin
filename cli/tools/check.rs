@@ -3,7 +3,7 @@
 use std::io::{self, Write};
 
 use anyhow::{Error, bail};
-use berlin_content::{AuthoringIssue, AuthoringReport, Severity};
+use berlin_content::{AuthoringIssue, Severity};
 use serde::Serialize;
 
 use crate::{args::CheckFlags, project::Project};
@@ -19,7 +19,7 @@ struct CheckOutput<'a> {
 #[derive(Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 enum Outcome {
-    Complete { report: AuthoringReport },
+    Complete { report: crate::tasks::check::Report },
     Incomplete { message: String },
 }
 
@@ -58,7 +58,24 @@ pub fn check(flags: CheckFlags, pipeline_files: Vec<std::path::PathBuf>) -> Resu
 fn write_text(output: &mut impl Write, check: &CheckOutput<'_>) -> io::Result<()> {
     writeln!(output, "Authoring check: {}", check.pipeline)?;
     let report = match &check.outcome {
-        Outcome::Complete { report } => report,
+        Outcome::Complete {
+            report: crate::tasks::check::Report::Authoring(report),
+        } => report,
+        Outcome::Complete {
+            report:
+                crate::tasks::check::Report::Publication {
+                    publication,
+                    placements,
+                    sources,
+                    ..
+                },
+        } => {
+            writeln!(
+                output,
+                "Publication: {publication}; placements: {placements}; sources: {sources}"
+            )?;
+            return Ok(());
+        }
         Outcome::Incomplete { message } => {
             writeln!(output, "Incomplete: {message}")?;
             return Ok(());

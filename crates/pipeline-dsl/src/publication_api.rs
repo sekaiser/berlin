@@ -53,13 +53,13 @@ struct Budget {
     registry: Arc<ComponentRegistry>,
 }
 impl ComposerState {
-    pub fn new(limits: PublicationLimits) -> Self {
+    pub fn new(limits: PublicationLimits, registry: Arc<ComponentRegistry>) -> Self {
         Self(Rc::new(RefCell::new(Budget {
             limits,
             nodes: 0,
             bytes: 0,
             edges: 0,
-            registry: Arc::new(ComponentRegistry::builtins()),
+            registry,
         })))
     }
 }

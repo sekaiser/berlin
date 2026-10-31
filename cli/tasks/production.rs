@@ -13,7 +13,7 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Error, bail};
-use berlin_core::{Operation, PipelinePlan};
+use berlin_core::PipelinePlan;
 use url::Url;
 
 use super::release;
@@ -21,9 +21,10 @@ use html::Page;
 
 pub(super) fn validate_plan(plan: &PipelinePlan) -> Result<(), Error> {
     let node = release::website_output(plan)?;
-    let Operation::RenderWebsite { config } = &node.operation else {
-        unreachable!()
-    };
+    let config = node
+        .operation
+        .website_config()
+        .context("website renderer requires configuration")?;
     release::validate_url(
         config
             .url
@@ -35,9 +36,10 @@ pub(super) fn validate_plan(plan: &PipelinePlan) -> Result<(), Error> {
 pub(super) fn prepare(plan: &PipelinePlan, staging: &Path) -> Result<(), Error> {
     validate_plan(plan)?;
     let node = release::website_output(plan)?;
-    let Operation::RenderWebsite { config } = &node.operation else {
-        unreachable!()
-    };
+    let config = node
+        .operation
+        .website_config()
+        .context("website renderer requires configuration")?;
     let root = staging.join(
         node.output_path
             .as_ref()

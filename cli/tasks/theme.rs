@@ -16,6 +16,13 @@ pub(crate) struct Theme {
 }
 
 impl Theme {
+    pub(super) fn project_only(project_root: &Path) -> Result<Self, Error> {
+        let mut files = BTreeMap::new();
+        for directory in ["pages", "styles", "static"] {
+            collect_layer(project_root, &project_root.join(directory), &mut files)?;
+        }
+        Ok(Self { files })
+    }
     pub(super) fn snapshot(&self) -> Result<ThemeSnapshot, Error> {
         Ok(ThemeSnapshot {
             files: self

@@ -74,6 +74,7 @@ pub enum CompileError {
 }
 
 pub struct RhaiPipelineLoader {
+    components: std::sync::Arc<berlin_publication::ComponentRegistry>,
     plans: HashMap<String, PipelinePlan>,
     source_roots: std::collections::BTreeMap<String, String>,
     engine: Engine,
@@ -89,7 +90,8 @@ impl RhaiPipelineLoader {
     ) -> Result<berlin_publication::PublicationAssembly, CompileError> {
         let catalog =
             berlin_publication::PublicationCatalog::new(documents.clone(), options.clone())?;
-        let state = publication_api::ComposerState::new(options.limits.clone());
+        let state =
+            publication_api::ComposerState::new(options.limits.clone(), self.components.clone());
         let spec = self
             .engine
             .call_fn_with_options::<berlin_publication::PublicationSpec>(
@@ -106,16 +108,25 @@ impl RhaiPipelineLoader {
         Ok(berlin_publication::PublicationAssembly::resolve(
             &spec,
             catalog,
-            &berlin_publication::ComponentRegistry::builtins(),
+            &self.components,
         )?)
     }
     pub fn new(source: &str) -> Result<Self, CompileError> {
+        Self::with_components(source, berlin_publication::ComponentRegistry::builtins())
+    }
+    /// Freeze the caller's extension registry before script execution. Every
+    /// native constructor and final resolver use this same contract snapshot.
+    pub fn with_components(
+        source: &str,
+        components: berlin_publication::ComponentRegistry,
+    ) -> Result<Self, CompileError> {
         let registry = PipelineRegistry::default();
         let engine = configured_engine(&registry);
         let (mut ast, source_roots) = compile_and_evaluate(&engine, source)?;
         let plans = registry.validated_plans(&ast)?;
         retain_function_definitions(&mut ast);
         Ok(Self {
+            components: std::sync::Arc::new(components),
             plans,
             source_roots,
             engine,

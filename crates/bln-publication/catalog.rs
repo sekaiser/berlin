@@ -81,6 +81,9 @@ impl PublicationCatalog {
         mappings: BTreeMap<String, Url>,
     ) -> Result<Self> {
         options.limits.validate()?;
+        documents
+            .validate()
+            .map_err(|e| Diagnostic::new(Code::InvalidSource, Stage::Resolution, e.to_string()))?;
         let input_digest = fingerprint(
             "catalog-input/v1",
             &documents
@@ -98,9 +101,6 @@ impl PublicationCatalog {
                 })
                 .collect::<Vec<_>>(),
         )?;
-        documents
-            .validate()
-            .map_err(|e| Diagnostic::new(Code::InvalidSource, Stage::Resolution, e.to_string()))?;
         let base = options
             .source_site_url
             .as_ref()

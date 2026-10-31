@@ -17,7 +17,7 @@ use slugify::slugify;
 use crate::project::Project;
 use crate::templates::Templates;
 
-mod links;
+pub(super) mod links;
 mod search;
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]

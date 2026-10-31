@@ -44,12 +44,12 @@ pub async fn serve(
         ..Default::default()
     };
     if serve_flags.watch {
-        return serve_with_watch(project, serve_flags.port, options).await;
+        return serve_with_watch(project, serve_flags.pipeline, serve_flags.port, options).await;
     }
 
     // Regular serve mode - build once and serve
-    let target = website_output(&project)?;
-    run_pipeline_with_options(&project, "site", options)?;
+    let target = website_output_for(&project, &serve_flags.pipeline)?;
+    run_pipeline_with_options(&project, &serve_flags.pipeline, options)?;
     let ip_addr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let port = serve_flags.port;
 
@@ -61,10 +61,11 @@ pub async fn serve(
 
 async fn serve_with_watch(
     project: Project,
+    pipeline: String,
     port: u16,
     options: ExecutionOptions,
 ) -> Result<(), Error> {
-    let target = website_output(&project)?;
+    let target = website_output_for(&project, &pipeline)?;
     let watched_output = target.clone();
     let ip_addr = IpAddr::V4(Ipv4Addr::LOCALHOST);
     let revision = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(
@@ -78,8 +79,9 @@ async fn serve_with_watch(
     let canonical_root = ignored_root.canonicalize()?;
     let ignored_output = watched_output.clone();
     let canonical_output = canonical_root.join(watched_output.strip_prefix(project.root())?);
+    let watch_pipeline = pipeline.clone();
     let watcher = crate::util::file_watcher::watch_recv(
-        move || watch_paths(&project),
+        move || watch_paths_for(&project, &watch_pipeline),
         PrintConfig::new("Watcher", "Build", true),
         move |path| {
             ignored_watch_path(path, &ignored_root, &ignored_output)
@@ -89,14 +91,15 @@ async fn serve_with_watch(
             let project = build_project.clone();
             let revision = build_revision.clone();
             let expected_output = watched_output.clone();
+            let pipeline = pipeline.clone();
             Ok(async move {
                 tokio::task::spawn_blocking(move || {
-                    if website_output(&project)? != expected_output {
+                    if website_output_for(&project, &pipeline)? != expected_output {
                         anyhow::bail!(
                             "Website output changed; restart serve to use the new directory"
                         );
                     }
-                    run_pipeline_with_options(&project, "site", options)?;
+                    run_pipeline_with_options(&project, &pipeline, options)?;
                     revision.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     Ok::<_, Error>(())
                 })
@@ -115,20 +118,20 @@ async fn serve_with_watch(
 }
 
 /// Use the renderer's declared destination rather than a separate server setting.
-fn website_output(project: &Project) -> Result<std::path::PathBuf, Error> {
+fn website_output_for(project: &Project, pipeline: &str) -> Result<std::path::PathBuf, Error> {
     let root = project.root();
     let plan = crate::pipeline::load_pipeline_program(project)?
-        .load("site")
+        .load(pipeline)
         .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     plan.validate()?;
     let websites = plan
         .nodes()
         .iter()
-        .filter(|node| matches!(node.operation, Operation::RenderWebsite { .. }))
+        .filter(|node| node.operation.website_config().is_some())
         .collect::<Vec<_>>();
     let [website] = websites.as_slice() else {
         anyhow::bail!(
-            "serve requires exactly one website renderer in the site pipeline; found {}",
+            "serve requires exactly one website renderer in pipeline '{pipeline}'; found {}",
             websites.len()
         );
     };
@@ -139,7 +142,15 @@ fn website_output(project: &Project) -> Result<std::path::PathBuf, Error> {
     Ok(root.join(output))
 }
 
+#[cfg(test)]
+fn website_output(project: &Project) -> Result<std::path::PathBuf, Error> {
+    website_output_for(project, "site")
+}
+#[cfg(test)]
 fn watch_paths(project: &Project) -> Result<Vec<std::path::PathBuf>, Error> {
+    watch_paths_for(project, "site")
+}
+fn watch_paths_for(project: &Project, pipeline: &str) -> Result<Vec<std::path::PathBuf>, Error> {
     let root = project.root();
     let mut paths = WATCH_PATHS
         .iter()
@@ -147,15 +158,20 @@ fn watch_paths(project: &Project) -> Result<Vec<std::path::PathBuf>, Error> {
         .filter(|path| path.exists())
         .collect::<Vec<_>>();
     paths.extend(project.pipeline_files().iter().cloned());
+    // Observe creation of project override directories, not only existing files.
+    // Generated roots remain excluded by ignored_watch_path.
+    paths.push(root.to_owned());
     let program = crate::pipeline::load_pipeline_program(project)?;
     for directory in program.source_roots().values() {
         paths.push(root.join(directory).canonicalize()?);
     }
     let plan = program
-        .load("site")
+        .load(pipeline)
         .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     for node in plan.nodes() {
-        if let Operation::LoadLatex { pattern }
+        if let Operation::LoadMarkdown { pattern }
+        | Operation::LoadOrg { pattern }
+        | Operation::LoadLatex { pattern }
         | Operation::LoadData { pattern }
         | Operation::LoadAssets { pattern } = &node.operation
         {
@@ -178,7 +194,7 @@ fn watch_paths(project: &Project) -> Result<Vec<std::path::PathBuf>, Error> {
                 ));
             }
         }
-        if let Operation::RenderWebsite { config } = &node.operation
+        if let Some(config) = node.operation.website_config()
             && let Some(selected) = &config.theme
         {
             paths.push(crate::tasks::theme::theme_root(root, selected)?);
@@ -192,7 +208,9 @@ fn ignored_watch_path(
     root: &std::path::Path,
     output: &std::path::Path,
 ) -> bool {
-    if path.starts_with(output) {
+    // Directory notifications for the root also accompany staged-output swaps.
+    // Actual input additions/removals carry their own descendant paths.
+    if path == root || path.starts_with(output) {
         return true;
     }
     let Ok(relative) = path.strip_prefix(root) else {
@@ -329,6 +347,27 @@ mod tests {
         for source in [pipeline("../outside"), "pipeline site {}".into()] {
             std::fs::write(root.path().join("berlin.pipeline.rhai"), source).unwrap();
             assert!(website_output(&Project::new(root.path().to_owned(), vec![])).is_err());
+        }
+    }
+
+    #[test]
+    fn f07_composed_preview_rejects_text_and_ambiguous_targets() {
+        let root = tempfile::tempdir().unwrap();
+        let base = r#"fn compose(c){throw "not executed by preview selection";}
+            pipeline portfolio {let p=compose_publication(parse_markdown(load_markdown("missing/*.md")),Fn("compose"),publication_options(#{})); OUTPUT }"#;
+        for output in [
+            "output render_publication_text(p,\"_text\",text_config(#{}));",
+            "output render_publication_website(p,\"one\",website_config(#{}));output render_publication_website(p,\"two\",website_config(#{}));",
+        ] {
+            std::fs::write(
+                root.path().join("berlin.pipeline.rhai"),
+                base.replace("OUTPUT", output),
+            )
+            .unwrap();
+            assert!(
+                website_output_for(&Project::new(root.path().to_owned(), vec![]), "portfolio")
+                    .is_err()
+            );
         }
     }
 

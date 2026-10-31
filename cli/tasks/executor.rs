@@ -70,13 +70,23 @@ impl<'a> NodeExecutor<'a> {
                     RuntimeArtifact::PublicationAssembly(assembly) => Some(assembly),
                     _ => None,
                 })?;
-                super::composed::text(
+                let warnings = super::composed::text(
                     assembly,
                     config,
                     &self.output_root.join(output_path(node)?),
                     self.options.dry_run,
                     self.consumed_inputs,
                 )?;
+                for warning in warnings {
+                    let berlin_document_linkedin::LinkedInDraftDiagnostic::CharacterLimitExceeded {
+                        limit,
+                        actual,
+                    } = warning;
+                    self.diagnostics.push(receipt::Diagnostic {
+                        node:node.id.to_string(),content_id:String::new(),code:"character_limit_exceeded".into(),
+                        message:format!("LinkedIn draft has {actual} characters; limit is {limit}. Full draft retained."),
+                    });
+                }
                 Ok(None)
             }
             Operation::LoadLatex { pattern } => Ok(Some(RuntimeArtifact::LatexSources(

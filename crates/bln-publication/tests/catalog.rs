@@ -47,6 +47,38 @@ fn catalog(docs: Vec<Document>) -> PublicationCatalog {
     )
     .unwrap()
 }
+
+#[test]
+fn f17_selected_source_budget_has_an_exact_boundary() {
+    let c = PublicationCatalog::new(
+        DocumentCollection::new(documents()),
+        PublicationOptions {
+            limits: PublicationLimits {
+                query_sources: 2,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        c.select(&WorkQuery {
+            limit: Some(2),
+            ..Default::default()
+        })
+        .unwrap()
+        .len(),
+        2
+    );
+    assert!(
+        c.select(&WorkQuery {
+            limit: Some(3),
+            ..Default::default()
+        })
+        .is_err()
+    );
+    assert!(c.select(&WorkQuery::default()).is_err());
+}
 fn ids(catalog: &PublicationCatalog, query: WorkQuery) -> Vec<String> {
     catalog
         .select(&query)

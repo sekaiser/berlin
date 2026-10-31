@@ -25,7 +25,7 @@ use super::SourceFile;
 use crate::util::fs::load_files;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(super) struct Diagnostic {
+pub(crate) struct Diagnostic {
     pub node: String,
     pub content_id: String,
     pub code: String,
@@ -509,6 +509,77 @@ fn digest(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn f12_composed_receipt_uses_consumed_scripts_templates_and_source_bytes() {
+        use berlin_core::PipelineLoader;
+        let root = tempfile::tempdir().unwrap();
+        let project = crate::project::Project::new(root.path().to_owned(), vec![]);
+        let script = root.path().join("berlin.pipeline.rhai");
+        let template = root.path().join("page.tera");
+        let source = root.path().join("source.md");
+        let program=berlin_pipeline_dsl::RhaiPipelineLoader::new(r#"
+            fn compose(c){throw "not run in receipt test";}
+            pipeline text {output render_publication_text(compose_publication(parse_markdown(load_markdown("*.md")),Fn("compose"),publication_options(#{})),"_text",text_config(#{}));}
+        "#).unwrap();
+        let plan = program.load("text").unwrap();
+        let snapshots = vec![
+            ConsumedInput::new(
+                script.clone(),
+                "pipelines/0.rhai".into(),
+                b"consumed script",
+            ),
+            ConsumedInput::new(
+                template.clone(),
+                "pages/page.tera".into(),
+                b"consumed template",
+            ),
+        ];
+        for path in [&script, &template, &source] {
+            fs::write(path, "changed after consumption").unwrap();
+        }
+        let load = plan
+            .nodes()
+            .iter()
+            .find(|node| matches!(node.operation, Operation::LoadMarkdown { .. }))
+            .unwrap();
+        let artifacts = HashMap::from([(
+            load.id.clone(),
+            RuntimeArtifact::MarkdownSources(vec![SourceFile {
+                uri: url::Url::from_file_path(&source).unwrap().to_string(),
+                path: source,
+                text: "consumed source".into(),
+            }]),
+        )]);
+        write(ReceiptContext {
+            consumed_inputs: &snapshots,
+            project: &project,
+            pipeline: "text",
+            started_at: SystemTime::now(),
+            duration: Duration::ZERO,
+            plan: &plan,
+            artifacts: &artifacts,
+            owned_roots: &[],
+            diagnostics: &[],
+            error: None,
+        })
+        .unwrap();
+        let receipt: serde_json::Value = serde_json::from_slice(
+            &fs::read(root.path().join(".berlin/receipts/text.json")).unwrap(),
+        )
+        .unwrap();
+        let inputs = receipt["inputs"].as_array().unwrap();
+        for (name, bytes) in [
+            ("berlin.pipeline.rhai", b"consumed script".as_slice()),
+            ("page.tera", b"consumed template".as_slice()),
+            ("source.md", b"consumed source".as_slice()),
+        ] {
+            assert_eq!(
+                inputs.iter().find(|input| input["path"] == name).unwrap()["sha256"],
+                digest(bytes)
+            );
+        }
+    }
 
     #[test]
     fn digest_is_stable_sha256() {

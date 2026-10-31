@@ -22,6 +22,31 @@ pipeline text {
     output render_publication_text(publication,"_text",text_config(#{profile:"plain"}));
 }
 "#;
+
+#[test]
+fn runtime_extensions_share_the_frozen_component_contract() {
+    #[derive(Component)]
+    #[component(key = "example.badge@1", channels(html, text))]
+    pub struct Badge {
+        pub text: String,
+    }
+    let mut registry = RegistryBuilder::default();
+    registry.register::<Badge>().unwrap();
+    let source = r#"fn compose(c){publication(#{id:"custom",title:"Custom"},view_component("example.badge@1",#{text:"native"},#{}))}
+        pipeline text {output render_publication_text(compose_publication(parse_markdown(load_markdown("*.md")),Fn("compose"),publication_options(#{})),"_text",text_config(#{}));}"#;
+    let loader = RhaiPipelineLoader::with_components(source, registry.finish()).unwrap();
+    let assembly = loader
+        .compose_publication(
+            &FunctionRef::new("compose"),
+            &DocumentCollection::default(),
+            &PublicationOptions::default(),
+        )
+        .unwrap();
+    assert_eq!(
+        assembly.spec().root,
+        Badge::builder().text("native").build()
+    );
+}
 fn documents() -> DocumentCollection {
     DocumentCollection::new(vec![Document {
         id: ContentId("a".into()),

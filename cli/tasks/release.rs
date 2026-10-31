@@ -68,12 +68,19 @@ pub(super) fn seal(
             .as_ref()
             .context("website has no output directory")?,
     );
-    let website = super::executor::runtime_input(node, artifacts, 0, |artifact| match artifact {
-        super::RuntimeArtifact::WebsiteAssembly(website) => Some(website),
-        _ => None,
-    })?;
-    let documents = DocumentInventory::from_website(website)?;
-    seal_output(project, pipeline, node, &source, Some(documents))
+    let documents = if matches!(node.operation, Operation::RenderPublicationWebsite { .. }) {
+        // Original-work routes are outside this portfolio. Its own manifest is
+        // part of the exact sealed bundle; never invent legacy document routes.
+        None
+    } else {
+        let website =
+            super::executor::runtime_input(node, artifacts, 0, |artifact| match artifact {
+                super::RuntimeArtifact::WebsiteAssembly(website) => Some(website),
+                _ => None,
+            })?;
+        Some(DocumentInventory::from_website(website)?)
+    };
+    seal_output(project, pipeline, node, &source, documents)
 }
 
 /// Import externally prepared bytes. The selected pipeline declares identity and
@@ -101,7 +108,7 @@ pub(super) fn website_output(plan: &PipelinePlan) -> Result<&PipelineNode, Error
     let websites = plan
         .nodes()
         .iter()
-        .filter(|node| matches!(node.operation, Operation::RenderWebsite { .. }))
+        .filter(|node| node.operation.website_config().is_some())
         .collect::<Vec<_>>();
     let [node] = websites.as_slice() else {
         bail!("release requires exactly one website renderer");
@@ -130,9 +137,10 @@ fn seal_output(
     source: &Path,
     documents: Option<DocumentInventory>,
 ) -> Result<WebsiteRelease, Error> {
-    let Operation::RenderWebsite { config } = &node.operation else {
-        unreachable!()
-    };
+    let config = node
+        .operation
+        .website_config()
+        .context("website renderer requires configuration")?;
     let url = config
         .url
         .clone()

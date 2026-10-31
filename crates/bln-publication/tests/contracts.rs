@@ -176,3 +176,62 @@ fn f19_bounded_sink_stops_before_growth_and_propagates_write_failure() {
     assert!(sink.write_all(b"1234").is_err());
     assert!(sink.is_empty());
 }
+
+#[test]
+fn f17_structural_byte_and_slot_boundaries_are_exact() {
+    let mut s = spec();
+    // Occurrence accounting includes metadata, property names and slot names.
+    let (_, bytes) = s.root.measure(&PublicationLimits::default()).unwrap();
+    assert!(
+        s.root
+            .measure(&PublicationLimits {
+                property_bytes: bytes,
+                ..Default::default()
+            })
+            .is_ok()
+    );
+    assert!(
+        s.root
+            .measure(&PublicationLimits {
+                property_bytes: bytes - 1,
+                ..Default::default()
+            })
+            .is_err()
+    );
+    s.root.slots.insert("aside".into(), ViewFragment::default());
+    assert!(
+        s.root
+            .measure(&PublicationLimits {
+                slots: 2,
+                ..Default::default()
+            })
+            .is_ok()
+    );
+    assert!(
+        s.root
+            .measure(&PublicationLimits {
+                slots: 1,
+                ..Default::default()
+            })
+            .is_err()
+    );
+    s.root
+        .properties
+        .insert("text".into(), Property::Text("x".repeat(20)));
+    assert!(
+        s.root
+            .measure(&PublicationLimits {
+                string_bytes: 20,
+                ..Default::default()
+            })
+            .is_ok()
+    );
+    assert!(
+        s.root
+            .measure(&PublicationLimits {
+                string_bytes: 19,
+                ..Default::default()
+            })
+            .is_err()
+    );
+}

@@ -69,6 +69,48 @@ fn reference() -> ExcerptRef {
 }
 
 #[test]
+fn f17_excerpt_budget_counts_inline_nodes_before_copying() {
+    let doc = source(vec![section(vec![paragraph(vec![
+        Inline::Text {
+            value: "one".into(),
+        },
+        Inline::Text {
+            value: "two".into(),
+        },
+    ])])]);
+    let resolve = |maximum| {
+        let catalog = PublicationCatalog::new(
+            DocumentCollection::new(vec![doc.clone()]),
+            PublicationOptions {
+                source_site_url: Some("https://example.test".parse().unwrap()),
+                limits: PublicationLimits {
+                    excerpt_nodes: maximum,
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+        PublicationAssembly::resolve(
+            &PublicationSpec {
+                schema_version: 1,
+                metadata: PublicationMetadata {
+                    id: PublicationId("p".into()),
+                    title: "P".into(),
+                    description: None,
+                },
+                root: Portfolio::builder()
+                    .body(Excerpt::builder().source(reference()).build())
+                    .build(),
+            },
+            catalog,
+            &ComponentRegistry::builtins(),
+        )
+    };
+    assert!(resolve(5).is_ok());
+    assert_eq!(resolve(4).unwrap_err().code, Code::ResourceLimit);
+}
+
+#[test]
 fn b03_b08_b12_selection_includes_section_and_footnote_closure_without_source_mutation() {
     let original = source(vec![
         section(vec![paragraph(vec![Inline::FootnoteReference {

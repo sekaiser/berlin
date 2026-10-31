@@ -69,6 +69,213 @@ fn json(path: &Path) -> Value {
 }
 
 #[test]
+fn p09_check_is_write_free_and_checks_the_actual_presentation() {
+    let project = project();
+    let root = project.path();
+    let before = snapshot(root);
+    for pipeline in ["portfolio", "text", "excerpts", "excerpt_text"] {
+        let result = run(root, &["check", "--pipeline", pipeline, "--json"]);
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let report: Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(report["report"]["kind"], "publication");
+        assert_eq!(report["status"], "complete");
+    }
+    assert_eq!(snapshot(root), before);
+    let path = root.join("pages/components/berlin");
+    fs::create_dir_all(&path).unwrap();
+    fs::write(
+        path.join("featured_work.v1.tera"),
+        "{{ render_slot(owner=view.id,name=\"nonexistent\") }}",
+    )
+    .unwrap();
+    let before = snapshot(root);
+    assert!(
+        !run(root, &["check", "--pipeline", "portfolio"])
+            .status
+            .success()
+    );
+    assert_eq!(snapshot(root), before);
+}
+
+#[test]
+fn p09_preview_selects_the_output_and_watches_overrides_without_output_loops() {
+    use std::io::{Read, Write};
+    use std::net::{TcpListener, TcpStream};
+    use std::time::{Duration, Instant};
+    struct Server(std::process::Child);
+    impl Drop for Server {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let project = project();
+    let root = project.path();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    let mut server = Server(
+        Command::new(env!("CARGO_BIN_EXE_bln"))
+            .env("BERLIN_DIR", root)
+            .env("BERLIN_THEME_DIR", repository().join("themes"))
+            .args([
+                "serve",
+                "--pipeline",
+                "portfolio",
+                "--watch",
+                "--port",
+                &port.to_string(),
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    let get = |path: &str| -> String {
+        let Ok(mut connection) = TcpStream::connect(("127.0.0.1", port)) else {
+            return String::new();
+        };
+        connection
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        if write!(connection, "GET {path} HTTP/1.0\r\nHost: localhost\r\n\r\n").is_err() {
+            return String::new();
+        }
+        let mut bytes = String::new();
+        let _ = connection.read_to_string(&mut bytes);
+        bytes
+    };
+    let wait = |expected: &str| {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            if get("/").contains(expected) {
+                break;
+            }
+            assert!(Instant::now() < deadline, "preview did not show {expected}");
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    };
+    wait("Selected Work in System Design");
+    assert!(root.join("_portfolio/index.html").is_file());
+    assert!(!root.join("_site").exists());
+    // The HTML becomes visible just before the initial build updates revision.
+    std::thread::sleep(Duration::from_secs(3));
+    let revision = || {
+        get("/__berlin/revision")
+            .split("\r\n\r\n")
+            .last()
+            .unwrap_or_default()
+            .to_owned()
+    };
+    let before = revision();
+    std::thread::sleep(Duration::from_secs(3));
+    assert_eq!(
+        before,
+        revision(),
+        "output and receipt writes caused a watch loop"
+    );
+    let override_dir = root.join("pages/components/berlin");
+    fs::create_dir_all(&override_dir).unwrap();
+    let original =
+        repository().join("themes/notebook/shared/pages/components/berlin/featured_work.v1.tera");
+    let path = override_dir.join("featured_work.v1.tera");
+    fs::write(
+        &path,
+        format!(
+            "<p>override-created</p>{}",
+            fs::read_to_string(&original).unwrap()
+        ),
+    )
+    .unwrap();
+    wait("override-created");
+    fs::remove_file(path).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while get("/").contains("override-created") {
+        assert!(
+            Instant::now() < deadline,
+            "removed override remained installed"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!(server.0.try_wait().unwrap().is_none());
+    let script = root.join("berlin.pipeline.rhai");
+    fs::write(
+        &script,
+        fs::read_to_string(&script)
+            .unwrap()
+            .replace("Selected Work in System Design", "Edited Composer Title"),
+    )
+    .unwrap();
+    wait("Edited Composer Title");
+    let source = root.join("content/storage.md");
+    fs::write(
+        &source,
+        fs::read_to_string(&source)
+            .unwrap()
+            .replace("Storage handoffs", "Edited source title"),
+    )
+    .unwrap();
+    wait("Edited source title");
+}
+
+#[test]
+fn p09_composed_websites_use_exact_sealed_bundles_without_legacy_routes() {
+    let project = project();
+    let root = project.path();
+    let script = root.join("berlin.pipeline.rhai");
+    fs::write(
+        &script,
+        fs::read_to_string(&script).unwrap().replace(
+            "author: \"Example Author\"}));",
+            "author: \"Example Author\"})).deploy_to(github_pages(\"example/notebook\"));",
+        ),
+    )
+    .unwrap();
+    let result = run(root, &["release", "--pipeline", "portfolio"]);
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let id = String::from_utf8(result.stdout).unwrap().trim().to_owned();
+    let bundle = root.join(".berlin/releases").join(&id);
+    let manifest = json(&bundle.join("manifest.json"));
+    assert!(manifest.get("documents").is_none());
+    assert!(bundle.join("site/publication.json").is_file());
+    assert!(bundle.join("site/index.html").is_file());
+    assert!(!root.join(".berlin/publications").exists());
+    // Import is a byte bundle, with no source/build relationship invented.
+    success(run(root, &["build", "--pipeline", "portfolio"]));
+    let result = run(
+        root,
+        &[
+            "release",
+            "--pipeline",
+            "portfolio",
+            "--from-directory",
+            "_portfolio",
+        ],
+    );
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let imported = String::from_utf8(result.stdout).unwrap().trim().to_owned();
+    let manifest = json(
+        &root
+            .join(".berlin/releases")
+            .join(imported)
+            .join("manifest.json"),
+    );
+    assert!(manifest.get("documents").is_none());
+}
+
+#[test]
 fn p07_real_html_text_and_excerpt_pipelines_are_repeatable_and_private() {
     let project = project();
     let root = project.path();

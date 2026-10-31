@@ -340,6 +340,69 @@ fn f17_output_and_fragment_budgets_fail_before_success() {
 }
 
 #[test]
+fn f17_output_and_retained_fragment_limits_accept_the_exact_boundary() {
+    let renderer = PublicationHtmlRenderer::new(templates(), HtmlBindings::builtins()).unwrap();
+    let baseline = renderer
+        .render(
+            &assembly("A long enough opening to dominate markers."),
+            &ComponentRegistry::builtins(),
+            &site(),
+        )
+        .unwrap();
+    for (output_bytes, fragment_bytes) in [
+        (
+            baseline.html.len(),
+            PublicationLimits::default().fragment_bytes,
+        ),
+        (
+            PublicationLimits::default().output_bytes,
+            baseline.metrics.peak_fragment_bytes,
+        ),
+    ] {
+        let limits = PublicationLimits {
+            output_bytes,
+            fragment_bytes,
+            ..Default::default()
+        };
+        assert!(
+            renderer
+                .render(
+                    &assembly_with_limits(
+                        "A long enough opening to dominate markers.",
+                        limits.clone()
+                    ),
+                    &ComponentRegistry::builtins(),
+                    &site()
+                )
+                .is_ok()
+        );
+        let below = if output_bytes == baseline.html.len() {
+            PublicationLimits {
+                output_bytes: output_bytes - 1,
+                ..limits
+            }
+        } else {
+            PublicationLimits {
+                fragment_bytes: fragment_bytes - 1,
+                ..limits
+            }
+        };
+        assert_eq!(
+            renderer
+                .render(
+                    &assembly_with_limits("A long enough opening to dominate markers.", below),
+                    &ComponentRegistry::builtins(),
+                    &site()
+                )
+                .err()
+                .unwrap()
+                .code,
+            Code::ResourceLimit
+        );
+    }
+}
+
+#[test]
 fn c03_actual_notebook_macros_work_and_unused_legacy_templates_remain_compatible() {
     let mut sources = templates();
     sources.insert(
