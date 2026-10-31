@@ -104,6 +104,7 @@ artifact!(LatexSources);
 artifact!(MarkdownSources);
 artifact!(Documents);
 artifact!(DataSources);
+artifact!(ExternalResources);
 artifact!(Feed);
 artifact!(WebsiteAssembly);
 artifact!(CssSources);
@@ -183,6 +184,10 @@ pub(super) fn register_operations(engine: &mut Engine) {
     engine.register_fn("merge_documents", merge_documents);
     engine.register_fn("map_documents", map_documents);
     engine.register_fn("load_data", load_data);
+    engine.register_fn("resources", |source: DataSources| {
+        resources(source, "resources".into())
+    });
+    engine.register_fn("resources", resources);
     engine.register_fn("parse_feed", parse_feed);
     engine.register_fn("assemble_website", assemble_website);
     engine.register_type_with_name::<WebsiteConfig>("WebsiteConfig");
@@ -202,6 +207,7 @@ pub(super) fn register_operations(engine: &mut Engine) {
     engine.register_fn("named", MarkdownSources::named);
     engine.register_fn("named", Documents::named);
     engine.register_fn("named", DataSources::named);
+    engine.register_fn("named", ExternalResources::named);
     engine.register_fn("named", Feed::named);
     engine.register_fn("named", WebsiteAssembly::named);
     engine.register_fn("named", CssSources::named);
@@ -357,6 +363,16 @@ fn load_data(pattern: ImmutableString) -> DataSources {
 
 fn parse_feed(source: DataSources) -> Feed {
     Feed(source.0.transform("feed", Operation::ParseFeed, None))
+}
+
+fn resources(source: DataSources, namespace: ImmutableString) -> ExternalResources {
+    ExternalResources(source.0.transform(
+        "resources",
+        Operation::ParseResources {
+            namespace: namespace.into(),
+        },
+        None,
+    ))
 }
 
 fn parse_documents(source: DataSources) -> Documents {

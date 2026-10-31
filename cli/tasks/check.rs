@@ -168,6 +168,7 @@ fn document_branch(plan: &PipelinePlan, root: &NodeId) -> Result<HashSet<NodeId>
             Operation::LoadMarkdown { .. }
             | Operation::LoadData { .. }
             | Operation::ParseDocuments
+            | Operation::ParseResources { .. }
             | Operation::MergeDocuments
             | Operation::ParseMarkdown
             | Operation::MapDocuments { .. } => {}

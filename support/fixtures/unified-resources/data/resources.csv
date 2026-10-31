@@ -1,0 +1,5 @@
+schema_version,id,kind,url,title,authors,topics,published,added
+1,tigerbeetle,repository,https://github.com/tigerbeetle/tigerbeetle,TigerBeetle,"[""TigerBeetle contributors""]","[""storage"",""distributed-systems""]",,2026-10-30
+1,wal-paper,paper,https://example.test/papers/logging.pdf,A paper on durable logging,,"[""storage"",""durability""]",,
+1,engineering-blog,article,https://example.test/Engineering?view=full&lang=en#Design,Engineering <notes> & trade-offs,,"[""distributed-systems""]",2026-09-01,2026-10-29
+1,rust-docs,documentation,https://example.test/rust/iterators,Iterator documentation,,"[""rust""]",,

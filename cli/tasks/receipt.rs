@@ -290,6 +290,7 @@ fn collect_artifact_inputs(
             collect_file_inputs(inputs, project_root, files)?
         }
         RuntimeArtifact::PublicationAssembly(_)
+        | RuntimeArtifact::ExternalResources(_)
         | RuntimeArtifact::Documents(_)
         | RuntimeArtifact::Feed(_)
         | RuntimeArtifact::WebsiteAssembly(_) => {}

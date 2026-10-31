@@ -28,6 +28,7 @@ mod production;
 pub(crate) mod publication;
 pub(crate) mod receipt;
 pub(crate) mod release;
+mod resources;
 mod run;
 pub(crate) mod theme;
 mod website;
@@ -47,6 +48,7 @@ enum RuntimeArtifact {
     MarkdownSources(Vec<SourceFile>),
     Documents(DocumentCollection),
     DataSources(Vec<SourceFile>),
+    ExternalResources(berlin_publication::ExternalResourceCollection),
     Feed(ContentFeed),
     WebsiteAssembly(WebsiteAssembly),
     CssSources(Vec<SourceFile>),
@@ -65,6 +67,7 @@ impl RuntimeArtifact {
             Self::MarkdownSources(_) => ArtifactKind::MarkdownSources,
             Self::Documents(_) => ArtifactKind::Documents,
             Self::DataSources(_) => ArtifactKind::DataSources,
+            Self::ExternalResources(_) => ArtifactKind::ExternalResources,
             Self::Feed(_) => ArtifactKind::Feed,
             Self::WebsiteAssembly(_) => ArtifactKind::WebsiteAssembly,
             Self::CssSources(_) => ArtifactKind::CssSources,
@@ -123,6 +126,52 @@ fn load_runtime_sources(project: &Project, pattern: &str) -> Result<Vec<SourceFi
         );
     }
     files.into_iter().map(SourceFile::read).collect()
+}
+
+/// Structured data inputs are bounded before materialization and confined to
+/// the project or explicitly named root, including ordinary symlink traversal.
+fn load_runtime_data(project: &Project, pattern: &str) -> Result<Vec<SourceFile>, Error> {
+    use std::io::Read;
+    let limits = berlin_publication::ResourceLimits::default();
+    let files = load_files(project, pattern)?;
+    if files.is_empty() && pattern.starts_with(".berlin/generated/") {
+        anyhow::bail!(
+            "Generated input '{pattern}' matched no files; build its producer pipeline first"
+        );
+    }
+    if files.len() > limits.catalog_items {
+        anyhow::bail!("ResourceLimit: data input file count exceeded");
+    }
+    let (root, _) = crate::util::fs::source_location(project, pattern)?;
+    let root = root.canonicalize()?;
+    let mut total_bytes = 0usize;
+    files
+        .into_iter()
+        .map(|path| {
+            let path = path.canonicalize()?;
+            if !path.starts_with(&root) {
+                anyhow::bail!("data input resolves outside its declared source root");
+            }
+            let mut bytes = Vec::new();
+            std::fs::File::open(&path)?
+                .take(limits.file_bytes as u64 + 1)
+                .read_to_end(&mut bytes)?;
+            if bytes.len() > limits.file_bytes {
+                anyhow::bail!("ResourceLimit: data input file byte limit exceeded");
+            }
+            total_bytes = total_bytes
+                .checked_add(bytes.len())
+                .context("data input size overflow")?;
+            if total_bytes > limits.descriptor_bytes {
+                anyhow::bail!("ResourceLimit: combined data input byte limit exceeded");
+            }
+            let text = String::from_utf8(bytes).context("data input is not UTF-8")?;
+            let uri = url::Url::from_file_path(&path)
+                .map_err(|_| anyhow::anyhow!("invalid data input path"))?
+                .to_string();
+            Ok(SourceFile { path, uri, text })
+        })
+        .collect()
 }
 
 pub(crate) fn prepare_release(

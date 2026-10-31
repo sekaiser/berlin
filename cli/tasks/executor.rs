@@ -102,7 +102,7 @@ impl<'a> NodeExecutor<'a> {
                 load_runtime_sources(self.project, pattern)?,
             ))),
             Operation::LoadData { pattern } => Ok(Some(RuntimeArtifact::DataSources(
-                load_runtime_sources(self.project, pattern)?,
+                super::load_runtime_data(self.project, pattern)?,
             ))),
             Operation::LoadCss { pattern } => Ok(Some(RuntimeArtifact::CssSources(
                 load_runtime_sources(self.project, pattern)?,
@@ -111,6 +111,7 @@ impl<'a> NodeExecutor<'a> {
             Operation::ParseDocuments => self.parse_documents(node),
             Operation::MergeDocuments => self.merge_documents(node),
             Operation::ParseFeed => self.parse_feed(node),
+            Operation::ParseResources { namespace } => self.parse_resources(node, namespace),
             Operation::MapDocuments { mapper } => self.map_documents(node, mapper),
             Operation::AssembleWebsite => self.assemble_website(node),
             Operation::RenderWebsite { config } => self.render_website(node, config),
@@ -156,6 +157,42 @@ impl<'a> NodeExecutor<'a> {
             _ => None,
         })?;
         Ok(Some(RuntimeArtifact::Feed(feed::parse(sources)?)))
+    }
+
+    fn parse_resources(
+        &self,
+        node: &PipelineNode,
+        namespace: &str,
+    ) -> Result<Option<RuntimeArtifact>, Error> {
+        let sources = self.input(node, 0, |artifact| match artifact {
+            RuntimeArtifact::DataSources(sources) => Some(sources),
+            _ => None,
+        })?;
+        let limits = berlin_publication::ResourceLimits::default();
+        let inputs = sources
+            .iter()
+            .map(|source| {
+                let logical = crate::util::fs::source_reference(self.project, &source.path)?;
+                let logical = logical
+                    .to_str()
+                    .context("resource input logical name is not UTF-8")?
+                    .trim_start_matches('@');
+                super::resources::ResourceInput::capture(
+                    namespace,
+                    logical,
+                    source.text.as_bytes(),
+                    &limits,
+                )
+                .map_err(Error::from)
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+        Ok(Some(RuntimeArtifact::ExternalResources(
+            super::resources::parse(
+                &inputs,
+                &limits,
+                &berlin_publication::PublicationLimits::default(),
+            )?,
+        )))
     }
 
     fn compile_diagrams(

@@ -119,6 +119,7 @@ fn operation_name(operation: &Operation) -> String {
         Operation::ParseDocuments => "parse semantic documents".into(),
         Operation::MergeDocuments => "merge documents".into(),
         Operation::ParseFeed => "parse feed".into(),
+        Operation::ParseResources { namespace } => format!("parse resources ({namespace})"),
         Operation::MapDocuments { mapper } => format!("map documents ({})", mapper.as_str()),
         Operation::AssembleWebsite => "assemble website".into(),
         Operation::CompileCss => "compile css".into(),

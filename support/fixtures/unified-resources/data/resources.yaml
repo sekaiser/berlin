@@ -1,0 +1,26 @@
+schema_version: 1
+resources:
+  - id: tigerbeetle
+    kind: repository
+    url: https://github.com/tigerbeetle/tigerbeetle
+    title: TigerBeetle
+    authors: [TigerBeetle contributors]
+    topics: [storage, distributed-systems]
+    added: '2026-10-30'
+  - id: wal-paper
+    kind: paper
+    url: https://example.test/papers/logging.pdf
+    title: A paper on durable logging
+    topics: [storage, durability]
+  - id: engineering-blog
+    kind: article
+    url: https://example.test/Engineering?view=full&lang=en#Design
+    title: 'Engineering <notes> & trade-offs'
+    topics: [distributed-systems]
+    published: '2026-09-01'
+    added: '2026-10-29'
+  - id: rust-docs
+    kind: documentation
+    url: https://example.test/rust/iterators
+    title: Iterator documentation
+    topics: [rust]

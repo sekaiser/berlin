@@ -565,7 +565,16 @@ impl ExternalResourceCollection {
         let mut charged = 0usize;
         for (resource, source) in records {
             source.validate()?;
-            let resource = resource.normalized(limits, publication)?;
+            let resource = resource
+                .normalized(limits, publication)
+                .map_err(|mut error| {
+                    error.detail = format!(
+                        "{} ({} record {})",
+                        error.detail, source.logical_name, source.record
+                    )
+                    .into();
+                    error
+                })?;
             let id = resource.resource_id()?;
             if let Some(first) = ids.insert(id.clone(), source.clone()) {
                 return Err(Diagnostic::new(

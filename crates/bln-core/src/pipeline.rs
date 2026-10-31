@@ -64,6 +64,7 @@ pub enum ArtifactKind {
     MarkdownSources,
     Documents,
     DataSources,
+    ExternalResources,
     Feed,
     WebsiteAssembly,
     CssSources,
@@ -110,6 +111,9 @@ pub enum Operation {
     ParseDocuments,
     MergeDocuments,
     ParseFeed,
+    ParseResources {
+        namespace: String,
+    },
     MapDocuments {
         mapper: FunctionRef,
     },
@@ -180,6 +184,10 @@ impl Operation {
             Self::ParseFeed => {
                 OperationSignature::artifact(&[ArtifactKind::DataSources], ArtifactKind::Feed)
             }
+            Self::ParseResources { .. } => OperationSignature::artifact(
+                &[ArtifactKind::DataSources],
+                ArtifactKind::ExternalResources,
+            ),
             Self::ParseDocuments => {
                 OperationSignature::artifact(&[ArtifactKind::DataSources], ArtifactKind::Documents)
             }
