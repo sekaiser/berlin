@@ -298,12 +298,22 @@ struct Budget {
 }
 impl Budget {
     fn string(&mut self, text: &str, limits: &PublicationLimits) -> Result<()> {
-        self.property_bytes = self.property_bytes.saturating_add(text.len());
-        if text.len() > limits.string_bytes || self.property_bytes > limits.property_bytes {
+        if text.len() > limits.string_bytes {
             return Err(Diagnostic::new(
                 Code::ResourceLimit,
                 Stage::Construction,
                 "composition text/property byte budget exceeded",
+            ));
+        }
+        self.bytes(text.len(), limits)
+    }
+    fn bytes(&mut self, amount: usize, limits: &PublicationLimits) -> Result<()> {
+        self.property_bytes = self.property_bytes.saturating_add(amount);
+        if self.property_bytes > limits.property_bytes {
+            return Err(Diagnostic::new(
+                Code::ResourceLimit,
+                Stage::Construction,
+                "composition property byte budget exceeded",
             ));
         }
         Ok(())
@@ -341,9 +351,7 @@ impl Budget {
                 }
                 Ok(())
             }
-            Property::Boolean(_) | Property::Integer(_) | Property::None => {
-                self.string("--------", limits)
-            }
+            Property::Boolean(_) | Property::Integer(_) | Property::None => self.bytes(8, limits),
         }
     }
     fn source(&mut self, source: &ContentRef, limits: &PublicationLimits) -> Result<()> {

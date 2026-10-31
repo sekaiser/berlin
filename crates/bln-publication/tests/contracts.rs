@@ -235,3 +235,28 @@ fn f17_structural_byte_and_slot_boundaries_are_exact() {
             .is_err()
     );
 }
+
+#[test]
+fn primitive_storage_accounting_does_not_consume_the_per_string_limit() {
+    let limits = PublicationLimits {
+        string_bytes: 1,
+        property_bytes: 9,
+        ..Default::default()
+    };
+    for value in [
+        Property::Boolean(true),
+        Property::Integer(42),
+        Property::None,
+    ] {
+        let mut call = ComponentCall::new("x.c@1".parse().unwrap());
+        call.properties.insert("b".into(), value);
+        assert_eq!(call.measure(&limits).unwrap(), (1, 9));
+        assert!(
+            call.measure(&PublicationLimits {
+                property_bytes: 8,
+                ..limits.clone()
+            })
+            .is_err()
+        );
+    }
+}

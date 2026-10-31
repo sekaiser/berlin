@@ -64,6 +64,10 @@ including mappings. Graph declarations do not have a loaded catalog. `plan`
 checks the function reference and graph without invoking the composer or reading
 source content. The runtime catalog is read-only and indexed once; references do
 not contain copied source bodies.
+Implicit Rhai `import` is disabled: it could read helper files outside the
+captured program inputs. Select shared helper code through repeatable
+`--pipeline-file` arguments instead; those files are compiled together and
+captured in receipts and render fingerprints.
 
 Use a second pipeline and `render_publication_text(composed, "_text",
 text_config(#{profile: "plain"}))` for text. Separate output roots belong to

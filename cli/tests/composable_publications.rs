@@ -152,6 +152,34 @@ fn f04_missing_generated_inputs_are_not_replaced_by_a_dry_run_placeholder() {
 }
 
 #[test]
+fn composition_cannot_load_an_uncaptured_filesystem_module() {
+    let project = project();
+    let root = project.path();
+    let module = root.join("helper.rhai");
+    fs::write(&module, "fn title() { \"UNCAPTURED_MODULE_TITLE\" }").unwrap();
+    let module_path = serde_json::to_string(module.with_extension("").to_str().unwrap()).unwrap();
+    let path = root.join("berlin.pipeline.rhai");
+    let script = fs::read_to_string(&path)
+        .unwrap()
+        .replace(
+            "fn system_design(catalog) {",
+            &format!("fn system_design(catalog) {{ import {module_path} as helper;"),
+        )
+        .replace(
+            "title: \"Selected Work in System Design\"",
+            "title: helper::title()",
+        );
+    fs::write(&path, script).unwrap();
+    let result = run(root, &["build", "--pipeline", "portfolio"]);
+    assert!(
+        !result.status.success(),
+        "composer read an uncaptured module and built {}",
+        fs::read_to_string(root.join("_portfolio/index.html")).unwrap_or_default()
+    );
+    assert!(!root.join("_portfolio").exists());
+}
+
+#[test]
 fn f10_f11_relocation_configuration_and_source_changes_have_distinct_effects() {
     let first = project();
     let second = project();
@@ -397,10 +425,15 @@ fn p07_real_html_text_and_excerpt_pipelines_are_repeatable_and_private() {
     assert!(html["render_inputs"].get("pipelines/0.rhai").is_some());
     assert!(
         html["render_inputs"]
-            .get("styles/entries/portfolio.css")
+            .get("styles/publications/portfolio.css")
             .is_some()
     );
     assert!(html["render_inputs"].get("composition/catalog").is_some());
+    let styles = fs::read_dir(root.join("_portfolio/assets/css"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect::<Vec<_>>();
+    assert_eq!(styles, vec![std::ffi::OsString::from("portfolio.css")]);
     let index = fs::read_to_string(root.join("_portfolio/index.html")).unwrap();
     assert!(index.contains("Storage handoffs"));
     for output in ["_portfolio", "_text"] {

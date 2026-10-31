@@ -199,6 +199,10 @@ fn configured_engine(registry: &PipelineRegistry) -> Engine {
 }
 
 fn constrain_engine(engine: &mut Engine) {
+    // Engine::new installs a filesystem resolver by default. Helper programs
+    // must be explicit pipeline files so their bytes enter input snapshots.
+    engine.set_module_resolver(rhai::module_resolvers::DummyModuleResolver::new());
+    engine.disable_symbol("import");
     engine.set_max_operations(100_000);
     engine.set_max_call_levels(32);
     engine.set_max_expr_depths(64, 32);

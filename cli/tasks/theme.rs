@@ -1,7 +1,7 @@
 //! Resolves local presentation files without installing into project sources.
 //! Project files override shared theme files, which override theme defaults.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -157,21 +157,36 @@ impl ThemeSnapshot {
             })
             .collect()
     }
-    pub fn validate_entries(
-        &self,
-        entries: &std::collections::BTreeSet<String>,
-    ) -> Result<(), Error> {
+    pub fn validate_entries(&self, entries: &BTreeSet<String>) -> Result<(), Error> {
         for entry in entries {
-            if !self
-                .files
-                .contains_key(&Path::new("styles/entries").join(entry))
-            {
-                bail!("missing required component CSS entry '{entry}'");
-            }
+            self.publication_entry(entry)?;
         }
         Ok(())
     }
-    pub fn write_assets(&self, output: &Path) -> Result<(), Error> {
+    fn publication_entry(&self, entry: &str) -> Result<PathBuf, Error> {
+        // Bindings name public filenames, never source paths. Publications have
+        // opt-in entries; existing shared entries can still be explicitly used.
+        let path = Path::new(entry);
+        if path.components().count() != 1
+            || path.file_name().and_then(|name| name.to_str()) != Some(entry)
+            || path.extension().is_none_or(|extension| extension != "css")
+            || entry.contains('\\')
+        {
+            bail!("component CSS entry must be a CSS filename: '{entry}'");
+        }
+        for directory in ["styles/publications", "styles/entries"] {
+            let source = Path::new(directory).join(entry);
+            if self.files.contains_key(&source) {
+                return Ok(source);
+            }
+        }
+        bail!("missing required component CSS entry '{entry}'")
+    }
+    pub fn write_assets(&self, output: &Path, entries: &BTreeSet<String>) -> Result<(), Error> {
+        let entries = entries
+            .iter()
+            .map(|name| Ok((name, self.publication_entry(name)?)))
+            .collect::<Result<Vec<_>, Error>>()?;
         let workspace = tempfile::Builder::new()
             .prefix("berlin-publication-theme-")
             .tempdir()?;
@@ -187,21 +202,13 @@ impl ThemeSnapshot {
             }
         }
         fs::create_dir_all(output.join("assets/css"))?;
-        for name in self.files.keys().filter(|name| {
-            name.parent() == Some(Path::new("styles/entries"))
-                && name.extension().is_some_and(|extension| extension == "css")
-        }) {
+        for (name, source) in entries {
             let css = super::css::compile_stylesheet(
-                &workspace.path().join(name),
+                &workspace.path().join(source),
                 &workspace.path().join("styles"),
                 None,
             )?;
-            fs::write(
-                output
-                    .join("assets/css")
-                    .join(name.file_name().context("entry requires filename")?),
-                css,
-            )?;
+            fs::write(output.join("assets/css").join(name), css)?;
         }
         for (name, bytes) in &self.files {
             if name.starts_with("static") {
@@ -222,6 +229,62 @@ impl ThemeSnapshot {
 mod snapshot_tests {
     use super::*;
     #[test]
+    fn publication_css_is_opt_in_and_only_bound_entries_are_compiled() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("project");
+        let theme = root.path().join("theme");
+        for directory in [
+            project.clone(),
+            theme.join("defaults"),
+            theme.join("shared/styles/entries"),
+            theme.join("shared/styles/publications"),
+        ] {
+            fs::create_dir_all(directory).unwrap();
+        }
+        fs::write(
+            theme.join("shared/styles/entries/site.css"),
+            "body {color:blue}",
+        )
+        .unwrap();
+        fs::write(
+            theme.join("shared/styles/publications/portfolio.css"),
+            "body {color:red}",
+        )
+        .unwrap();
+        let loaded = Theme::load(&project, &theme).unwrap();
+        let legacy = root.path().join("legacy");
+        loaded.write_assets(&legacy, None).unwrap();
+        assert!(legacy.join("assets/css/site.css").is_file());
+        assert!(!legacy.join("assets/css/portfolio.css").exists());
+        fs::write(
+            theme.join("shared/styles/entries/site.css"),
+            "@import '../missing.css';",
+        )
+        .unwrap();
+        let snapshot = Theme::load(&project, &theme).unwrap().snapshot().unwrap();
+        let composed = root.path().join("composed");
+        let required = BTreeSet::from(["portfolio.css".into()]);
+        snapshot.validate_entries(&required).unwrap();
+        snapshot.write_assets(&composed, &required).unwrap();
+        assert!(composed.join("assets/css/portfolio.css").is_file());
+        assert!(!composed.join("assets/css/site.css").exists());
+        for invalid in [
+            "../portfolio.css",
+            "/portfolio.css",
+            "nested/file.css",
+            "nested\\file.css",
+            ".",
+            "portfolio.txt",
+        ] {
+            assert!(
+                snapshot
+                    .validate_entries(&BTreeSet::from([invalid.into()]))
+                    .is_err(),
+                "{invalid}"
+            );
+        }
+    }
+    #[test]
     fn publication_theme_uses_captured_bytes_after_files_change() {
         let root = tempfile::tempdir().unwrap();
         let project = root.path().join("project");
@@ -230,13 +293,13 @@ mod snapshot_tests {
             project.clone(),
             theme.join("defaults"),
             theme.join("shared/pages"),
-            theme.join("shared/styles/entries"),
+            theme.join("shared/styles/publications"),
             theme.join("shared/static"),
         ] {
             fs::create_dir_all(path).unwrap();
         }
         let template = theme.join("shared/pages/example.tera");
-        let css = theme.join("shared/styles/entries/portfolio.css");
+        let css = theme.join("shared/styles/publications/portfolio.css");
         let asset = theme.join("shared/static/example.txt");
         fs::write(&template, "old template").unwrap();
         fs::write(&css, "body {color:red}").unwrap();
@@ -259,7 +322,9 @@ mod snapshot_tests {
             berlin_publication::input_digest(b"old template")
         );
         let output = root.path().join("staged");
-        snapshot.write_assets(&output).unwrap();
+        snapshot
+            .write_assets(&output, &BTreeSet::from(["portfolio.css".into()]))
+            .unwrap();
         assert_eq!(
             fs::read_to_string(output.join("static/example.txt")).unwrap(),
             "old asset"

@@ -24,6 +24,19 @@ pipeline text {
 "#;
 
 #[test]
+fn d07_composition_modules_cannot_bypass_explicit_program_inputs() {
+    for source in [
+        format!("import \"unselected\" as hidden; {COMPOSER}"),
+        COMPOSER.replace(
+            "fn portfolio(catalog) {",
+            "fn portfolio(catalog) { import \"unselected\" as hidden;",
+        ),
+    ] {
+        assert!(RhaiPipelineLoader::new(&source).is_err());
+    }
+}
+
+#[test]
 fn runtime_extensions_share_the_frozen_component_contract() {
     #[derive(Component)]
     #[component(key = "example.badge@1", channels(html, text))]

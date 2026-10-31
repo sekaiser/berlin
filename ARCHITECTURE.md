@@ -96,6 +96,9 @@ can edit exposed metadata and map sections, but cannot change document identity
 or provenance. Mapped collections are validated before use. The engine limits
 operations, call depth, expression depth, array sizes, and string sizes; direct
 I/O functions are not exposed by Berlin.
+Rhai's default filesystem module resolver is replaced with a disabled resolver,
+and `import` is rejected. Shared helpers belong to explicitly selected pipeline
+files so program execution cannot introduce unrecorded module dependencies.
 
 [PipelineRun](cli/tasks/run.rs) loads the selected plan, executes nodes in
 topological order, commits outputs, and records a receipt.

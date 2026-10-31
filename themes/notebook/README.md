@@ -28,7 +28,10 @@ Berlin neither downloads nor silently updates it.
 
 The theme also supplies version-1 portfolio components under
 `shared/pages/components/berlin/`, the page wrapper
-`shared/pages/publications/page.tera`, and `portfolio.css`. Select it with
+`shared/pages/publications/page.tera`, and
+`shared/styles/publications/portfolio.css`. This stylesheet is compiled only for
+a publication that binds it; legacy website output inventories remain unchanged.
+Select it with
 `render_publication_website` to compose curated/query-based work, introductions,
 annotations and excerpts. This is separate from the article website's fixed page
 families. [Try the synthetic portfolio](../../docs/composable-publications.md)

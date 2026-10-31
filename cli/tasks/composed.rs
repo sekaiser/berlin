@@ -93,7 +93,7 @@ pub(super) fn website(
         return Ok(());
     }
     std::fs::create_dir_all(output)?;
-    snapshot.write_assets(output)?;
+    snapshot.write_assets(output, &result.stylesheets)?;
     std::fs::write(output.join("index.html"), result.html)?;
     std::fs::write(
         output.join("publication.json"),

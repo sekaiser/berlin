@@ -18,6 +18,14 @@ declarations must appear exactly once in the page head. The page must contain on
 `h1`, unique IDs and valid local fragment links. The publication title is
 authoritative; site configuration never substitutes its own page title.
 
+Publication-only CSS entries live under `styles/publications/`, with the same
+project/shared/default precedence as other presentation files. The renderer
+compiles only the filenames required by active component bindings and emits
+them under `assets/css/`. A binding can also explicitly use a shared entry from
+`styles/entries/`; the publication-specific entry takes precedence if both have
+the same name. Legacy website builds continue compiling `styles/entries/` and
+do not emit publication-only stylesheets.
+
 ## Explicit slots
 
 ```tera
