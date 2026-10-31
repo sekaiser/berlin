@@ -101,7 +101,7 @@ ASSETS maps theme-relative fixture paths to local source filenames."
          (should (string-match-p "class=\"diagram-legend\"" output))
          (should (string-match-p (regexp-quote url) output)))
        (when html
-         (should (string-match-p (regexp-quote (concat "href=\"" url "\"")) html))
+         (should (string-match-p (regexp-quote (concat "href=\"https://notebook.example" url "\"")) html))
          (should (string-match-p "alt=\"Line plot connecting the synthetic points" html))
          (should (string-match-p "<figcaption>.*Four points from the synthetic graphics fixture" html)))))
    '(("example/static/diagrams/notebook-plot.svg" . "notebook-plot.svg"))))
