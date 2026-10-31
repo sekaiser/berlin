@@ -1,6 +1,6 @@
 # Composable publications
 
-Status: implementation in progress. Normative scope is recorded in
+Status: accepted. Normative scope is recorded in
 `../implementation/composable-publications/IMPLEMENTATION_PLAN.md`.
 
 Publications reference existing semantic documents. They do not replace the
@@ -8,7 +8,7 @@ document AST or the legacy website assembly. A full immutable source catalog is
 distinct from the work selected for one publication. Metadata-only placements do
 not render source bodies. Occurrences identify placements, not new source works.
 
-Rust builders, the planned `Component` derive and `view!`, and execution-time Rhai
+Rust builders, the `Component` derive and `view!`, and execution-time Rhai
 composition share one registry and normalized specification. Plan construction
 never executes a composer or loads documents. Native component registration is
 explicit; runtime scripts cannot register executable implementations.

@@ -11,10 +11,12 @@ description: A synthetic example of a **completed prefix**.
 Publish the position after synchronization. See [queue admission](id:queues)
 for the other side of the contract, or the [recovery note](#recovery).[^durability]
 
-```rust {#example}
+```rust {id=example, lineanchors=handoff-line, linenostart=1}
 writer.sync_all()?;
 publish(completed_position);
 ```
+
+The [synchronization line](#handoff-line-1) precedes publication.
 
 ![A synthetic handoff diagram](/attachments/handoff.svg)
 

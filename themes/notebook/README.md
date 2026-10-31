@@ -24,6 +24,17 @@ or a local name such as `@notebook`. Named themes resolve beneath the absolute
 A separate website repository can also keep a pinned copy at `themes/notebook`.
 Berlin neither downloads nor silently updates it.
 
+## Composed publications
+
+The theme also supplies version-1 portfolio components under
+`shared/pages/components/berlin/`, the page wrapper
+`shared/pages/publications/page.tera`, and `portfolio.css`. Select it with
+`render_publication_website` to compose curated/query-based work, introductions,
+annotations and excerpts. This is separate from the article website's fixed page
+families. [Try the synthetic portfolio](../../docs/composable-publications.md)
+and see the [Tera slot contract](../../docs/tera-components.md) before overriding
+a component. These templates support static HTML without a frontend runtime.
+
 The themed render operation resolves templates, compiles `styles/entries/*.css`, and
 copies effective `static/` assets into its staged output. Do not also declare
 CSS/copy operations for those same files. Pipelines without `theme` keep their

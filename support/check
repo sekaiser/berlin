@@ -11,6 +11,7 @@ node --test support/web/search.test.cjs
 node --test support/web/redirect.test.cjs
 node --test cli/tools/serve/live.test.cjs
 cargo build --quiet --bin bln
+support/check-publications
 node --test themes/notebook/test.cjs themes/notebook/tests/*.test.cjs
 BERLIN_TEST_BINARY="$repository/target/debug/bln" BERLIN_TEST_REPOSITORY="$repository" \
     emacs --batch --load support/ox-hugo/tests.el --load support/emacs/tests.el \

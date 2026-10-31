@@ -1,0 +1,12 @@
+@import "../tokens.css";
+@import "../components/code.css";
+.publication-page { margin: 0; background: #172c3b; color: #172c3b; font: 17px/1.7 Georgia, serif; }
+.publication-page main { box-sizing: border-box; max-width: 900px; margin: 4rem auto; padding: clamp(1.5rem, 5vw, 4rem); background: #fffdf7; }
+.publication-page h1 { font-size: clamp(2.5rem, 6vw, 4rem); line-height: 1.12; }
+.publication-page h2 { line-height: 1.25; }
+.publication-page a { color: #75462f; text-underline-offset: .2em; }
+.publication-opening { border-bottom: 5px solid #b57650; padding-bottom: 2rem; }
+.alternate-work { border-left: 4px solid #b57650; padding-left: 1.5rem; margin-block: 3rem; }
+.alternate-work .editorial-note { font-style: italic; }
+.publication-page img { max-width: 100%; height: auto; }
+@media (max-width: 600px) { .publication-page main { margin: 0; } }

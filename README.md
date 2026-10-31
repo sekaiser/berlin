@@ -35,6 +35,7 @@ Current capabilities include:
 - Org export through Emacs and ox-hugo, without executing source-code examples.
 - Markdown parsing, CSV feeds, and website assembly with shared tag indexes.
 - Static HTML through Tera templates, CSS compilation, and asset copying.
+- [Composable publications](docs/composable-publications.md): curated/query-based portfolios and structural excerpts, composed in Rust or execution-time Rhai, with replaceable Tera HTML and independent text output.
 - [Stable article URLs](docs/stable-urls.md), with optional static redirects from previous slugs.
 - Syntax-highlighted code with named listings, line references, captions, and highlights.
 - [TeX equations](docs/mathematics.md) from Org or Markdown, rendered as static MathML without JavaScript.
@@ -46,12 +47,13 @@ Current capabilities include:
 - Staged output replacement with recovery support, plus a local preview server.
 - [Sealed website releases and explicit GitHub Pages publishing](docs/website-releases.md), with optional native production URL/asset preparation, file and document revision comparisons, and recoverable publication records.
 
-The website renderer currently uses a fixed set of page families and template
+The article website renderer uses a fixed set of page families and template
 names. The [notebook theme](themes/notebook/README.md) provides reusable Tera/CSS
 layouts and a synthetic component specimen within that contract. Select a local
 theme with `website_config(#{theme: "themes/notebook"})`; project templates
 and assets override its defaults without an installation step. It is not a
-general-purpose theme or component framework. Content and
+general-purpose frontend framework. Composed publications use a separate,
+versioned component contract and ordinary theme templates. Content and
 templates are trusted inputs; raw HTML is supported, not sanitized.
 
 ## Try it
@@ -84,7 +86,8 @@ BERLIN_DIR="$berlin_project" target/debug/bln serve --port 8081
 ```
 
 Open <http://localhost:8081>. Stop the server with Ctrl-C. `serve` builds the `site`
-pipeline before serving `_site`; add `--watch` to rebuild when project inputs change.
+pipeline and serves its declared website output; use `--pipeline NAME` to select
+another website pipeline and `--watch` to rebuild when project inputs change.
 `BERLIN_DIR` selects the publishing project; otherwise Berlin uses the current directory.
 
 Generate reviewable LinkedIn drafts without sending anything to LinkedIn:

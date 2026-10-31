@@ -18,6 +18,10 @@ branch. Social-platform API publishing is not implemented.
 | [bln-math](crates/bln-math/) | Bounded, offline TeX-equation rendering to native MathML and its structural stylesheet. |
 | [bln-paper](crates/bln-paper/) | Pure, constrained Pandoc/BibTeX projection into semantic documents, retaining compiled labels and bibliography text. |
 | [bln-content](crates/bln-content/) | Validated document/feed collections, publication ordering, and tag indexes. |
+| [bln-publication](crates/bln-publication/) | Immutable source catalog, selection, component contracts, structural excerpts, occurrence identity and publication manifests. |
+| [bln-publication-macros](crates/bln-publication-macros/) | Syntax-only component derive, typestate builders and `view!` expansion. |
+| [bln-publication-html](crates/bln-publication-html/) | Session-local Tera composition with explicit, checked slot ownership. |
+| [bln-publication-text](crates/bln-publication-text/) | Independent plain/LinkedIn-draft interpretation of publication components. |
 | [bln-core](crates/bln-core/) | Pipeline nodes, operation signatures, graph validation, and website settings. |
 | [pipeline-dsl](crates/pipeline-dsl/) | Rhai pipeline construction and document-mapping API. |
 | [bln-document-html](crates/bln-document-html/) | Semantic documents rendered as HTML, including highlighted code listings. |
@@ -55,6 +59,22 @@ references to documents outside the publication fail assembly. See
 [Document references](docs/document-references.md). Publication ordering is newest first, with
 missing dates last and content IDs breaking ties. Feed items have URL-based IDs
 and remain separate from documents. Invalid CSV records and URLs fail parsing.
+
+`PublicationAssembly` is an alternative output path, not a filtered
+`WebsiteAssembly`. An immutable catalog retains the full prepared source
+collection. Queries/curation select references into it; structural excerpts
+retain their source identity while each placement receives an occurrence ID.
+Links to unselected original work resolve against the catalog's source-site URL,
+independently of the new publication's destination URL.
+
+`compose_publication` invokes a named one-argument Rhai composer after document
+mapping. Rust builders and `view!` construct the same normalized specification.
+One frozen registry supplies property, slot and channel validation. HTML uses
+ordinary theme templates and a per-render fragment store;
+`render_slot(owner=view.id, name="body")` consumes only renderer-created content.
+Direct text rendering walks semantic content without stripping HTML. Public
+manifests separate composition identity from presentation inputs and use captured
+input bytes. See [Composable publications](docs/composable-publications.md).
 
 ## Pipeline construction and execution
 
