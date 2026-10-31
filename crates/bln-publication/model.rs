@@ -22,6 +22,21 @@ pub(crate) fn identifier(value: &str) -> Result<()> {
 #[serde(transparent)]
 pub struct PublicationId(pub String);
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextProfile {
+    #[default]
+    Plain,
+    #[serde(rename = "linkedin_draft")]
+    LinkedInDraft,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct TextConfig {
+    pub profile: TextProfile,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct ComponentKey {

@@ -13,3 +13,10 @@ path = "lib.rs"
 [dependencies]
 berlin_publication.workspace = true
 berlin_document_linkedin.workspace = true
+berlin_document.workspace = true
+serde.workspace = true
+markdown.workspace = true
+
+[dev-dependencies]
+berlin_content.workspace = true
+serde_json.workspace = true

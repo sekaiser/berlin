@@ -2,8 +2,8 @@
 
 use crate::text;
 use crate::{
-    Announcement, AnnouncementKind, LINKEDIN_POST_CHARACTER_LIMIT, LinkedInDraftDiagnostic,
-    LinkedInDrafts, LinkedInPostDraft,
+    Announcement, AnnouncementKind, LINKEDIN_POST_CHARACTER_LIMIT, LinkedInDrafts,
+    LinkedInPostDraft,
 };
 use berlin_content::{Collection, DocumentCollection, DocumentRef};
 use berlin_document::Document;
@@ -64,13 +64,7 @@ impl Renderer {
 
     fn draft(&self, source: DocumentRef, artifact_name: String, text: String) -> LinkedInPostDraft {
         let character_count = text.chars().count();
-        let diagnostics = (character_count > self.character_limit)
-            .then_some(LinkedInDraftDiagnostic::CharacterLimitExceeded {
-                limit: self.character_limit,
-                actual: character_count,
-            })
-            .into_iter()
-            .collect();
+        let diagnostics = crate::draft_diagnostics(&text, self.character_limit);
 
         LinkedInPostDraft {
             source,

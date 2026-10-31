@@ -318,8 +318,13 @@ version = "0.0.0"
 name = "berlin_publication_text"
 version = "0.0.0"
 dependencies = [
+ "berlin_content",
+ "berlin_document",
  "berlin_document_linkedin",
  "berlin_publication",
+ "markdown",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
