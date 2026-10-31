@@ -66,7 +66,7 @@ test('clean example builds real page families, links, controls and palette at bo
     fs.appendFileSync(guide, '\n\nInspect [another passage](id:theme-components).\n\nReturn to the [palette](id:theme-components#palette).\n');
     const pipeline = path.join(root, 'berlin.pipeline.rhai');
     fs.writeFileSync(pipeline, fs.readFileSync(pipeline, 'utf8')
-      .replace('http://localhost:8082', url)
+      .replaceAll('http://localhost:8082', url)
       .replace('"themes/notebook"', JSON.stringify(__dirname)));
     const build = spawnSync(path.join(repository, 'target/debug/bln'), ['build', '--pipeline', 'site'],
       {env: {...process.env, BERLIN_DIR: root}, encoding: 'utf8'});
@@ -109,11 +109,11 @@ test('clean example builds real page families, links, controls and palette at bo
     assert.match(article, /class="code-copy"/);
     assert.match(article, /id="palette"/);
     assert.match(read('feed.html'), /reading-tag-options/);
-    const bookmarks = [...read('feed.html').matchAll(/<article class="journal-bookmark">([\s\S]*?)<\/article>/g)].map(match => match[1]);
+    const bookmarks = [...read('feed.html').matchAll(/<article class="publication-resource[^"]*"[^>]*>([\s\S]*?)<\/article>/g)].map(match => match[1]);
     assert.equal(bookmarks.filter(html => html.includes('data-tag="design"') && html.includes('data-tag="systems"')).length, 1);
     assert.match(read('index.html'), /notebook-home/);
     for (const page of ['index.html', 'notes.html', 'tags/design.html']) {
-      const entries = [...read(page).matchAll(/<article class="journal-entry">([\s\S]*?)<\/article>/g)]
+      const entries = [...read(page).matchAll(/<article class="[^"]*\bjournal-entry\b[^"]*"[^>]*>([\s\S]*?)<\/article>/g)]
         .map(match => match[1]);
       const illustrated = entries.filter(entry => entry.includes('journal-entry-visual'));
       assert.equal(illustrated.length, 1, page);
@@ -144,7 +144,8 @@ test('clean example builds real page families, links, controls and palette at bo
     assert.ok(!fs.existsSync(path.join(root, '_site/static/css')));
     assert.ok(!fs.existsSync(path.join(root, '_site/assets/css/tokens.css')));
     const index = JSON.parse(read('search/index.json'));
-    assert.equal(index.documents.length, 2);
+    assert.equal(index.documents.length, 5);
+    assert.equal(index.documents.filter(d=>d.path.startsWith('notes/')).length,2);
     assert.ok(index.documents.some(document => document.path === 'notes/component-specimens.html'));
   });
 });

@@ -3,6 +3,36 @@ use berlin_core::{ArtifactKind, FunctionRef, PipelineLoader};
 use berlin_document::{ContentId, Document, DocumentKind, Metadata, Provenance, SourceFormat};
 use berlin_pipeline_dsl::RhaiPipelineLoader;
 use berlin_publication::*;
+trait SingleComposition {
+    fn compose_single(
+        &self,
+        f: &FunctionRef,
+        c: PublicationCatalog,
+    ) -> std::result::Result<PublicationAssembly, berlin_pipeline_dsl::CompileError>;
+    fn compose_test_documents(
+        &self,
+        f: &FunctionRef,
+        d: &DocumentCollection,
+        o: &PublicationOptions,
+    ) -> std::result::Result<PublicationAssembly, berlin_pipeline_dsl::CompileError>;
+}
+impl SingleComposition for RhaiPipelineLoader {
+    fn compose_single(
+        &self,
+        f: &FunctionRef,
+        c: PublicationCatalog,
+    ) -> std::result::Result<PublicationAssembly, berlin_pipeline_dsl::CompileError> {
+        Ok(self.compose_artifact(f, c)?.single()?.clone())
+    }
+    fn compose_test_documents(
+        &self,
+        f: &FunctionRef,
+        d: &DocumentCollection,
+        o: &PublicationOptions,
+    ) -> std::result::Result<PublicationAssembly, berlin_pipeline_dsl::CompileError> {
+        self.compose_single(f, PublicationCatalog::new(d.clone(), o.clone())?)
+    }
+}
 
 const COMPOSER: &str = r#"
 fn portfolio(catalog) {
@@ -13,13 +43,13 @@ fn portfolio(catalog) {
     publication(#{id:"systems",title:"Selected work"},root)
 }
 pipeline html {
-    let documents=parse_markdown(load_markdown("missing/*.md"));
-    let publication=compose_publication(documents,Fn("portfolio"),publication_options(#{source_site_url:"https://example.test/notebook"}));
-    output render_publication_website(publication,"_portfolio",website_config(#{url:"https://example.test/portfolio"}));
+    let documents=documents(load_markdown("missing/*.md"));
+    let publication=compose(catalog([documents],publication_options(#{source_site_url:"https://example.test/notebook"})),Fn("portfolio"));
+    output render_html(publication,"_portfolio",html_config(#{url:"https://example.test/portfolio"}));
 }
 pipeline text {
-    let publication=compose_publication(parse_markdown(load_markdown("missing/*.md")),Fn("portfolio"),publication_options(#{source_site_url:"https://example.test/notebook"}));
-    output render_publication_text(publication,"_text",text_config(#{profile:"plain"}));
+    let publication=compose(catalog([documents(load_markdown("missing/*.md"))],publication_options(#{source_site_url:"https://example.test/notebook"})),Fn("portfolio"));
+    output render_text(publication,"_text",text_config(#{profile:"plain"}));
 }
 "#;
 
@@ -46,10 +76,10 @@ fn runtime_extensions_share_the_frozen_component_contract() {
     let mut registry = RegistryBuilder::default();
     registry.register::<Badge>().unwrap();
     let source = r#"fn compose(c){publication(#{id:"custom",title:"Custom"},view_component("example.badge@1",#{text:"native"},#{}))}
-        pipeline text {output render_publication_text(compose_publication(parse_markdown(load_markdown("*.md")),Fn("compose"),publication_options(#{})),"_text",text_config(#{}));}"#;
+        pipeline text {output render_text(compose(catalog([documents(load_markdown("*.md"))]),Fn("compose")),"_text",text_config(#{}));}"#;
     let loader = RhaiPipelineLoader::with_components(source, registry.finish()).unwrap();
     let assembly = loader
-        .compose_publication(
+        .compose_test_documents(
             &FunctionRef::new("compose"),
             &DocumentCollection::default(),
             &PublicationOptions::default(),
@@ -109,7 +139,7 @@ fn unified_e05_rust_and_rhai_resource_components_have_identical_normalized_compo
     }"#;
     let dynamic = RhaiPipelineLoader::new(source)
         .unwrap()
-        .compose_catalog(&FunctionRef::new("mixed"), catalog.clone())
+        .compose_single(&FunctionRef::new("mixed"), catalog.clone())
         .unwrap();
     let r = ResourceRef::external("repo").unwrap();
     let root = view! {Portfolio(){
@@ -147,7 +177,7 @@ fn unified_e05_rust_and_rhai_resource_components_have_identical_normalized_compo
     assert!(
         RhaiPipelineLoader::new(&invalid)
             .unwrap()
-            .compose_catalog(&FunctionRef::new("mixed"), typed.catalog().clone())
+            .compose_single(&FunctionRef::new("mixed"), typed.catalog().clone())
             .is_err()
     );
 }
@@ -172,7 +202,7 @@ fn unified_d11_rust_and_rhai_queries_share_order_and_both_digests() {
     }"#;
     let loader = RhaiPipelineLoader::new(source).unwrap();
     let result = loader
-        .compose_catalog(&FunctionRef::new("probe"), catalog.clone())
+        .compose_single(&FunctionRef::new("probe"), catalog.clone())
         .unwrap();
     let mut expected = format!(
         "{}|{}",
@@ -202,7 +232,7 @@ fn unified_queries_preflight_arrays_and_charge_cumulative_native_work() {
     assert!(
         RhaiPipelineLoader::new(once)
             .unwrap()
-            .compose_catalog(&FunctionRef::new("probe"), catalog.clone())
+            .compose_single(&FunctionRef::new("probe"), catalog.clone())
             .is_ok()
     );
     let twice = once.replace(
@@ -212,7 +242,7 @@ fn unified_queries_preflight_arrays_and_charge_cumulative_native_work() {
     assert!(
         RhaiPipelineLoader::new(&twice)
             .unwrap()
-            .compose_catalog(&FunctionRef::new("probe"), catalog)
+            .compose_single(&FunctionRef::new("probe"), catalog)
             .unwrap_err()
             .to_string()
             .contains("ResourceLimit")
@@ -223,7 +253,7 @@ fn unified_queries_preflight_arrays_and_charge_cumulative_native_work() {
     assert!(
         RhaiPipelineLoader::new(&twice)
             .unwrap()
-            .compose_catalog(&FunctionRef::new("probe"), catalog.clone())
+            .compose_single(&FunctionRef::new("probe"), catalog.clone())
             .is_ok()
     );
     let triple = twice.replace(
@@ -233,7 +263,7 @@ fn unified_queries_preflight_arrays_and_charge_cumulative_native_work() {
     assert!(
         RhaiPipelineLoader::new(&triple)
             .unwrap()
-            .compose_catalog(&FunctionRef::new("probe"), catalog)
+            .compose_single(&FunctionRef::new("probe"), catalog)
             .unwrap_err()
             .to_string()
             .contains("ResourceLimit")
@@ -242,7 +272,7 @@ fn unified_queries_preflight_arrays_and_charge_cumulative_native_work() {
     assert!(
         RhaiPipelineLoader::new(&excessive)
             .unwrap()
-            .compose_catalog(
+            .compose_single(
                 &FunctionRef::new("probe"),
                 PublicationCatalog::new(documents(), PublicationOptions::default()).unwrap()
             )
@@ -259,7 +289,7 @@ fn d05_d08_rust_and_runtime_rhai_use_the_same_normalized_contract() {
         ..Default::default()
     };
     let rhai = loader
-        .compose_publication(&FunctionRef::new("portfolio"), &documents(), &options)
+        .compose_test_documents(&FunctionRef::new("portfolio"), &documents(), &options)
         .unwrap();
     let catalog = PublicationCatalog::new(documents(), options).unwrap();
     let selection = catalog
@@ -394,7 +424,7 @@ fn d06_dynamic_types_and_unknown_fields_fail_the_shared_schema() {
         let loader = RhaiPipelineLoader::new(&source).unwrap();
         assert!(
             loader
-                .compose_publication(
+                .compose_test_documents(
                     &FunctionRef::new("portfolio"),
                     &documents(),
                     &PublicationOptions {
@@ -425,7 +455,7 @@ fn d09_composer_rejects_curried_anonymous_and_wrong_results() {
     .unwrap();
     assert!(
         loader
-            .compose_publication(
+            .compose_test_documents(
                 &FunctionRef::new("portfolio"),
                 &documents(),
                 &PublicationOptions {
@@ -438,9 +468,9 @@ fn d09_composer_rejects_curried_anonymous_and_wrong_results() {
 }
 #[test]
 fn d10_native_fragment_multiplication_cannot_bypass_lowered_limits() {
-    let source = r#"fn p(c) {let entry=view_component("berlin.introduction@1",#{text:"hello"},#{});let group=view_component("berlin.section@1",#{title:"Group"},#{body:[entry,entry,entry]});let root=view_component("berlin.portfolio@1",#{},#{body:[group,group,group]});publication(#{id:"p",title:"P"},root)} pipeline text {output render_publication_text(compose_publication(parse_markdown(load_markdown("*.md")),Fn("p"),publication_options(#{})),"_text",text_config(#{}));}"#;
+    let source = r#"fn p(c) {let entry=view_component("berlin.introduction@1",#{text:"hello"},#{});let group=view_component("berlin.section@1",#{title:"Group"},#{body:[entry,entry,entry]});let root=view_component("berlin.portfolio@1",#{},#{body:[group,group,group]});publication(#{id:"p",title:"P"},root)} pipeline text {output render_text(compose(catalog([documents(load_markdown("*.md"))]),Fn("p")),"_text",text_config(#{}));}"#;
     let loader = RhaiPipelineLoader::new(source).unwrap();
-    let result = loader.compose_publication(
+    let result = loader.compose_test_documents(
         &FunctionRef::new("p"),
         &documents(),
         &PublicationOptions {
@@ -463,10 +493,10 @@ fn d10_reused_large_children_remain_shared_until_bounded_lowering() {
         for n in 0..100 { unused.push(view_component("berlin.section@1",#{title:"unused"},#{body:[leaf]})); }
         let root=view_component("berlin.portfolio@1",#{},#{body:[leaf]});
         publication(#{id:"p",title:"P"},root)
-    } pipeline text {output render_publication_text(compose_publication(parse_markdown(load_markdown("*.md")),Fn("p"),publication_options(#{})),"_text",text_config(#{}));}"#;
+    } pipeline text {output render_text(compose(catalog([documents(load_markdown("*.md"))]),Fn("p")),"_text",text_config(#{}));}"#;
     let loader = RhaiPipelineLoader::new(source).unwrap();
     let result = loader
-        .compose_publication(
+        .compose_test_documents(
             &FunctionRef::new("p"),
             &documents(),
             &PublicationOptions::default(),

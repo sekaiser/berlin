@@ -3,12 +3,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Error, bail};
-
-use crate::templates::Templates;
 
 /// Effective source files keyed by their project-relative presentation path.
 pub(crate) struct Theme {
@@ -46,79 +43,6 @@ impl Theme {
             }
         }
         Ok(Self { files })
-    }
-
-    pub fn inputs(&self) -> impl Iterator<Item = &PathBuf> {
-        self.files.values()
-    }
-
-    pub fn templates(&self) -> Result<Templates, Error> {
-        let sources = self
-            .files
-            .iter()
-            .filter_map(|(relative, source)| {
-                let name = relative.strip_prefix("pages").ok()?;
-                (name.extension()? == "tera").then(|| {
-                    let name = name.to_str().context("Template path is not valid UTF-8")?;
-                    Ok((name.replace('\\', "/"), fs::read_to_string(source)?))
-                })
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
-        Templates::from_sources(sources)
-    }
-
-    /// Files in styles/entries declare the public stylesheets. Other styles are
-    /// import-only sources. CSS imports see the same override hierarchy.
-    /// Only a temporary build workspace and the caller's staged output are written.
-    pub(super) fn write_assets(
-        &self,
-        output_root: &Path,
-        cache: Option<&super::cache::ArtifactCache>,
-    ) -> Result<(), Error> {
-        let workspace = tempfile::Builder::new().prefix("berlin-theme-").tempdir()?;
-        for (relative, source) in &self.files {
-            if relative.starts_with("styles") {
-                copy_file(source, &workspace.path().join(relative))?;
-            }
-        }
-        let entries = self.stylesheet_entries()?;
-        let compiled = entries
-            .iter()
-            .map(|entry| {
-                let css = super::css::compile_stylesheet(
-                    &workspace.path().join(entry),
-                    &workspace.path().join("styles"),
-                    cache,
-                )?;
-                Ok((entry.file_name().expect("entry has a filename"), css))
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
-        for (relative, source) in &self.files {
-            if relative.starts_with("static") {
-                copy_file(source, &output_root.join(relative))?;
-            }
-        }
-        let destination = output_root.join("assets/css");
-        fs::create_dir_all(&destination)?;
-        for (name, css) in compiled {
-            fs::write(destination.join(name), css)?;
-        }
-        Ok(())
-    }
-
-    fn stylesheet_entries(&self) -> Result<Vec<&PathBuf>, Error> {
-        let entries = self
-            .files
-            .keys()
-            .filter(|path| {
-                path.parent() == Some(Path::new("styles/entries"))
-                    && path.extension().is_some_and(|extension| extension == "css")
-            })
-            .collect::<Vec<_>>();
-        if entries.is_empty() {
-            bail!("Theme requires at least one styles/entries/*.css entry point");
-        }
-        Ok(entries)
     }
 }
 
@@ -158,12 +82,17 @@ impl ThemeSnapshot {
             .filter(|input| input.logical_name.starts_with("pages/"))
             .collect()
     }
-    pub fn prepare_assets(&self, entries: &BTreeSet<String>) -> Result<PreparedAssets, Error> {
+    pub fn prepare_assets(
+        &self,
+        entries: &BTreeSet<String>,
+        cache: Option<&super::cache::ArtifactCache>,
+    ) -> Result<PreparedAssets, Error> {
         let mut files = BTreeMap::new();
         let mut read = BTreeSet::new();
         for entry in entries {
             let source = self.publication_entry(entry)?;
-            let (css, inputs) = super::css::compile_stylesheet_snapshot(&source, &self.files)?;
+            let (css, inputs) =
+                super::css::compile_stylesheet_snapshot(&source, &self.files, cache)?;
             files.insert(Path::new("assets/css").join(entry), css.into_bytes());
             read.extend(inputs);
         }
@@ -261,11 +190,6 @@ mod snapshot_tests {
             "body {color:red}",
         )
         .unwrap();
-        let loaded = Theme::load(&project, &theme).unwrap();
-        let legacy = root.path().join("legacy");
-        loaded.write_assets(&legacy, None).unwrap();
-        assert!(legacy.join("assets/css/site.css").is_file());
-        assert!(!legacy.join("assets/css/portfolio.css").exists());
         fs::write(
             theme.join("shared/styles/entries/site.css"),
             "@import '../missing.css';",
@@ -274,7 +198,7 @@ mod snapshot_tests {
         let snapshot = Theme::load(&project, &theme).unwrap().snapshot().unwrap();
         let composed = root.path().join("composed");
         let required = BTreeSet::from(["portfolio.css".into()]);
-        let prepared = snapshot.prepare_assets(&required).unwrap();
+        let prepared = snapshot.prepare_assets(&required, None).unwrap();
         assert_eq!(prepared.consumed_inputs().len(), 1);
         assert_eq!(
             prepared.consumed_inputs()[0].logical_name,
@@ -293,7 +217,7 @@ mod snapshot_tests {
         ] {
             assert!(
                 snapshot
-                    .prepare_assets(&BTreeSet::from([invalid.into()]))
+                    .prepare_assets(&BTreeSet::from([invalid.into()]), None)
                     .is_err(),
                 "{invalid}"
             );
@@ -338,7 +262,7 @@ mod snapshot_tests {
         );
         let output = root.path().join("staged");
         snapshot
-            .prepare_assets(&BTreeSet::from(["portfolio.css".into()]))
+            .prepare_assets(&BTreeSet::from(["portfolio.css".into()]), None)
             .unwrap()
             .write(&output)
             .unwrap();
@@ -434,28 +358,6 @@ fn collect_layer(
     Ok(())
 }
 
-fn copy_file(source: &Path, destination: &Path) -> Result<(), Error> {
-    fs::create_dir_all(
-        destination
-            .parent()
-            .context("Asset destination has no parent")?,
-    )?;
-    // Copy bytes without the OS clone/copyfile optimization, which can emit
-    // source-file notifications on macOS and retrigger the theme watcher.
-    let mut input = fs::File::open(source)
-        .with_context(|| format!("Unable to read theme asset '{}'", source.display()))?;
-    let mut output = fs::File::create(destination)?;
-    let mut buffer = [0; 64 * 1024];
-    loop {
-        let read = input.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        output.write_all(&buffer[..read])?;
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -531,15 +433,27 @@ mod tests {
         );
         write(&project, "styles/tokens.css", ":root { --ink: purple; }");
         let theme = Theme::load(&project, Path::new("../theme")).unwrap();
-        let templates = theme.templates().unwrap();
+        let snapshot = theme.snapshot().unwrap();
+        let mut templates = tera::Tera::default();
+        templates.autoescape_on(vec![".tera"]);
+        templates
+            .add_raw_templates(snapshot.component_templates().unwrap())
+            .unwrap();
         assert_eq!(
             templates
-                .render_template("index.tera", &tera::Context::new())
+                .render("index.tera", &tera::Context::new())
                 .unwrap(),
             "<article>Theme</article>"
         );
         let output = root.path().join("output");
-        theme.write_assets(&output, None).unwrap();
+        snapshot
+            .prepare_assets(
+                &BTreeSet::from(["notebook.css".into(), "article.css".into()]),
+                None,
+            )
+            .unwrap()
+            .write(&output)
+            .unwrap();
         assert!(
             fs::read_to_string(output.join("assets/css/notebook.css"))
                 .unwrap()
@@ -555,13 +469,15 @@ mod tests {
         assert!(!output.join("assets/css/tokens.css").exists());
         assert!(!output.join("styles").exists());
         assert!(
-            !theme
-                .inputs()
+            !snapshot
+                .paths
+                .values()
                 .any(|path| path == &root.path().join("theme/shared/styles/tokens.css"))
         );
         assert!(
-            theme
-                .inputs()
+            snapshot
+                .paths
+                .values()
                 .any(|path| path == &project.join("styles/tokens.css"))
         );
     }
@@ -577,10 +493,13 @@ mod tests {
         let theme = Theme::load(root.path(), Path::new("theme")).unwrap();
         assert!(
             theme
-                .write_assets(&root.path().join("output"), None)
-                .unwrap_err()
+                .snapshot()
+                .unwrap()
+                .prepare_assets(&BTreeSet::from(["notebook.css".into()]), None)
+                .err()
+                .unwrap()
                 .to_string()
-                .contains("entry point")
+                .contains("missing required component CSS entry")
         );
         assert!(!root.path().join("output").exists());
     }

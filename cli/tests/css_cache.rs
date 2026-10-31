@@ -10,6 +10,10 @@ fn run(root: &Path, args: &[&str], success: bool) -> String {
     let result = Command::new(env!("CARGO_BIN_EXE_bln"))
         .current_dir(root)
         .env("BERLIN_DIR", root)
+        .env(
+            "BERLIN_THEME_DIR",
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../themes"),
+        )
         .args(args)
         .output()
         .unwrap();
@@ -93,50 +97,33 @@ fn css_reuses_transitive_inputs_and_rebuilds_when_the_graph_changes() {
 }
 
 fn themed_site(root: &Path) {
-    fs::create_dir_all(root.join("theme/defaults")).unwrap();
     write(
         root,
         "berlin.pipeline.rhai",
-        r#"pipeline site {
-        output render_website(assemble_website(parse_markdown(load_markdown("content/*.md")),
-            parse_feed(load_data("feed.csv"))), "_site", website_config(#{theme: "theme", url: "https://notebook.example.org"}));
-    }"#,
+        r#"
+        fn page(c) {publication("cache",#{title:"Cache fixture"},[view_component("berlin.excerpt@1",#{source:document_excerpt(c,"local:note")},#{})])}
+        pipeline site {
+            let sources=catalog([documents(load_markdown("content/*.md"))],publication_options(#{source_site_url:"https://notebook.example.org"}));
+            output render_html(compose(sources,Fn("page")),"_site",html_config(#{theme:"@notebook",url:"https://notebook.example.org"}));
+        }
+    "#,
     );
     write(
         root,
         "content/note.md",
         "---\nid: note\ntitle: Note\nauthor: [Author]\ndescription: A synthetic note.\ndate: 2026-09-09\n---\nBody.\n",
     );
-    write(root, "feed.csv", "Title,URL,Date,Tags\n");
-    for page in [
-        "index.tera",
-        "notes.tera",
-        "feed.tera",
-        "about.tera",
-        "tags/base.tera",
-    ] {
-        write(root, &format!("theme/shared/pages/{page}"), "Page");
-    }
     write(
         root,
-        "theme/shared/pages/notes/[slug].tera",
-        "{{ render() }}",
+        "styles/publications/portfolio.css",
+        "@import '../tokens.css'; .note {color:red}",
     );
     write(
         root,
-        "theme/shared/styles/entries/main.css",
-        "@import '../tokens.css'; .note { color: red }",
+        "styles/entries/independent.css",
+        ".unused {color:blue}",
     );
-    write(
-        root,
-        "theme/shared/styles/entries/independent.css",
-        ".other { color: blue }",
-    );
-    write(
-        root,
-        "theme/shared/styles/tokens.css",
-        ":root { --ink: green }",
-    );
+    write(root, "styles/tokens.css", ":root {--ink:green}");
 }
 
 #[test]
@@ -146,18 +133,18 @@ fn theme_cache_survives_temporary_workspaces_and_honors_project_overrides() {
     themed_site(root);
     assert_eq!(
         run(root, &["build"], true).matches("Compiling CSS").count(),
-        2
+        1
     );
     assert_eq!(
         run(root, &["build"], true).matches("Reusing CSS").count(),
-        2
+        1
     );
     // New override at the same logical path invalidates only its consumers.
     write(root, "styles/tokens.css", ":root { --ink: purple }");
     let log = run(root, &["build"], true);
-    assert_eq!(log.matches("Reusing CSS").count(), 1, "{log}");
+    assert_eq!(log.matches("Reusing CSS").count(), 0, "{log}");
     assert_eq!(log.matches("Compiling CSS").count(), 1, "{log}");
-    let path = root.join("_site/assets/css/main.css");
+    let path = root.join("_site/assets/css/portfolio.css");
     assert!(fs::read_to_string(&path).unwrap().contains("--ink:purple"));
     write(
         root,
@@ -166,30 +153,32 @@ fn theme_cache_survives_temporary_workspaces_and_honors_project_overrides() {
     );
     assert_eq!(
         run(root, &["build"], true).matches("Reusing CSS").count(),
-        2
+        1
     );
     assert!(
-        fs::read_to_string(root.join("_site/notes/note.html"))
+        fs::read_to_string(root.join("_site/index.html"))
             .unwrap()
             .contains("Edited content.")
     );
     write(
         root,
-        "pages/notes/[slug].tera",
-        "<article>{{ render() }}</article>",
+        "pages/components/berlin/excerpt.v1.tera",
+        r#"<article>{{ render_slot(owner=view.id, name="excerpt") }}</article>"#,
     );
     assert_eq!(
         run(root, &["build"], true).matches("Reusing CSS").count(),
-        2
+        1
     );
     assert!(
-        fs::read_to_string(root.join("_site/notes/note.html"))
+        fs::read_to_string(root.join("_site/index.html"))
             .unwrap()
             .contains("<article>")
     );
     fs::remove_file(root.join("styles/tokens.css")).unwrap();
     run(root, &["build"], true);
-    assert!(fs::read_to_string(path).unwrap().contains("--ink:green"));
+    let restored = fs::read_to_string(path).unwrap();
+    assert!(restored.contains("--ink:"));
+    assert!(!restored.contains("--ink:purple"));
 }
 
 #[test]

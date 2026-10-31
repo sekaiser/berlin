@@ -63,11 +63,14 @@ fn successful_run_commits_outputs_and_records_success() {
 }
 
 #[test]
-fn failed_run_preserves_previous_outputs_and_diagnostics() {
+fn conflicting_publication_outputs_fail_before_writing() {
     let root = fixture(
         r#"
+fn draft(c) {
+    publication("draft",#{title:"Article"},[view_component("berlin.excerpt@1",#{source:document_excerpt(c,"local:article")},#{})])
+}
 pipeline test {
-    output render_linkedin(parse_markdown(load_markdown("article.md")), "public");
+    output render_text(compose(catalog([documents(load_markdown("article.md"))],publication_options(#{source_site_url:"https://example.test"})),Fn("draft")),"public",text_config(#{profile:"linkedin_draft"}));
     output compile_css(load_css("missing.css"), "public/styles.css");
 }
 "#,
@@ -91,15 +94,13 @@ pipeline test {
     let receipt = receipt(root.path());
     assert_eq!(receipt["status"], "failed");
     assert_eq!(receipt["outputs"], serde_json::json!([]));
-    assert_eq!(
-        receipt["diagnostics"][0]["code"],
-        "character_limit_exceeded"
-    );
+    assert_eq!(receipt["diagnostics"], serde_json::json!([]));
     assert!(
         receipt["error"]
             .as_str()
             .unwrap()
-            .contains("exactly one root stylesheet")
+            .contains("OutputConflict"),
+        "{receipt}"
     );
     assert!(!fs::read_dir(root.path()).unwrap().any(|entry| {
         entry
@@ -199,11 +200,9 @@ fn receipt_failure_does_not_replace_the_run_outcome() {
 fn themed_build_records_effective_inputs_and_preserves_output_on_failure() {
     let root = fixture(
         r#"
+fn page(c) {publication("page",#{title:"Opening"},[view_component("berlin.introduction@1",#{text:"Personal opening"},#{})])}
 pipeline test {
-    output render_website(
-        assemble_website(parse_markdown(load_markdown("*.md")), parse_feed(load_data("*.csv"))),
-        "public", website_config(#{theme: "theme"})
-    );
+    output render_html(compose(catalog([documents(load_markdown("*.md"))]),Fn("page")),"public",html_config(#{theme:"theme",url:"https://example.test"}));
 }
 "#,
     );
@@ -212,19 +211,29 @@ pipeline test {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, text).unwrap();
     };
+    fs::create_dir_all(root.path().join("theme/defaults")).unwrap();
     write(
-        "theme/defaults/pages/_base.tera",
-        "{% block content %}{% endblock %}",
+        "theme/shared/pages/publications/page.tera",
+        r#"<html><head>{% for s in site.stylesheets %}<link rel="stylesheet" href="{{s}}">{% endfor %}</head><body>{{render_slot(owner=view.id,name="body")}}</body></html>"#,
     );
-    for page in ["index", "notes", "feed", "about"] {
-        write(
-            &format!("theme/shared/pages/{page}.tera"),
-            "{% extends \"_base.tera\" %}{% block content %}Default{% endblock %}",
-        );
-    }
-    write("pages/index.tera", "Personal opening");
     write(
-        "theme/shared/styles/entries/notebook.css",
+        "theme/shared/pages/components/berlin/portfolio.v1.tera",
+        r#"<main><h1>{{publication.title}}</h1>{{render_slot(owner=view.id,name="body")}}</main>"#,
+    );
+    write(
+        "article.md",
+        "---\nid: article\ntitle: Article\n---\nSynthetic body.",
+    );
+    write(
+        "pages/components/berlin/introduction.v1.tera",
+        "<p>{{ props.text }}</p>",
+    );
+    write(
+        "theme/shared/pages/publications/unused.tera",
+        "Unused template",
+    );
+    write(
+        "theme/shared/styles/publications/portfolio.css",
         "@import '../tokens.css';",
     );
     write("theme/shared/styles/tokens.css", ":root { --ink: green; }");
@@ -235,19 +244,20 @@ pipeline test {
         "{}",
         String::from_utf8_lossy(&result.stderr)
     );
-    assert_eq!(
-        fs::read_to_string(root.path().join("public/index.html")).unwrap(),
-        "Personal opening"
+    assert!(
+        fs::read_to_string(root.path().join("public/index.html"))
+            .unwrap()
+            .contains("Personal opening")
     );
     assert!(!root.path().join("assets/css/notebook.css").exists());
     assert!(!root.path().join("pages/feed.tera").exists());
     let report = receipt(root.path());
     let inputs = report["inputs"].as_array().unwrap();
     for path in [
-        "pages/index.tera",
+        "pages/components/berlin/introduction.v1.tera",
         "styles/tokens.css",
-        "theme/shared/pages/feed.tera",
-        "theme/shared/styles/entries/notebook.css",
+        "theme/shared/pages/publications/unused.tera",
+        "theme/shared/styles/publications/portfolio.css",
     ] {
         assert!(
             inputs.iter().any(|input| input["path"] == path),
@@ -260,18 +270,50 @@ pipeline test {
             .any(|input| input["path"] == "theme/shared/styles/tokens.css")
     );
     write(
-        "theme/shared/styles/entries/notebook.css",
+        "theme/shared/styles/publications/portfolio.css",
         "@import 'missing.css';",
     );
     assert!(!build(root.path(), false).status.success());
     assert_eq!(receipt(root.path())["status"], "failed");
-    assert_eq!(
-        fs::read_to_string(root.path().join("public/index.html")).unwrap(),
-        "Personal opening"
+    assert!(
+        fs::read_to_string(root.path().join("public/index.html"))
+            .unwrap()
+            .contains("Personal opening")
     );
     assert!(
-        fs::read_to_string(root.path().join("public/assets/css/notebook.css"))
+        fs::read_to_string(root.path().join("public/assets/css/portfolio.css"))
             .unwrap()
             .contains("--ink:purple")
+    );
+}
+
+#[test]
+fn text_over_limit_keeps_full_output_and_receipt_diagnostics() {
+    let root = fixture(
+        r#"
+fn draft(c) {publication("draft",#{title:"Article"},[view_component("berlin.excerpt@1",#{source:document_excerpt(c,"local:article")},#{})])}
+pipeline test {output render_text(compose(catalog([documents(load_markdown("article.md"))],publication_options(#{source_site_url:"https://example.test"})),Fn("draft")),"public",text_config(#{profile:"linkedin_draft"}));}
+"#,
+    );
+    let body = "x".repeat(3100);
+    fs::write(
+        root.path().join("article.md"),
+        format!("---\nid: article\ntitle: Article\n---\n{body}\n"),
+    )
+    .unwrap();
+    let result = build(root.path(), false);
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(
+        fs::read_to_string(root.path().join("public/publication.txt"))
+            .unwrap()
+            .contains(&body)
+    );
+    assert_eq!(
+        receipt(root.path())["diagnostics"][0]["code"],
+        "character_limit_exceeded"
     );
 }

@@ -105,11 +105,6 @@ fn operation_name(operation: &Operation) -> String {
         Operation::Compose { composer } => format!("compose {}", composer.as_str()),
         Operation::RenderHtml { .. } => "render HTML".into(),
         Operation::RenderText { .. } => "render text".into(),
-        Operation::ComposePublication { composer, .. } => {
-            format!("compose publication ({})", composer.as_str())
-        }
-        Operation::RenderPublicationWebsite { .. } => "render publication website".into(),
-        Operation::RenderPublicationText { .. } => "render publication text".into(),
         Operation::CompileDiagrams { engine } => format!("compile diagrams ({})", engine.program()),
         Operation::LoadLatex { pattern } => format!("load latex {pattern}"),
         Operation::CompilePapers { .. } => "compile papers".into(),
@@ -122,14 +117,10 @@ fn operation_name(operation: &Operation) -> String {
         Operation::ParseMarkdown => "parse markdown".into(),
         Operation::ParseDocuments => "parse semantic documents".into(),
         Operation::MergeDocuments => "merge documents".into(),
-        Operation::ParseFeed => "parse feed".into(),
         Operation::ParseResources { namespace } => format!("parse resources ({namespace})"),
         Operation::MapDocuments { mapper } => format!("map documents ({})", mapper.as_str()),
-        Operation::AssembleWebsite => "assemble website".into(),
         Operation::CompileCss => "compile css".into(),
         Operation::CopyAssets => "copy assets".into(),
-        Operation::RenderWebsite { .. } => "render Website".into(),
-        Operation::RenderLinkedIn => "render LinkedIn".into(),
     }
 }
 

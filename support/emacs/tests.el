@@ -34,6 +34,20 @@
     (should (string-match-p "incomplete" (buffer-string)))
     (should-not (string-match-p "No findings" (buffer-string)))))
 
+(ert-deftest berlin-report-reads-authoring-observations-from-unified-publication ()
+  (with-temp-buffer
+    (berlin-check-mode)
+    (setq berlin-check--project default-directory)
+    (berlin-check--render
+     '((schema_version . 1) (status . "complete") (pipeline . "site")
+       (report (kind . "publication") (schema_version . 2)
+               (authoring (published_documents . 2) (guides . 1) (excluded_drafts . 1)
+                          (findings ((severity . "observation") (code . "not_in_guide")
+                                     (location (document . "note") (source . "file:///note.md"))))))) 0)
+    (should (string-match-p "Published documents: 2; guides: 1; excluded drafts: 1" (buffer-string)))
+    (should (string-match-p "not_in_guide" (buffer-string)))
+    (should (text-property-search-forward 'button))))
+
 (ert-deftest berlin-visit-checks-files-and-unsaved-buffers-before-heading-navigation ()
   (let* ((project (make-temp-file "berlin-editor-" t))
          (file (expand-file-name "note with space.org" project))

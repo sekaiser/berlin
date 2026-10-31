@@ -6,7 +6,7 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::project::Project;
 use anyhow::{Context, Error, bail};
-use berlin_content::{AuthoringOrigin, AuthoringReport, DocumentCollection, OriginHeading};
+use berlin_content::{AuthoringOrigin, AuthoringReport, OriginHeading};
 use berlin_document::Document;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -77,9 +77,10 @@ pub(super) fn store(
     Ok(())
 }
 
-pub(super) fn enrich(
+#[cfg(test)]
+fn enrich(
     project: &Project,
-    documents: &DocumentCollection,
+    documents: &berlin_content::DocumentCollection,
     report: &mut AuthoringReport,
 ) {
     enrich_documents(project, documents.as_slice().iter(), report)
@@ -207,6 +208,7 @@ pub(super) fn digest(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use berlin_content::DocumentCollection;
 
     fn fixture(root: &Path) -> (DocumentCollection, ExportOrigin) {
         let source = root.join("note.org");

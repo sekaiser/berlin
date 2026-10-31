@@ -1,5 +1,15 @@
-<section class="publication-reading-list" id="{{ view.anchor }}">
+<section class="publication-reading-list" id="{{ view.anchor }}" data-reading-list>
   {% if props.title %}<h{{ view.heading_level }}>{{ props.title }}</h{{ view.heading_level }}>{% endif %}
   {% if props.intro %}<p class="publication-reading-intro">{{ props.intro }}</p>{% endif %}
-  <div class="publication-resource-items">{{ render_slot(owner=view.id, name="items") }}</div>
+  <form class="reading-tools" role="search" aria-label="Search references" hidden>
+    <label class="reading-query">Find a reference<input type="search" name="q" placeholder="Title, tag, or a phrase" aria-controls="{{ view.anchor }}-entries" autocomplete="off"></label>
+    <fieldset class="reading-tags" aria-describedby="{{ view.anchor }}-hint">
+      <legend>Tags <span>· match all</span></legend>
+      <p id="{{ view.anchor }}-hint" class="reading-tag-description">Select tags to match all of them. Counts include the current filters.</p>
+      <div class="reading-tag-options"></div>
+    </fieldset>
+    <div class="reading-filter-status"><output aria-live="polite" aria-atomic="true"></output><button type="reset">Clear filters</button></div>
+  </form>
+  <p class="reading-no-results" hidden>No matching references.</p>
+  <div class="publication-resource-items" id="{{ view.anchor }}-entries">{{ render_slot(owner=view.id, name="items") }}</div>
 </section>

@@ -1,16 +1,15 @@
 //! Executes individual pipeline operations using the current runtime context.
 
 use super::{
-    ExecutionOptions, RuntimeArtifact, copy_static, css, feed, load_runtime_sources, org,
-    pattern_base, receipt, website,
+    ExecutionOptions, RuntimeArtifact, copy_static, css, load_runtime_sources, org, pattern_base,
+    receipt,
 };
 use crate::project::Project;
 use crate::util::fs::load_files;
 use anyhow::{Context, Error};
-use berlin_content::{DocumentCollection, WebsiteAssembly};
-use berlin_core::{NodeId, Operation, PipelineNode, WebsiteConfig};
-use berlin_document_linkedin::LinkedInDrafts;
-use std::collections::{HashMap, HashSet};
+use berlin_content::DocumentCollection;
+use berlin_core::{NodeId, Operation, PipelineNode};
+use std::collections::HashMap;
 use std::path::Path;
 
 pub(super) struct NodeExecutor<'a> {
@@ -102,13 +101,9 @@ impl<'a> NodeExecutor<'a> {
                             anyhow::bail!("HTML asset snapshot byte limit exceeded");
                         }
                         let path = root.join(&input.relative);
-                        let logical = crate::util::fs::source_reference(self.project, &path)?;
                         self.consumed_inputs.push(receipt::ConsumedInput::new(
                             path,
-                            format!(
-                                "assets/{}",
-                                logical.to_string_lossy().trim_start_matches('@')
-                            ),
+                            format!("assets/{mount}/{}", input.relative.to_string_lossy()),
                             &input.bytes,
                         ));
                         assets.push((Path::new(mount).join(&input.relative), input.bytes.clone()));
@@ -121,7 +116,7 @@ impl<'a> NodeExecutor<'a> {
                             assembly,
                             config,
                             &self.output_root.join(output_path(node)?),
-                            self.options.dry_run,
+                            self.options,
                             self.consumed_inputs,
                             &assets,
                         )?
@@ -131,7 +126,7 @@ impl<'a> NodeExecutor<'a> {
                         assembly,
                         config,
                         &self.output_root.join(output_path(node)?),
-                        self.options.dry_run,
+                        self.options,
                         self.consumed_inputs,
                         &assets,
                     )?,
@@ -159,68 +154,14 @@ impl<'a> NodeExecutor<'a> {
                 }
                 Ok(None)
             }
-            Operation::ComposePublication { composer, options } => {
-                let documents = self.input(node, 0, |artifact| match artifact {
-                    RuntimeArtifact::Documents(documents) => Some(documents),
-                    _ => None,
-                })?;
-                let assembly = self
-                    .program
-                    .compose_publication(composer, documents, options)
-                    .map_err(|error| anyhow::anyhow!(error.to_string()))?;
-                Ok(Some(RuntimeArtifact::PublicationAssembly(Box::new(
-                    assembly,
-                ))))
-            }
-            Operation::RenderPublicationWebsite { config } => {
-                let assembly = self.input(node, 0, |artifact| match artifact {
-                    RuntimeArtifact::PublicationAssembly(assembly) => Some(assembly),
-                    _ => None,
-                })?;
-                super::composed::website(
-                    self.project,
-                    assembly,
-                    config,
-                    &self.output_root.join(output_path(node)?),
-                    self.options.dry_run,
-                    self.consumed_inputs,
-                    &[],
-                )?;
-                Ok(None)
-            }
-            Operation::RenderPublicationText { config } => {
-                let assembly = self.input(node, 0, |artifact| match artifact {
-                    RuntimeArtifact::PublicationAssembly(assembly) => Some(assembly),
-                    _ => None,
-                })?;
-                let warnings = super::composed::text(
-                    assembly,
-                    config,
-                    &self.output_root.join(output_path(node)?),
-                    self.options.dry_run,
-                    self.consumed_inputs,
-                )?;
-                for warning in warnings {
-                    let berlin_document_linkedin::LinkedInDraftDiagnostic::CharacterLimitExceeded {
-                        limit,
-                        actual,
-                    } = warning;
-                    self.diagnostics.push(receipt::Diagnostic {
-                        node:node.id.to_string(),content_id:String::new(),code:"character_limit_exceeded".into(),
-                        message:format!("LinkedIn draft has {actual} characters; limit is {limit}. Full draft retained."),
-                    });
-                }
-                Ok(None)
-            }
             Operation::LoadLatex { pattern } => Ok(Some(RuntimeArtifact::LatexSources(
                 super::paper::load(self.project, pattern)?,
             ))),
             Operation::CompilePapers { url_prefix } => self.compile_papers(node, url_prefix),
             Operation::CompileDiagrams { engine } => self.compile_diagrams(node, *engine),
-            Operation::LoadOrg { pattern } => Ok(Some(RuntimeArtifact::OrgSources(load_files(
-                self.project,
-                pattern,
-            )?))),
+            Operation::LoadOrg { pattern } => Ok(Some(RuntimeArtifact::OrgSources(
+                load_runtime_sources(self.project, pattern)?,
+            ))),
             Operation::LoadMarkdown { pattern } => Ok(Some(RuntimeArtifact::MarkdownSources(
                 load_runtime_sources(self.project, pattern)?,
             ))),
@@ -233,12 +174,8 @@ impl<'a> NodeExecutor<'a> {
             Operation::ParseMarkdown => self.parse_markdown(node),
             Operation::ParseDocuments => self.parse_documents(node),
             Operation::MergeDocuments => self.merge_documents(node),
-            Operation::ParseFeed => self.parse_feed(node),
             Operation::ParseResources { namespace } => self.parse_resources(node, namespace),
             Operation::MapDocuments { mapper } => self.map_documents(node, mapper),
-            Operation::AssembleWebsite => self.assemble_website(node),
-            Operation::RenderWebsite { config } => self.render_website(node, config),
-            Operation::RenderLinkedIn => self.render_linkedin(node),
             Operation::CompileCss => self.compile_css(node),
             Operation::LoadAssets { pattern } => self.load_assets(pattern),
             Operation::CopyAssets => self.copy_assets(node),
@@ -272,14 +209,6 @@ impl<'a> NodeExecutor<'a> {
         )
         .validated()?;
         Ok(Some(RuntimeArtifact::Documents(documents.into())))
-    }
-
-    fn parse_feed(&self, node: &PipelineNode) -> Result<Option<RuntimeArtifact>, Error> {
-        let sources = self.input(node, 0, |artifact| match artifact {
-            RuntimeArtifact::DataSources(sources) => Some(sources),
-            _ => None,
-        })?;
-        Ok(Some(RuntimeArtifact::Feed(feed::parse(sources)?)))
     }
 
     fn parse_resources(
@@ -333,6 +262,7 @@ impl<'a> NodeExecutor<'a> {
         })?;
         let output = output_path(node)?;
         let names = super::graphics::output_names(sources)?;
+        let mut generated = Vec::new();
         if self.options.dry_run {
             println!(
                 "would compile {} diagram(s) -> {}",
@@ -353,10 +283,17 @@ impl<'a> NodeExecutor<'a> {
                     self.project.root(),
                     self.options.no_cache,
                 )?;
-                std::fs::write(output.join(name), svg)?;
+                std::fs::write(output.join(&name), &svg)?;
+                generated.push(super::graphics::Input {
+                    relative: name.into(),
+                    bytes: svg,
+                });
             }
         }
-        Ok(None)
+        Ok(Some(RuntimeArtifact::StaticSources {
+            source_root: self.project.root().join(output),
+            snapshot: std::sync::Arc::new(generated),
+        }))
     }
 
     fn compile_papers(
@@ -445,62 +382,6 @@ impl<'a> NodeExecutor<'a> {
         Ok(Some(RuntimeArtifact::Documents(documents.into())))
     }
 
-    fn assemble_website(&self, node: &PipelineNode) -> Result<Option<RuntimeArtifact>, Error> {
-        let documents = self.input(node, 0, |artifact| match artifact {
-            RuntimeArtifact::Documents(value) => Some(value),
-            _ => None,
-        })?;
-        let feed = self.input(node, 1, |artifact| match artifact {
-            RuntimeArtifact::Feed(value) => Some(value),
-            _ => None,
-        })?;
-        let website = WebsiteAssembly::new(documents.as_ref().clone(), feed.clone())?;
-        Ok(Some(RuntimeArtifact::WebsiteAssembly(website)))
-    }
-
-    fn render_website(
-        &self,
-        node: &PipelineNode,
-        config: &WebsiteConfig,
-    ) -> Result<Option<RuntimeArtifact>, Error> {
-        let website = self.input(node, 0, |artifact| match artifact {
-            RuntimeArtifact::WebsiteAssembly(value) => Some(value),
-            _ => None,
-        })?;
-        let output = output_path(node)?;
-        if self.options.dry_run {
-            println!("would render website -> {}", output.display());
-        } else {
-            let cache = (!self.options.no_cache)
-                .then(|| super::cache::ArtifactCache::new(self.project.root()));
-            website::render(
-                self.project,
-                website,
-                config,
-                &self.output_root.join(output),
-                cache.as_ref(),
-            )?;
-        }
-        Ok(None)
-    }
-
-    fn render_linkedin(&mut self, node: &PipelineNode) -> Result<Option<RuntimeArtifact>, Error> {
-        let documents = self.input(node, 0, |artifact| match artifact {
-            RuntimeArtifact::Documents(documents) => Some(documents),
-            _ => None,
-        })?;
-        let renderer = berlin_document_linkedin::Renderer::default();
-        let drafts = renderer.render_collection(documents);
-        self.diagnostics.extend(linkedin_diagnostics(node, &drafts));
-        let output = output_path(node)?;
-        if self.options.dry_run {
-            println!("would render linkedin -> {}", output.display());
-        } else {
-            materialize_linkedin_drafts(&self.output_root.join(output), &drafts)?;
-        }
-        Ok(None)
-    }
-
     fn compile_css(&self, node: &PipelineNode) -> Result<Option<RuntimeArtifact>, Error> {
         let sources = self.input(node, 0, |artifact| match artifact {
             RuntimeArtifact::CssSources(sources) => Some(sources),
@@ -579,7 +460,7 @@ impl<'a> NodeExecutor<'a> {
     }
 
     fn export_org(
-        &self,
+        &mut self,
         node: &PipelineNode,
         backend: &str,
         section: &str,
@@ -588,40 +469,25 @@ impl<'a> NodeExecutor<'a> {
             RuntimeArtifact::OrgSources(sources) => Some(sources),
             _ => None,
         })?;
+        let paths = sources
+            .iter()
+            .map(|source| source.path.clone())
+            .collect::<Vec<_>>();
         let output = output_path(node)?;
         Ok(Some(RuntimeArtifact::MarkdownSources(org::export(
             self.project,
             self.output_root,
-            sources,
-            backend,
+            &paths,
             output,
-            section,
-            self.options.dry_run,
+            org::ExportOptions {
+                backend,
+                section,
+                dry_run: self.options.dry_run,
+                captured: Some(sources),
+            },
+            self.consumed_inputs,
         )?)))
     }
-}
-
-fn materialize_linkedin_drafts(output: &Path, drafts: &LinkedInDrafts) -> Result<(), Error> {
-    std::fs::create_dir_all(output)
-        .with_context(|| format!("Unable to create {}", output.display()))?;
-    let mut filenames = HashSet::with_capacity(drafts.len());
-    for draft in drafts.as_slice() {
-        let filename = format!("{}.txt", draft.artifact_name);
-        if !filenames.insert(filename.clone()) {
-            anyhow::bail!(
-                "LinkedIn draft IDs collide at output filename '{}'",
-                filename
-            );
-        }
-        let path = output.join(filename);
-        std::fs::write(&path, format!("{}\n", draft.text))
-            .with_context(|| format!("Unable to write {}", path.display()))?;
-    }
-    let manifest_path = output.join("manifest.json");
-    let manifest = serde_json::to_string_pretty(drafts)?;
-    std::fs::write(&manifest_path, format!("{manifest}\n"))
-        .with_context(|| format!("Unable to write {}", manifest_path.display()))?;
-    Ok(())
 }
 
 fn write_output(output: &Path, contents: &str) -> Result<(), Error> {
@@ -680,33 +546,9 @@ pub(super) fn runtime_input<'a, T>(
     })
 }
 
-fn linkedin_diagnostics(node: &PipelineNode, drafts: &LinkedInDrafts) -> Vec<receipt::Diagnostic> {
-    let mut diagnostics = Vec::new();
-    for draft in drafts.as_slice() {
-        for diagnostic in &draft.diagnostics {
-            match diagnostic {
-                berlin_document_linkedin::LinkedInDraftDiagnostic::CharacterLimitExceeded {
-                    limit,
-                    actual,
-                } => diagnostics.push(receipt::Diagnostic {
-                    node: node.id.as_str().into(),
-                    content_id: draft.source.0.0.clone(),
-                    code: "character_limit_exceeded".into(),
-                    message: format!(
-                        "LinkedIn feed post has {actual} characters; limit is {limit}"
-                    ),
-                }),
-            }
-        }
-    }
-
-    diagnostics
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use berlin_content::Feed;
 
     #[test]
     fn asset_load_freezes_bytes_before_later_render_or_copy() {
@@ -773,23 +615,44 @@ mod tests {
                 NodeId::from("documents"),
                 RuntimeArtifact::Documents(DocumentCollection::default().into()),
             ),
-            (NodeId::from("feed"), RuntimeArtifact::Feed(Feed::default())),
+            (
+                NodeId::from("resources"),
+                RuntimeArtifact::ExternalResources(Default::default()),
+            ),
         ]);
-        let valid = PipelineNode::new("assembly", Operation::AssembleWebsite)
-            .depends_on("documents")
-            .depends_on("feed");
+        let valid = PipelineNode::new(
+            "assembly",
+            Operation::AssembleCatalog {
+                parts: vec![
+                    berlin_core::ArtifactKind::Documents,
+                    berlin_core::ArtifactKind::ExternalResources,
+                ],
+                options: Box::default(),
+            },
+        )
+        .depends_on("documents")
+        .depends_on("resources");
         assert!(document_input(&valid, &artifacts).is_ok());
         assert!(
             runtime_input(&valid, &artifacts, 1, |artifact| match artifact {
-                RuntimeArtifact::Feed(feed) => Some(feed),
+                RuntimeArtifact::ExternalResources(resources) => Some(resources),
                 _ => None,
             })
             .is_ok()
         );
 
-        let reversed = PipelineNode::new("assembly", Operation::AssembleWebsite)
-            .depends_on("feed")
-            .depends_on("documents");
+        let reversed = PipelineNode::new(
+            "assembly",
+            Operation::AssembleCatalog {
+                parts: vec![
+                    berlin_core::ArtifactKind::Documents,
+                    berlin_core::ArtifactKind::ExternalResources,
+                ],
+                options: Box::default(),
+            },
+        )
+        .depends_on("resources")
+        .depends_on("documents");
         let error = document_input(&reversed, &artifacts)
             .unwrap_err()
             .to_string();
@@ -801,7 +664,16 @@ mod tests {
     #[test]
     fn reports_missing_dependencies_and_runtime_values() {
         let artifacts = HashMap::new();
-        let node = PipelineNode::new("assembly", Operation::AssembleWebsite);
+        let node = PipelineNode::new(
+            "assembly",
+            Operation::AssembleCatalog {
+                parts: vec![
+                    berlin_core::ArtifactKind::Documents,
+                    berlin_core::ArtifactKind::ExternalResources,
+                ],
+                options: Box::default(),
+            },
+        );
         assert!(
             document_input(&node, &artifacts)
                 .unwrap_err()

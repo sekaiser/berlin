@@ -31,9 +31,12 @@ branch. Social-platform API publishing is not implemented.
 ## Content flow
 
 ```text
-Org ──ox-hugo──> Markdown ──parser──> DocumentCollection ──> LinkedIn drafts
-                                           │
-CSV ──feed parser──> Feed ─────────────────┴──> WebsiteAssembly ──> HTML pages
+Org / Markdown / LaTeX → DocumentCollection ┐
+YAML / CSV → ExternalResourceCollection ────┴→ PublicationCatalog
+                                              → queries / curation
+                                              → Rust or Rhai composition
+                                              → PublicationAssembly or SiteAssembly
+                                              → Tera HTML / direct text
 ```
 
 Org export is optional. The batch exporter in
@@ -52,29 +55,26 @@ Parsing and collection validation are fallible. Publishable collections require
 explicit, unique content IDs; the parser's source-URI fallback is insufficient.
 Publication and modification dates use `YYYY-MM-DD`, not timestamps.
 
-`WebsiteAssembly` excludes drafts and combines the published documents and feed
-with publication ordering, a shared tag index, and contextual backlinks derived
-from authored document links. IDs resolve to website URLs only during rendering;
-references to documents outside the publication fail assembly. See
-[Document references](docs/document-references.md). Publication ordering is newest first, with
-missing dates last and content IDs breaking ties. Feed items have URL-based IDs
-and remain separate from documents. Invalid CSV records and URLs fail parsing.
+`PublicationCatalog` excludes drafts before indexing eligible metadata. It keeps
+the full eligible local collection for link validation, separately from any
+selected portfolio subset. Local and external identities are tagged. External
+resources have metadata and original URLs, but no invented semantic bodies.
+No external page is fetched during ingestion or rendering.
 
-`PublicationAssembly` is an alternative output path, not a filtered
-`WebsiteAssembly`. An immutable catalog retains the full prepared source
-collection. Queries/curation select references into it; structural excerpts
-retain their source identity while each placement receives an occurrence ID.
-Links to unselected original work resolve against the catalog's source-site URL,
-independently of the new publication's destination URL.
+`compose` invokes a named one-argument Rhai composer after catalog preparation.
+Rust builders and `view!` construct the same normalized component specification.
+`PublicationAssembly` resolves one composition; `SiteAssembly` resolves explicit
+page entries, source-document routes, tags, search and redirects through one
+collision-checked route registry. Original source URLs and destination URLs are
+separate. Repeated excerpts share source content and receive distinct placement
+anchors.
 
-`compose_publication` invokes a named one-argument Rhai composer after document
-mapping. Rust builders and `view!` construct the same normalized specification.
-One frozen registry supplies property, slot and channel validation. HTML uses
-ordinary theme templates and a per-render fragment store;
-`render_slot(owner=view.id, name="body")` consumes only renderer-created content.
-Direct text rendering walks semantic content without stripping HTML. Public
-manifests separate composition identity from presentation inputs and use captured
-input bytes. See [Composable publications](docs/composable-publications.md).
+One frozen component registry supplies property, slot and channel validation.
+HTML uses Tera and a session-local fragment store;
+`render_slot(owner=view.id, name="body")` consumes renderer-created content.
+Direct text walks semantic content without stripping HTML. Public manifests
+separate composition identity from presentation inputs and inventories of final
+output bytes. See [Unified publications](docs/unified-publications.md).
 
 ## Pipeline construction and execution
 
@@ -94,7 +94,7 @@ includes the declared source roots without watching generated receipts.
 Rhai receives typed artifact handles and a limited document API. Document mappers
 can edit exposed metadata and map sections, but cannot change document identity
 or provenance. Mapped collections are validated before use. The engine limits
-operations, call depth, expression depth, array sizes, and string sizes; direct
+operations, call depth, expression depth, array sizes, and string sizes. Native graph materialization has a cumulative 64 MiB encoded-byte budget checked before copies; configuration handles share immutable payloads. Direct
 I/O functions are not exposed by Berlin.
 Rhai's default filesystem module resolver is replaced with a disabled resolver,
 and `import` is rejected. Shared helpers belong to explicitly selected pipeline
@@ -155,26 +155,21 @@ semantic documents, preserving TeX's label numbers. Paper TikZ pictures and PDF
 figures become SVG assets for HTML. External commands have deadlines, bounded
 captured output and Unix process-group cleanup. `merge_documents` combines
 these with other inputs. PDFs, figure assets and HTML share the output transaction;
-declared dependency edits are watched without manual import steps. `parse_documents`
+declared dependency edits are watched without manual import steps. `documents(load_data(...))`
 also accepts independently prepared semantic JSON.
 See [LaTeX papers](docs/papers.md) for the supported profile and trust boundary.
 
-The website task supplies projected metadata and rendered document bodies to
-Tera templates in the project's `pages/` directory. Template names and page
-families are fixed by [the website task](cli/tasks/website.rs). Routes are derived
-from titles and tags, checked for collisions, and validated at the write boundary.
-Website settings come from `website_config(...)`, passed to `render_website`.
-Articles can opt into discussions through boolean `comments` metadata. Website
-configuration and the stable-ID template contract are described in
-[Article discussions](docs/article-comments.md); themes control the actual embed.
+`render_html` accepts a single composition or a site. Source-document pages
+reuse the semantic HTML renderer for highlighted code, MathML, figures, links
+and backlinks, then insert the result through renderer-owned Tera slots. Article
+metadata may opt into discussions. The destination URL and local theme belong
+to `html_config`; source publication URLs belong to catalog options.
 
-Tera escapes context values. Rendered document HTML is marked safe, and raw HTML
-in documents is preserved. Content and templates must therefore be trusted.
-
-The LinkedIn renderer produces text drafts with character-limit diagnostics;
-the CLI writes the draft files and a JSON manifest. Collection rendering excludes
-draft documents and reports overlong posts without truncating them. Rendering a
-single document permits draft previews.
+Tera escapes ordinary context. Arbitrary `safe` insertion and unowned slots are
+rejected in composed presentations. Trusted author HTML is preserved on full
+source-document pages; portable excerpts reject it. The independent `render_text`
+operation supports plain text and a LinkedIn draft profile, preserving overlong
+text with diagnostics. It never submits the result remotely.
 
 CSS compilation and static asset copying are available as separate pipeline operations.
 The CSS operation bundles imports and minifies authored styles through Lightning
@@ -182,10 +177,10 @@ CSS. It requires no separate Node-based CSS generator.
 
 The local [notebook theme](themes/notebook/README.md) supplies templates,
 design tokens, component styles and progressive client controls for these page
-families. `website_config.theme` selects a local directory at rendering time;
+compositions. `html_config.theme` selects a local directory at rendering time;
 content assembly remains independent of presentation. Project files override
-theme shared files and defaults. The themed render operation bundles the effective
-CSS entries from `styles/entries/*.css` into `assets/css/` and stages static
+theme shared files and defaults. The themed render operation bundles only bound CSS entries from
+`styles/publications/` (falling back to `styles/entries/`) into `assets/css/` and stages static
 assets alongside pages, without modifying sources. Supporting styles remain
 source-only; templates select which compiled entries each page loads.
 Effective theme inputs are recorded in receipts and watched by the preview server.
@@ -268,8 +263,8 @@ shared LinkedIn renderer's diagnostics without fabricating semantic articles.
 Plans contain release identities, public titles/URLs, revision hashes, and draft
 text, not source bodies. Preview is read-only; explicit export creates a new
 directory and never overwrites an existing review. It neither checks live state
-nor publishes, schedules, or records social posts. The full-document Rhai
-`render_linkedin` operation remains separate.
+nor publishes, schedules, or records social posts. Complete-document draft compositions use `render_text`, separately from
+release-announcement drafts.
 
 `announcement review`, `record`, and `status` add a local manual-posting workflow
 to those exports. Exact-text approval IDs bind the account, release pair and

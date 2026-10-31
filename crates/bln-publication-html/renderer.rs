@@ -257,7 +257,13 @@ impl PublicationHtmlRenderer {
         }
         crate::audit::audit(&self.tera, page_template)
             .map_err(|e| template_error(Code::TemplateContextFailure, page_template, e))?;
-        let site_value = json!({"url":mount.as_str().trim_end_matches('/'), "title":site.title, "author":site.author, "stylesheets":stylesheets.iter().map(|entry| mount.join(&format!("assets/css/{entry}")).map(|u| u.to_string())).collect::<std::result::Result<Vec<_>, _>>().map_err(|e| error(Code::UnsafeUrl,e.to_string()))?});
+        let mut site_value = json!({"url":mount.as_str().trim_end_matches('/'), "title":site.title, "author":site.author, "stylesheets":stylesheets.iter().map(|entry| mount.join(&format!("assets/css/{entry}")).map(|u| u.to_string())).collect::<std::result::Result<Vec<_>, _>>().map_err(|e| error(Code::UnsafeUrl,e.to_string()))?});
+        // One explicit presentation hint for components in a site. Do not leak
+        // the surrounding template's arbitrary context into component scopes.
+        if let Some(path) = extra_context.and_then(|context| context.get("page_path")) {
+            site_value["page_path"] = path.clone();
+        }
+
         let state = Arc::new(Mutex::new(SlotStore::new(
             assembly.catalog().limits().fragment_bytes,
         )));

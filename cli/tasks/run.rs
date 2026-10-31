@@ -85,15 +85,7 @@ impl<'a> PipelineRun<'a> {
             .load(self.pipeline)
             .map_err(|error| anyhow::anyhow!(error.to_string()))?;
         plan.validate()?;
-        if plan.nodes().iter().any(|node| {
-            matches!(
-                node.operation,
-                berlin_core::Operation::ComposePublication { .. }
-                    | berlin_core::Operation::Compose { .. }
-            )
-        }) {
-            self.consumed_inputs = inputs;
-        }
+        self.consumed_inputs = inputs;
         if !self.options.dry_run
             && !self.options.allow_tex
             && plan.nodes().iter().any(|node| {
@@ -140,13 +132,11 @@ impl<'a> PipelineRun<'a> {
     }
 
     fn execute(&mut self, prepared: &PreparedPipeline) -> Result<(), Error> {
-        let composed = prepared.plan.nodes().iter().any(|node| {
-            matches!(
-                node.operation,
-                berlin_core::Operation::ComposePublication { .. }
-                    | berlin_core::Operation::Compose { .. }
-            )
-        });
+        let composed = prepared
+            .plan
+            .nodes()
+            .iter()
+            .any(|node| matches!(node.operation, berlin_core::Operation::Compose { .. }));
         for node in prepared.plan.topological_order()? {
             let artifact = NodeExecutor {
                 consumed_inputs: &mut self.consumed_inputs,

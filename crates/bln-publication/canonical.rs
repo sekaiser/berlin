@@ -6,7 +6,7 @@ use crate::{Code, Diagnostic, Result, Stage};
 
 /// Validate serialized storage before copying a semantic payload. Counts bytes
 /// without allocating another representation of the input.
-pub(crate) fn encoded_size(value: &impl Serialize, limit: usize) -> Result<usize> {
+pub fn encoded_size(value: &impl Serialize, limit: usize) -> Result<usize> {
     struct Counter {
         bytes: usize,
         limit: usize,

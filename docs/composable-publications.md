@@ -5,6 +5,9 @@ Source documents remain the source of truth. A portfolio can show metadata cards
 curated annotations and selected sections without copying articles into another
 authoring model. Rust and Rhai create the same channel-neutral representation.
 
+See [the unified catalog and site guide](unified-publications.md) for external
+resources and multipage composition.
+
 ## Run the synthetic examples
 
 From the repository root:
@@ -51,11 +54,11 @@ fn selected_work(catalog) {
 }
 
 pipeline portfolio {
-    let documents = parse_markdown(load_markdown("content/*.md"));
-    let composed = compose_publication(documents, Fn("selected_work"),
+    let sources = catalog([documents(load_markdown("content/*.md"))],
         publication_options(#{source_site_url: "https://example.test/notebook"}));
-    output render_publication_website(composed, "_portfolio",
-        website_config(#{theme: "@notebook", url: "https://example.test/portfolio"}));
+    let composed = compose(sources, Fn("selected_work"));
+    output render_html(composed, "_portfolio",
+        html_config(#{theme: "@notebook", url: "https://example.test/portfolio"}));
 }
 ```
 
@@ -69,11 +72,11 @@ captured program inputs. Select shared helper code through repeatable
 `--pipeline-file` arguments instead; those files are compiled together and
 captured in receipts and render fingerprints.
 
-Use a second pipeline and `render_publication_text(composed, "_text",
+Use a second pipeline and `render_text(composed, "_text",
 text_config(#{profile: "plain"}))` for text. Separate output roots belong to
 separate runs; a transaction still owns one output root. Composed renderers own
 their entire output directory, including assets and manifests. Do not place
-another output operation inside that directory.
+another independent output operation inside that directory. Declared upstream paper and diagram producers may occupy disjoint subdirectories; collisions fail before installation.
 
 ## Select and reference work
 
@@ -112,15 +115,14 @@ or derived through Berlin's existing article-route rules.
 
 ## Presentation and lifecycle
 
-The seven [component contracts](component-contracts.md) support HTML and text.
+The [component contracts](component-contracts.md) support HTML and text.
 [Rust builders and `view!`](view-macro.md) offer typed composition. Rhai shares
 their schema validation and budgets. [Tera presentations](tera-components.md)
 remain replaceable local theme files. Publication metadata controls the page
 title; `WebsiteConfig.title` is site identity and cannot overwrite it.
 
 `check` validates permitted source preparation, composition, references, channel
-support and an in-memory render. It validates required CSS entry declarations;
-CSS compilation remains a build-stage check because it needs a merged workspace.
+support and an in-memory render. It compiles the required CSS import closure from captured bytes in memory.
 `build --dry-run` also avoids outputs, receipts and temporary theme workspaces.
 Neither command exports Org or imports papers as a substitute for missing
 generated source inputs. Run those preparation pipelines explicitly first.
@@ -133,8 +135,7 @@ excludes generated output and receipts.
 Builds use existing confinement, locks, staging and recoverable installation.
 This is not a promise of an uninterrupted atomic switch for concurrent readers.
 HTML outputs can use existing offline `release` and verification. Their
-`publication.json` is bound through the exact release bundle; they do not claim
-the original-work routes as local legacy document inventory. Imported directory
+`publication.json` is bound through the exact release bundle; a multipage site records only its generated local document routes in the release document inventory. Single portfolios do not claim original-work routes as generated pages. Imported directory
 releases retain byte-bundle semantics without inferred build provenance. Remote
 publication still requires Berlin's separate explicit release confirmation flow.
 

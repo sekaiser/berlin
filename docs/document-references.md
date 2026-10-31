@@ -21,7 +21,7 @@ targets without IDs retain their existing URL rendering but do not gain backlink
 
 ## Publication scope
 
-`WebsiteAssembly` excludes drafts before deriving its ordering, tags and reference
+`PublicationCatalog` excludes drafts before deriving its ordering, tags and reference
 index. Only documents in that publication can supply backlink titles and excerpts.
 A reference from a published document to an absent or draft target fails assembly;
 the error identifies the source URI, generated reference anchor, and target ID.

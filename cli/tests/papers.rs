@@ -7,7 +7,14 @@ use std::{
 
 fn run(root: &Path, args: &[&str], tools: bool) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_bln"));
-    command.current_dir(root).env("BERLIN_DIR", root).args(args);
+    command
+        .current_dir(root)
+        .env("BERLIN_DIR", root)
+        .env(
+            "BERLIN_THEME_DIR",
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../themes"),
+        )
+        .args(args);
     if !tools {
         command.env("PATH", root.join("no-tools"));
     }
@@ -27,35 +34,32 @@ fn fixture() -> tempfile::TempDir {
     for dir in [
         "content",
         "paper/assets/papers",
-        "pages/notes",
-        "pages/tags",
+        "pages/publications",
+        "static",
     ] {
         fs::create_dir_all(root.path().join(dir)).unwrap();
     }
-    for (name, body) in [
-        (
-            "index.tera",
-            "{% for a in articles %}{{a.title}}{% endfor %}",
-        ),
-        ("notes.tera", "Notes"),
-        ("feed.tera", "Reading"),
-        ("about.tera", "About"),
-        ("tags/base.tera", "Tags"),
-        ("notes/[slug].tera", "{{render()}}"),
-    ] {
-        fs::write(root.path().join("pages").join(name), format!("<link rel='canonical' href='{{{{config_site_url | safe}}}}{{{{page_path | safe}}}}'>{body}")).unwrap();
-    }
-    fs::write(root.path().join("feed.csv"), "Title,URL,Date,Tags\n").unwrap();
+    fs::write(root.path().join("static/style.css"), "body {color:green}").unwrap();
+    fs::write(
+        root.path().join("pages/publications/site_page.tera"),
+        include_str!("support/minimal-site.tera"),
+    )
+    .unwrap();
+    fs::write(
+        root.path().join("pages/publications/document.tera"),
+        include_str!("support/minimal-document.tera"),
+    )
+    .unwrap();
     fs::write(root.path().join("content/note.md"),"---\nid: note\ntitle: Ordinary note\nauthor: [Author]\ndescription: Ordinary note\ndate: 2026-09-09\n---\nExisting content.\n").unwrap();
-    fs::write(root.path().join("berlin.pipeline.rhai"),r#"
+    fs::write(root.path().join("berlin.pipeline.rhai"),concat!(include_str!("support/notebook.rhai"),r#"
 pipeline site {
-    let paper = parse_documents(named(load_data("paper/document.json"), "paper_sources"));
-    let notes = parse_markdown(load_markdown("content/*.md"));
-    let documents = merge_documents(notes, paper);
-    output render_website(assemble_website(documents, parse_feed(load_data("feed.csv"))), "_site", website_config(#{url: "https://example.com/notebook"}));
-    output copy_assets(load_assets("paper/assets/papers/*.pdf"), "_site/papers");
+    let paper = documents(named(load_data("paper/document.json"), "paper_sources"));
+    let notes = documents(load_markdown("content/*.md"));
+    let sources=catalog([notes,paper],publication_options(#{source_site_url:"https://example.com/notebook"}));
+    output render_html(compose(sources,Fn("notebook")),"_site",html_config(#{theme:"@notebook",url:"https://example.com/notebook"}))
+        .with_assets(load_assets("paper/assets/papers/*.pdf"),"papers");
 }
-"#).unwrap();
+"#)).unwrap();
     root
 }
 
@@ -157,21 +161,15 @@ fn latex_fixture() -> tempfile::TempDir {
         include_str!("../../support/fixtures/papers/references.bib"),
     )
     .unwrap();
-    fs::write(
-        root.path().join("berlin.pipeline.rhai"),
-        r#"
+    fs::write(root.path().join("berlin.pipeline.rhai"),concat!(include_str!("support/notebook.rhai"),r#"
 pipeline site {
-    let papers = compile_papers(load_latex("papers/*.tex"), "_site/papers");
-    let notes = parse_markdown(load_markdown("content/*.md"));
-    output render_website(
-        assemble_website(merge_documents(notes, papers), parse_feed(load_data("feed.csv"))),
-        "_site", website_config(#{url: "https://notebook.example.org"}))
+    let papers=compile_papers(load_latex("papers/*.tex"),"_site/papers");
+    let notes=documents(load_markdown("content/*.md"));
+    let sources=catalog([notes,papers],publication_options(#{source_site_url:"https://notebook.example.org"}));
+    output render_html(compose(sources,Fn("notebook")),"_site",html_config(#{theme:"@notebook",url:"https://notebook.example.org"}))
         .deploy_to(github_pages("example/notebook"));
 }
-
-"#,
-    )
-    .unwrap();
+"#)).unwrap();
     root
 }
 fn advanced_fixture() -> tempfile::TempDir {

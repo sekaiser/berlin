@@ -14,6 +14,15 @@ fn templates() -> BTreeMap<String, String> {
         "publications/page.tera".into(),
         std::fs::read_to_string(root.join("publications/page.tera")).unwrap(),
     );
+    for extra in [
+        "partials/engineering-desk.tera",
+        "macros/notebook_entry_layout.tera",
+    ] {
+        files.insert(
+            extra.into(),
+            std::fs::read_to_string(root.join(extra)).unwrap(),
+        );
+    }
     for name in [
         "portfolio",
         "section",
@@ -139,7 +148,7 @@ fn measure(label: &str, sources: usize, repeats: usize, depth: usize) {
         .unwrap();
     assert_eq!(rendered.metrics.template_snapshots_parsed, 1);
     assert_eq!(rendered.metrics.environments_prepared, 1);
-    assert_eq!(rendered.metrics.templates_parsed, 8);
+    assert_eq!(rendered.metrics.templates_parsed, 10);
     assert_eq!(
         rendered.metrics.components_rendered,
         assembly.placements().len()

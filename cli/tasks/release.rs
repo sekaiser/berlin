@@ -9,9 +9,7 @@ use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, Error, bail};
-use berlin_core::{
-    DeploymentTarget, NodeId, Operation, PipelineLoader as _, PipelineNode, PipelinePlan,
-};
+use berlin_core::{DeploymentTarget, NodeId, PipelineLoader as _, PipelineNode, PipelinePlan};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use url::Url;
@@ -68,40 +66,17 @@ pub(super) fn seal(
             .as_ref()
             .context("website has no output directory")?,
     );
-    let documents = if matches!(node.operation, Operation::RenderHtml { .. }) {
-        let composed =
-            super::executor::runtime_input(node, artifacts, 0, |artifact| match artifact {
-                super::RuntimeArtifact::Composed(composed) => Some(composed),
-                _ => None,
-            })?;
-        match composed {
-            berlin_publication::ComposedArtifact::Site(site) => {
-                Some(DocumentInventory::from_site(site)?)
-            }
-            berlin_publication::ComposedArtifact::Single(_) => None,
+    let composed = super::executor::runtime_input(node, artifacts, 0, |artifact| match artifact {
+        super::RuntimeArtifact::Composed(composed) => Some(composed),
+        _ => None,
+    })?;
+    let documents = match composed {
+        berlin_publication::ComposedArtifact::Site(site) => {
+            Some(DocumentInventory::from_site(site)?)
         }
-    } else if matches!(node.operation, Operation::RenderPublicationWebsite { .. }) {
-        // Original-work routes are outside this portfolio. Its own manifest is
-        // part of the exact sealed bundle; never invent legacy document routes.
-        None
-    } else {
-        let website =
-            super::executor::runtime_input(node, artifacts, 0, |artifact| match artifact {
-                super::RuntimeArtifact::WebsiteAssembly(website) => Some(website),
-                _ => None,
-            })?;
-        Some(DocumentInventory::from_website(website)?)
+        berlin_publication::ComposedArtifact::Single(_) => None,
     };
-    let limits = if matches!(node.operation, Operation::RenderHtml { .. }) {
-        let composed =
-            super::executor::runtime_input(node, artifacts, 0, |artifact| match artifact {
-                super::RuntimeArtifact::Composed(composed) => Some(composed),
-                _ => None,
-            })?;
-        Some(composed.catalog().limits())
-    } else {
-        None
-    };
+    let limits = Some(composed.catalog().limits());
     seal_output(project, pipeline, node, &source, documents, limits)
 }
 

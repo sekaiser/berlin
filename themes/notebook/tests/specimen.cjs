@@ -18,12 +18,13 @@ function buildSpecimen(variant, url = 'https://notebook.example/notebook') {
       fs.cpSync(path.join(__dirname, 'fixtures/stress'), root, {recursive: true});
     } else {
       fs.mkdirSync(path.join(root, 'content/notes'), {recursive: true});
-      fs.writeFileSync(path.join(root, 'data/feed.csv'), 'Title,Url,Date Added,Manual Tags,Annotation\n');
+      fs.writeFileSync(path.join(root, 'data/resources.yaml'), 'schema_version: 1\nresources: []\n');
     }
     const config = path.join(root, 'berlin.pipeline.rhai');
     fs.writeFileSync(config, fs.readFileSync(config, 'utf8')
       .replace('"themes/notebook"', JSON.stringify(theme))
-      .replace('http://localhost:8082', url));
+      .replaceAll('http://localhost:8082', url)
+      .replace(variant === 'empty' ? 'documents(load_markdown("content/notes/*.md")),' : '__unused__', ''));
     const result = spawnSync(process.env.BERLIN_TEST_BINARY || path.join(repository, 'target/debug/bln'),
       ['build', '--pipeline', 'site'], {env: {...process.env, BERLIN_DIR: root}, encoding: 'utf8'});
     if (result.status !== 0) throw new Error(result.error?.message || result.stderr || `Build exited ${result.status}`);

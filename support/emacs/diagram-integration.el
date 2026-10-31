@@ -60,11 +60,12 @@
 (defun berlin-diagram-test-build (project binary)
   "Build PROJECT through the real BINARY and notebook theme."
   (with-temp-file (expand-file-name "berlin.pipeline.rhai" project)
+    (insert-file-contents (expand-file-name "cli/tests/support/notebook.rhai" berlin-diagram-repository))
+    (goto-char (point-max))
     (insert (format
-             "pipeline site {
-  let website = assemble_website(parse_markdown(load_markdown(\"content/notes/*.md\")), parse_feed(load_data(\"data/feed.csv\")));
-  output render_website(website, \"_site\", website_config(#{ theme: %S, url: \"http://localhost:8093\", title: \"Diagram specimen\", author: \"Example Author\", description: \"Synthetic diagram acceptance\" }));
-  output copy_assets(load_assets(\"static/attachments/**/*\"), \"_site/attachments\");
+             "\npipeline site {
+  let sources=catalog([documents(load_markdown(\"content/notes/*.md\"))],publication_options(#{source_site_url:\"https://example.test\"}));
+  output render_html(compose(sources,Fn(\"notebook\")),\"_site\",html_config(#{theme:%S,url:\"https://example.test\",title:\"Diagram specimen\",author:\"Example Author\",description:\"Synthetic diagram acceptance\"}));
 }" (expand-file-name "themes/notebook" berlin-diagram-repository))))
   (let ((default-directory project)
         (process-environment (copy-sequence process-environment)))

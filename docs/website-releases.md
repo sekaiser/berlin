@@ -10,11 +10,11 @@ change its default branch, or run on `build`, `plan`, `check`, or `serve`.
 Attach a destination to the existing website output in your Rhai pipeline:
 
 ```rhai
-output render_website(website, "_site", presentation)
+output render_html(website, "_site", presentation)
     .deploy_to(github_pages("owner/notebook"));
 ```
 
-`presentation` must declare the actual public HTTPS URL in `website_config`.
+`presentation` must declare the actual public HTTPS URL in `html_config`.
 For example, `https://owner.github.io/notebook` for repository Pages, or your
 custom domain. The URL and repository are part of the release identity.
 Deployment is typed graph metadata; evaluating the declaration performs no I/O.
@@ -202,7 +202,7 @@ Each document records its ID, public title, route, and two SHA-256 fingerprints:
 - **Metadata:** its complete typed metadata, including description, tags, authored
   dates, authors, preview references, slugs, and comments setting.
 
-These are derived from the exact `WebsiteAssembly` supplied to the selected
+These are derived from the resolved local-document routes in the exact `SiteAssembly` supplied to the selected
 renderer, after mappings and draft exclusion. Neither fingerprint includes
 provenance paths, raw source hashes, templates, CSS, generated HTML, derived
 backlinks, or build timestamps. Moving a source file or changing a YAML comment
@@ -291,7 +291,7 @@ directory for inspection and reports an incomplete export; Berlin does not delet
 its contents or retry over it. Choose a fresh directory if you need another export.
 
 This command consumes sealed release artifacts. It does not change the existing
-Rhai `render_linkedin` operation, which projects complete documents into local
+`render_text` compositions, which project complete structural excerpts into local
 drafts rather than announcing changes between releases.
 
 ## Publish explicitly

@@ -18,7 +18,7 @@ mod resources;
 mod site;
 
 pub use assembly::*;
-pub use canonical::{canonical_bytes, fingerprint, input_digest};
+pub use canonical::{canonical_bytes, encoded_size, fingerprint, input_digest};
 pub use catalog::*;
 pub use components::*;
 pub use diagnostic::{Code, Diagnostic, Result, Stage};

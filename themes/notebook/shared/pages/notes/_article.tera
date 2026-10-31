@@ -1,6 +1,6 @@
 {% extends "_notebook.tera" %}
 {% import "macros/tag.tera" as tags %}
-{# Shared reading layout. Editorial overrides belong in notes/[slug].tera;
+{# Shared reading layout. Project overrides use publications/document.tera;
    introductions and contents lists are authored in the Org document. #}
 {% block page_styles %}
   {{ super() }}

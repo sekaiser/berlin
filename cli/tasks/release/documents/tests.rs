@@ -1,5 +1,5 @@
 use super::*;
-use berlin_content::{DocumentCollection, Feed};
+use berlin_content::DocumentCollection;
 use berlin_document::{Inline, Metadata, Provenance, SourceFormat};
 
 fn document() -> Document {
@@ -74,15 +74,43 @@ fn inventory_uses_only_public_documents_in_stable_id_order() {
     let first = document();
     let mut second = first.clone();
     second.id.0 = "a-note".into();
+    second.metadata.slug = Some("a-note".into());
     let mut draft = first.clone();
     draft.id.0 = "private-id".into();
     draft.metadata.draft = true;
-    let website = WebsiteAssembly::new(
+    let catalog = berlin_publication::PublicationCatalog::new(
         DocumentCollection::new(vec![first, draft, second]),
-        Feed::default(),
+        berlin_publication::PublicationOptions {
+            source_site_url: Some("https://example.test".parse().unwrap()),
+            ..Default::default()
+        },
     )
     .unwrap();
-    let inventory = DocumentInventory::from_website(&website).unwrap();
+    let mut spec =
+        berlin_publication::SiteSpec::new(berlin_publication::PublicationId("test".into()), "Test");
+    spec.add_page(
+        "home",
+        "index.html",
+        berlin_publication::PublicationSpec::new(
+            berlin_publication::PublicationMetadata {
+                id: berlin_publication::PublicationId("home".into()),
+                title: "Home".into(),
+                description: None,
+            },
+            berlin_publication::Component::into_call(berlin_publication::Introduction {
+                text: "Synthetic home".into(),
+            }),
+        )
+        .unwrap(),
+    );
+    spec.add_document_pages(Default::default(), "notes");
+    let site = berlin_publication::SiteAssembly::resolve(
+        &spec,
+        catalog,
+        &berlin_publication::ComponentRegistry::builtins(),
+    )
+    .unwrap();
+    let inventory = DocumentInventory::from_site(&site).unwrap();
     assert_eq!(
         inventory
             .entries

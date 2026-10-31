@@ -1,7 +1,10 @@
 <article class="publication-portfolio" id="{{ view.anchor }}">
   <header class="publication-opening">
+    <div>
     <h1>{{ publication.title }}</h1>
     {% if publication.description %}<p>{{ publication.description }}</p>{% endif %}
+    </div>
+    {% if site.page_path is defined and site.page_path == "/" %}<figure class="journal-desk">{% include "partials/engineering-desk.tera" %}</figure>{% endif %}
   </header>
   {{ render_slot(owner=view.id, name="body") }}
 </article>

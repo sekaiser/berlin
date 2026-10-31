@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "resources": [
+    {
+      "id": "stress-reference-1",
+      "kind": "article",
+      "title": "A reference without tags",
+      "url": "https://example.com/untagged",
+      "added": "2026-09-04",
+      "topics": []
+    },
+    {
+      "id": "stress-reference-2",
+      "kind": "article",
+      "title": "A deliberately long saved reference title that must wrap without colliding with the saved date or widening a narrow collection page",
+      "url": "https://example.com/many-tags",
+      "added": "2026-09-05",
+      "topics": [
+        "design",
+        "systems",
+        "parsing",
+        "rendering",
+        "publishing",
+        "performance",
+        "reliability",
+        "accessibility",
+        "architecture",
+        "testing",
+        "rust",
+        "markdown",
+        "diagrams",
+        "typography",
+        "navigation",
+        "collections",
+        "references",
+        "workflows",
+        "local-first",
+        "configuration"
+      ]
+    }
+  ]
+}

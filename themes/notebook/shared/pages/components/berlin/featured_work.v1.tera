@@ -1,8 +1,14 @@
-<article class="publication-work" id="{{ view.anchor }}">
+{% import "macros/notebook_entry_layout.tera" as entry_layout %}
+{% set preview_side = entry_layout::preview_side(target=props.source.url | replace(from=config_site_url,to="")) | trim %}
+<article class="publication-work journal-entry{% if preview_side == 'right' %} journal-entry--preview-right{% endif %}" id="{{ view.anchor }}">
+  {% if props.source.preview and preview_side != "right" %}<a class="journal-entry-visual" href="{{ props.source.url }}"><img src="{{ props.source.preview.url }}" alt="{{ props.source.preview.alt }}" loading="lazy"></a>{% endif %}
+  <div class="journal-entry-copy">
   <h{{ view.heading_level }}><a href="{{ props.source.url }}">{{ props.source.title }}</a></h{{ view.heading_level }}>
   {% if props.source.published %}<time datetime="{{ props.source.published }}">{{ props.source.published }}</time>{% endif %}
-  {% if props.source.tags %}<ul class="publication-tags" aria-label="Tags">{% for tag in props.source.tags %}<li>{{ tag }}</li>{% endfor %}</ul>{% endif %}
+  {% if props.source.tags %}<ul class="publication-tags" aria-label="Tags">{% for tag in props.source.tags %}<li><span class="paper-tag" data-tag="{{tag | lower}}" data-tag-color="{{ tag | lower | stable_hash % 64 }}"><span>{{tag}}</span></span></li>{% endfor %}</ul>{% endif %}
   {{ render_slot(owner=view.id, name="source_description") }}
   {% if props.source.origin == "external" and props.source.description %}<p>{{ props.source.description }}</p>{% endif %}
   {% if props.annotation %}<div class="publication-annotation">{% for paragraph in props.annotation_paragraphs %}<p>{{ paragraph }}</p>{% endfor %}</div>{% endif %}
+  </div>
+  {% if props.source.preview and preview_side == "right" %}<a class="journal-entry-visual" href="{{ props.source.url }}"><img src="{{ props.source.preview.url }}" alt="{{ props.source.preview.alt }}" loading="lazy"></a>{% endif %}
 </article>

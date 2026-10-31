@@ -81,7 +81,7 @@ impl PipelineRegistry {
             return Err(error);
         }
 
-        let plan = assemble_plan(self.take_active_targets()?);
+        let plan = assemble_plan(self.take_active_targets()?)?;
         self.insert_plan(name, plan)?;
         Ok(Dynamic::UNIT)
     }
@@ -161,8 +161,13 @@ fn pipeline_name(expression: &Expression<'_>) -> String {
         .to_string()
 }
 
-fn assemble_plan(targets: Vec<PipelineTarget>) -> PipelinePlan {
-    let nodes = targets.into_iter().flat_map(PipelineTarget::into_nodes);
+fn assemble_plan(targets: Vec<PipelineTarget>) -> Result<PipelinePlan, Box<EvalAltResult>> {
+    let nodes = targets
+        .into_iter()
+        .map(PipelineTarget::into_nodes)
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten();
 
     let mut seen = HashMap::new();
     let mut plan = PipelinePlan::new();
@@ -180,5 +185,5 @@ fn assemble_plan(targets: Vec<PipelineTarget>) -> PipelinePlan {
         }
     }
 
-    plan
+    Ok(plan)
 }

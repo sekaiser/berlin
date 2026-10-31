@@ -3,7 +3,9 @@
 use crate::project::Project;
 use anyhow::{Context, Error};
 use berlin_core::WebsiteConfig;
-use berlin_publication::{ComponentRegistry, PublicationAssembly, TextConfig, canonical_bytes};
+use berlin_publication::{
+    ComponentRegistry, PublicationAssembly, TextConfig, canonical_bytes, input_digest,
+};
 use berlin_publication_html::{HtmlBindings, PublicationHtmlRenderer, PublicationSite};
 use std::path::Path;
 
@@ -92,7 +94,7 @@ pub(super) fn site(
     assembly: &berlin_publication::SiteAssembly,
     config: &WebsiteConfig,
     output: &Path,
-    dry_run: bool,
+    options: super::ExecutionOptions,
     consumed_inputs: &mut Vec<super::receipt::ConsumedInput>,
     assets: &[(std::path::PathBuf, Vec<u8>)],
 ) -> Result<(), Error> {
@@ -107,7 +109,7 @@ pub(super) fn site(
     consumed_inputs.extend(snapshot.template_inputs());
     let renderer =
         PublicationHtmlRenderer::new(snapshot.component_templates()?, HtmlBindings::builtins())?;
-    let options = berlin_publication_html::SiteHtmlOptions {
+    let html_options = berlin_publication_html::SiteHtmlOptions {
         description: config.description.clone(),
         github: config.profiles.github.as_ref().map(ToString::to_string),
         linkedin: config.profiles.linkedin.as_ref().map(ToString::to_string),
@@ -134,13 +136,13 @@ pub(super) fn site(
             title: config.title.clone(),
             author: config.author.clone(),
         },
-        &options,
+        &html_options,
     )?;
     if config.external_links_new_tab {
         for (path, bytes) in &mut result.files {
             if path.ends_with(".html") {
                 let html = std::str::from_utf8(bytes)?;
-                *bytes = super::website::links::open_external_in_new_tabs_bounded(
+                *bytes = super::links::open_external_in_new_tabs_bounded(
                     html,
                     config
                         .url
@@ -152,12 +154,17 @@ pub(super) fn site(
             }
         }
     }
-    let prepared_assets = snapshot.prepare_assets(&result.stylesheets)?;
+    let cache = (!options.dry_run && !options.no_cache)
+        .then(|| super::cache::ArtifactCache::new(project.root()));
+    let prepared_assets = snapshot.prepare_assets(&result.stylesheets, cache.as_ref())?;
     consumed_inputs.extend_from_slice(prepared_assets.consumed_inputs());
     let mut paths = prepared_assets.output_paths();
     paths.extend(result.files.keys().map(std::path::PathBuf::from));
     paths.insert("publication.json".into());
     validate_assets(&paths, assets)?;
+    if !options.dry_run {
+        validate_staged_assets(output, &paths, assets)?;
+    }
     result.manifest.render_inputs.extend(
         consumed_inputs
             .iter()
@@ -171,7 +178,7 @@ pub(super) fn site(
             config,
         ),
     )?;
-    if dry_run {
+    if options.dry_run {
         return Ok(());
     }
     std::fs::create_dir_all(output)?;
@@ -223,7 +230,7 @@ pub(super) fn website(
     assembly: &PublicationAssembly,
     config: &WebsiteConfig,
     output: &Path,
-    dry_run: bool,
+    options: super::ExecutionOptions,
     consumed_inputs: &mut Vec<super::receipt::ConsumedInput>,
     assets: &[(std::path::PathBuf, Vec<u8>)],
 ) -> Result<(), Error> {
@@ -249,7 +256,7 @@ pub(super) fn website(
         },
     )?;
     if config.external_links_new_tab {
-        result.html = super::website::links::open_external_in_new_tabs_bounded(
+        result.html = super::links::open_external_in_new_tabs_bounded(
             &result.html,
             config
                 .url
@@ -262,11 +269,16 @@ pub(super) fn website(
         "website-config/v1",
         &(&result.manifest.configuration_digest, config),
     )?;
-    let prepared_assets = snapshot.prepare_assets(&result.stylesheets)?;
+    let cache = (!options.dry_run && !options.no_cache)
+        .then(|| super::cache::ArtifactCache::new(project.root()));
+    let prepared_assets = snapshot.prepare_assets(&result.stylesheets, cache.as_ref())?;
     consumed_inputs.extend_from_slice(prepared_assets.consumed_inputs());
     let mut paths = prepared_assets.output_paths();
     paths.extend(["index.html".into(), "publication.json".into()]);
     validate_assets(&paths, assets)?;
+    if !options.dry_run {
+        validate_staged_assets(output, &paths, assets)?;
+    }
     let mut inputs = consumed_inputs
         .iter()
         .map(|input| (input.logical_name.clone(), input.sha256.clone()))
@@ -276,7 +288,7 @@ pub(super) fn website(
         assembly.catalog().input_digest().into(),
     );
     result.manifest.record_inputs(inputs)?;
-    if dry_run {
+    if options.dry_run {
         return Ok(());
     }
     std::fs::create_dir_all(output)?;
@@ -329,6 +341,25 @@ fn validate_assets(
         all.insert(name);
     }
     Ok(())
+}
+fn validate_staged_assets(
+    root: &Path,
+    planned: &std::collections::BTreeSet<std::path::PathBuf>,
+    assets: &[(std::path::PathBuf, Vec<u8>)],
+) -> Result<(), Error> {
+    if !root.exists() {
+        return Ok(());
+    }
+    let existing = super::release::inventory(root)?
+        .into_iter()
+        .filter(|file| {
+            !assets.iter().any(|(path, bytes)| {
+                path == Path::new(&file.path) && input_digest(bytes) == file.sha256
+            })
+        })
+        .map(|file| (std::path::PathBuf::from(file.path), Vec::new()))
+        .collect::<Vec<_>>();
+    validate_assets(planned, &existing)
 }
 fn write_assets(root: &Path, assets: &[(std::path::PathBuf, Vec<u8>)]) -> Result<(), Error> {
     for (path, bytes) in assets {
@@ -444,19 +475,24 @@ mod tests {
                     &assembly,
                     &config,
                     &staged,
-                    false,
+                    super::super::ExecutionOptions::default(),
                     &mut vec![],
                     &[]
                 )
                 .is_err(),
                 "{failure}"
             );
-            assert!(
-                staged.join("static/a.txt").is_file(),
-                "failure must follow an actual staged write"
-            );
             if failure == "manifest" {
+                assert!(
+                    staged.join("static/a.txt").is_file(),
+                    "manifest failure must follow an actual staged write"
+                );
                 assert!(staged.join("index.html").is_file());
+            } else {
+                assert!(
+                    !staged.join("static/a.txt").exists(),
+                    "staged path collisions must fail before copying assets"
+                );
             }
             drop(transaction);
             assert_eq!(

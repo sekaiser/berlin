@@ -44,7 +44,8 @@ pub(super) fn compile(
 
 /// Theme styles use ordinary CSS, not CSS modules. Remote imports remain browser
 /// imports; local imports must stay within the merged stylesheet workspace.
-pub(super) fn compile_stylesheet(
+#[cfg(test)]
+fn compile_stylesheet(
     source: &Path,
     root: &Path,
     cache: Option<&super::cache::ArtifactCache>,
@@ -61,6 +62,7 @@ pub(super) fn compile_stylesheet(
 pub(super) fn compile_stylesheet_snapshot(
     source: &Path,
     files: &BTreeMap<PathBuf, Vec<u8>>,
+    cache: Option<&super::cache::ArtifactCache>,
 ) -> Result<(String, BTreeSet<PathBuf>), Error> {
     struct Sources<'a> {
         files: &'a BTreeMap<PathBuf, Vec<u8>>,
@@ -127,7 +129,12 @@ pub(super) fn compile_stylesheet_snapshot(
         files,
         read: Mutex::new(BTreeSet::new()),
     };
-    let css = compile_with(source, &source_provider, Mode::Stylesheet.options()?)?;
+    let css = cache::compile_snapshot(source, &source_provider, cache, || {
+        // Failed dependency-hint probes are not part of the new import closure.
+        if let Ok(mut read) = source_provider.read.lock() {
+            read.clear();
+        }
+    })?;
     let read = source_provider
         .read
         .into_inner()
@@ -158,11 +165,13 @@ fn compile_with<'a, P: SourceProvider>(
     Ok(compiled.code)
 }
 
+#[cfg(test)]
 struct StylesheetSources {
     files: FileProvider,
     root: PathBuf,
 }
 
+#[cfg(test)]
 impl SourceProvider for StylesheetSources {
     type Error = std::io::Error;
 
@@ -206,6 +215,40 @@ mod tests {
     use std::fs;
 
     #[test]
+    fn captured_cache_reuses_bytes_and_discards_failed_hint_reads() {
+        let directory = tempfile::tempdir().unwrap();
+        let cache = super::super::cache::ArtifactCache::new(directory.path());
+        let mut files = BTreeMap::from([
+            (
+                PathBuf::from("styles/entry.css"),
+                b"@import 'a.css'; body {color:green}".to_vec(),
+            ),
+            (PathBuf::from("styles/a.css"), b".a {color:red}".to_vec()),
+        ]);
+        let cold = compile_stylesheet_snapshot(Path::new("styles/entry.css"), &files, Some(&cache))
+            .unwrap();
+        assert_eq!(
+            cold,
+            compile_stylesheet_snapshot(Path::new("styles/entry.css"), &files, Some(&cache))
+                .unwrap()
+        );
+        files.insert(
+            PathBuf::from("styles/entry.css"),
+            b"body {--revision:fresh-snapshot;color:blue}".to_vec(),
+        );
+        let (css, read) =
+            compile_stylesheet_snapshot(Path::new("styles/entry.css"), &files, Some(&cache))
+                .unwrap();
+        assert!(css.contains("fresh-snapshot"));
+        assert_eq!(read, BTreeSet::from([PathBuf::from("styles/entry.css")]));
+        assert_eq!(
+            (css, read),
+            compile_stylesheet_snapshot(Path::new("styles/entry.css"), &files, Some(&cache))
+                .unwrap()
+        );
+    }
+
+    #[test]
     fn snapshot_bundles_only_captured_imports_and_records_the_closure() {
         let files = BTreeMap::from([
             (
@@ -222,7 +265,8 @@ mod tests {
             ),
         ]);
         let (css, read) =
-            compile_stylesheet_snapshot(Path::new("styles/entries/project.css"), &files).unwrap();
+            compile_stylesheet_snapshot(Path::new("styles/entries/project.css"), &files, None)
+                .unwrap();
         assert!(css.contains("--ink:green"));
         assert!(css.contains(".example{color:var(--ink)}"));
         assert_eq!(
@@ -242,7 +286,7 @@ mod tests {
                 format!("@import '{import}';").into_bytes(),
             )]);
             assert!(
-                compile_stylesheet_snapshot(Path::new("styles/project.css"), &files).is_err(),
+                compile_stylesheet_snapshot(Path::new("styles/project.css"), &files, None).is_err(),
                 "{import}"
             );
         }
@@ -258,7 +302,7 @@ mod tests {
         let files = BTreeMap::from([(PathBuf::from("styles/project.css"), original.to_vec())]);
         fs::write(&source, "body { color: red; }").unwrap();
         let (actual, _) =
-            compile_stylesheet_snapshot(Path::new("styles/project.css"), &files).unwrap();
+            compile_stylesheet_snapshot(Path::new("styles/project.css"), &files, None).unwrap();
         assert_eq!(actual, expected);
     }
 

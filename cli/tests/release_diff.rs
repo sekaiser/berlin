@@ -7,11 +7,11 @@ use std::{
 };
 
 const PIPELINE: &str = r#"
+fn prepared(c) { publication("prepared",#{title:"Prepared"},[view_component("berlin.introduction@1",#{text:"Imported bytes are not rebuilt."},#{})]) }
 pipeline site {
-    let presentation = website_config(#{url: "https://example.com"});
-    let documents = parse_markdown(load_markdown("missing/*.md"));
-    let feed = parse_feed(load_data("missing.csv"));
-    output render_website(assemble_website(documents, feed), "_site", presentation)
+    let presentation = html_config(#{url: "https://example.com"});
+    let sources = catalog([documents(load_markdown("missing/*.md"))]);
+    output render_html(compose(sources,Fn("prepared")), "_site", presentation)
         .deploy_to(github_pages("owner/site"));
 }
 "#;

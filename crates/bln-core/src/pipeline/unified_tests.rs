@@ -1,5 +1,90 @@
 use super::*;
 
+#[test]
+fn html_owns_its_root_but_accepts_disjoint_upstream_paper_assets() {
+    let plan = PipelinePlan::new()
+        .with_node(PipelineNode::new(
+            "tex",
+            Operation::LoadLatex {
+                pattern: "papers/*.tex".into(),
+            },
+        ))
+        .with_node(
+            PipelineNode::new(
+                "papers",
+                Operation::CompilePapers {
+                    url_prefix: "/papers".into(),
+                },
+            )
+            .depends_on("tex")
+            .output_to("_site/papers"),
+        )
+        .with_node(catalog_node(vec![ArtifactKind::Documents]).depends_on("papers"))
+        .with_node(
+            PipelineNode::new(
+                "compose",
+                Operation::Compose {
+                    composer: FunctionRef::new("notebook"),
+                },
+            )
+            .depends_on("catalog"),
+        )
+        .with_node(
+            PipelineNode::new(
+                "html",
+                Operation::RenderHtml {
+                    config: Box::default(),
+                    asset_mounts: vec![],
+                },
+            )
+            .depends_on("compose")
+            .output_to("_site"),
+        );
+    plan.validate().unwrap();
+    let unrelated = documents()
+        .with_node(PipelineNode::new(
+            "tex",
+            Operation::LoadLatex {
+                pattern: "papers/*.tex".into(),
+            },
+        ))
+        .with_node(
+            PipelineNode::new(
+                "papers",
+                Operation::CompilePapers {
+                    url_prefix: "/papers".into(),
+                },
+            )
+            .depends_on("tex")
+            .output_to("_site/papers"),
+        )
+        .with_node(catalog_node(vec![ArtifactKind::Documents]).depends_on("documents"))
+        .with_node(
+            PipelineNode::new(
+                "compose",
+                Operation::Compose {
+                    composer: FunctionRef::new("notebook"),
+                },
+            )
+            .depends_on("catalog"),
+        )
+        .with_node(
+            PipelineNode::new(
+                "html",
+                Operation::RenderHtml {
+                    config: Box::default(),
+                    asset_mounts: vec![],
+                },
+            )
+            .depends_on("compose")
+            .output_to("_site"),
+        );
+    assert!(matches!(
+        unrelated.validate(),
+        Err(PipelineValidationError::PublicationOutputConflict { .. })
+    ));
+}
+
 fn catalog_node(parts: Vec<ArtifactKind>) -> PipelineNode {
     PipelineNode::new(
         "catalog",

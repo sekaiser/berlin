@@ -57,10 +57,10 @@ builds and files on disk contain no development script. Preview responses use
 `Cache-Control: no-store` and `X-Robots-Tag: noindex, nofollow`.
 
 `_site` is the conventional website output, not a server requirement. The output
-argument of `render_website` may name another confined project-relative directory:
+argument of `render_html` may name another confined project-relative directory:
 
 ```rhai
-output render_website(website, "dist", presentation);
+output render_html(website, "dist", presentation);
 ```
 
 Keep any attachment-copy destinations beneath that same root. `serve` and
@@ -78,7 +78,7 @@ destinations are declared in the pipeline, but publication requires the separate
 ### External link behavior
 
 To open external web resources in a new tab, set
-`external_links_new_tab: true` in `website_config(#{...})`, together with the
+`external_links_new_tab: true` in `html_config(#{...})`, together with the
 site's `url`. This is opt-in; the default leaves authored link behavior unchanged.
 Berlin applies the setting to rendered HTML from both documents and templates,
 including raw HTML, so it also works without JavaScript. Off-origin HTTP(S)
@@ -89,3 +89,9 @@ URLs), fragments, local downloads, email and telephone links are not changed.
 If you use those commands, `.berlin/releases` and `.berlin/publications` are
 durable state, not disposable build caches. Keep them together in backups and
 use one authoritative publishing machine or persisted CI workspace.
+
+Org builds consume captured source text without saving temporary buffers back to
+authoring files. Project exporter overrides and their sibling `references.el` and
+`code-results.el` files are copied from captured bytes before execution. Overrides
+must preserve the batch snapshot/source-hash reporting contract; the bundled
+adapter and maintained fixtures show that contract.

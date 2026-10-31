@@ -5,7 +5,7 @@ posting it manually. These commands run locally: they do not authenticate to
 LinkedIn, publish, schedule posts, fetch URLs, or verify remote delivery.
 
 This workflow starts with [release announcement drafts](website-releases.md#prepare-announcement-drafts-for-review),
-not the full-document drafts produced by Rhai's `render_linkedin` operation.
+not the full-document drafts produced by `render_text` compositions.
 Two verified native releases of the same website provide the document identities
 and revision fingerprints. You decide whether a change merits an announcement.
 

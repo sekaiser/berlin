@@ -23,12 +23,38 @@
   (when-let* ((file (and berlin-id-index (gethash id berlin-id-index))))
     (org-id-find-id-in-file id file markerp)))
 
+(defvar berlin-input-snapshot nil
+  "Captured source text supplied by Berlin for this export only.")
+
+(defun berlin-captured-source (source)
+  "Return SOURCE's captured record, refusing incomplete snapshot input."
+  (when berlin-input-snapshot
+    (or (gethash (file-truename source) berlin-input-snapshot)
+        (error "Org input snapshot omits %s" source))))
+
+(defun berlin-read-source (source)
+  "Read captured text when supplied, otherwise read SOURCE for direct export."
+  (if-let* ((record (berlin-captured-source source)))
+      (gethash "text" record)
+    (with-temp-buffer (insert-file-contents source) (buffer-string))))
+
+(defun berlin-prepare-captured-sources (sources)
+  "Populate selected file buffers without changing any authoring file."
+  (when berlin-input-snapshot
+    (dolist (source sources)
+      (with-current-buffer (find-file-noselect source)
+        (let ((inhibit-read-only t))
+          (erase-buffer)
+          (insert (berlin-read-source source)))
+        ;; Keep selected ID lookups in these buffers until every export finishes.
+        (set-buffer-modified-p t)))))
+
 (defun berlin-index-sources (sources)
   "Index stable IDs in SOURCES without scanning agendas, open buffers or Org-roam."
   (let ((index (make-hash-table :test 'equal)))
     (dolist (source sources)
       (with-temp-buffer
-        (insert-file-contents source)
+        (insert (berlin-read-source source))
         (delay-mode-hooks (org-mode))
         (org-element-map (org-element-parse-buffer) 'node-property
 			 (lambda (property)
@@ -159,7 +185,9 @@ onto the same destination.  Remote images remain remote and are not fetched."
       (let ((markdown (org-hugo-export-to-md)))
         `((document . ,berlin-content-id)
           (source . ,source)
-          (source_hash . ,(berlin-file-sha256 source))
+          (source_hash . ,(if-let* ((record (berlin-captured-source source)))
+                             (gethash "sha256" record)
+                           (berlin-file-sha256 source)))
           (markdown . ,(expand-file-name markdown))
           (markdown_hash . ,(berlin-file-sha256 markdown))
           (headings . ,(vconcat (nreverse berlin-source-headings))))))))
@@ -219,6 +247,12 @@ PATH and DESCRIPTION are the authored link; BACKEND and INFO come from Org."
          (section (pop command-line-args-left))
          (sources command-line-args-left)
          (origins-file (getenv "BERLIN_ORG_SOURCE_MAP"))
+         (berlin-input-snapshot
+          (when-let* ((file (getenv "BERLIN_ORG_INPUT_SNAPSHOT")))
+            (with-temp-buffer
+              (insert-file-contents file)
+              (json-parse-buffer :object-type 'hash-table))))
+         (_prepared (berlin-prepare-captured-sources sources))
          origins
          (berlin-id-index (berlin-index-sources sources)))
     (setq command-line-args-left nil)
@@ -241,7 +275,12 @@ PATH and DESCRIPTION are the authored link; BACKEND and INFO come from Org."
             (error "Org source %s has no file-level ID" source))
           (org-link-set-parameters "id" :export #'berlin-ox-hugo-id-link)
           (push (berlin-export-with-origins) origins))
-        (kill-buffer)))
+        (unless berlin-input-snapshot (kill-buffer))))
+    (when berlin-input-snapshot
+      (dolist (source sources)
+        (when-let* ((buffer (get-file-buffer source)))
+          (with-current-buffer buffer (set-buffer-modified-p nil))
+          (kill-buffer buffer))))
     (when origins-file
       (let ((coding-system-for-write 'utf-8-unix))
         (with-temp-file origins-file

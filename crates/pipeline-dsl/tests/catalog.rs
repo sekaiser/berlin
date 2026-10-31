@@ -117,3 +117,51 @@ fn g09_html_owns_its_product_and_declared_asset_mounts_are_confined() {
     let source=PROGRAM.replace(".with_assets(load_assets(\"attachments/**/*\"),\"attachments\")",".with_assets(load_assets(\"attachments/**/*\"),\"attachments\").with_assets(load_assets(\"attachments/**/*\"),\"another\")");
     assert!(RhaiPipelineLoader::new(&source).is_err());
 }
+#[test]
+fn g11_removed_publishing_operations_are_not_compatibility_aliases() {
+    for call in [
+        "parse_feed(load_data(\"feed.csv\"))",
+        "assemble_website(1,2)",
+        "render_website(1,\"out\",1)",
+        "render_linkedin(1,\"out\")",
+        "compose_publication(1,Fn(\"p\"),1)",
+        "render_publication_website(1,\"out\",1)",
+        "render_publication_text(1,\"out\",1)",
+        "parse_markdown(load_markdown(\"*.md\"))",
+        "parse_documents(load_data(\"*.json\"))",
+        "website_config(#{})",
+    ] {
+        let source = format!("fn p(c) {{ c }} let removed = {call};");
+        assert!(berlin_pipeline_dsl::compile(&source).is_err(), "{call}");
+    }
+}
+
+#[test]
+fn native_graph_growth_has_a_budget_independent_of_rhai_instructions() {
+    let source = r#"
+        fn page(c) {throw "not executed";}
+        let text="x"; text.pad(500000,'x');
+        let config=html_config(#{description:text});
+        let c=compose(catalog([documents(load_markdown("missing.md"))]),Fn("page"));
+        let retained=[];
+        for n in 0..1000 {retained.push(render_html(c,"out",config));}
+    "#;
+    let error = berlin_pipeline_dsl::compile(source)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("native graph byte budget"), "{error}");
+}
+
+#[test]
+fn ambient_clock_and_process_inputs_are_unavailable() {
+    for source in [
+        "let clock=timestamp();",
+        "let random=rand();",
+        "let secret=read_file(\"private.txt\");",
+        "let result=system(\"echo unsafe\");",
+        "let result=eval(\"1+1\");",
+        "let indirect=Fn(\"timestamp\").call();",
+    ] {
+        assert!(berlin_pipeline_dsl::compile(source).is_err(), "{source}");
+    }
+}

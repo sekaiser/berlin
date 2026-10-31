@@ -5,10 +5,8 @@ use anyhow::{Context, Error};
 use lol_html::{HtmlRewriter, Settings, element};
 use url::Url;
 
-pub(in crate::tasks) fn open_external_in_new_tabs(
-    html: &str,
-    site_url: &Url,
-) -> Result<String, Error> {
+#[cfg(test)]
+fn open_external_in_new_tabs(html: &str, site_url: &Url) -> Result<String, Error> {
     open_external_in_new_tabs_bounded(html, site_url, usize::MAX)
 }
 pub(in crate::tasks) fn open_external_in_new_tabs_bounded(

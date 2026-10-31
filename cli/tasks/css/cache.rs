@@ -30,11 +30,45 @@ pub(super) fn compile<P: SourceProvider<Error = std::io::Error>>(
     mode: Mode,
     cache: Option<&ArtifactCache>,
 ) -> Result<String, Error> {
+    compile_inner(source, root, provider, mode, cache, false, || {})
+}
+
+pub(super) fn compile_snapshot<P: SourceProvider<Error = std::io::Error>>(
+    source: &Path,
+    provider: &P,
+    cache: Option<&ArtifactCache>,
+    before_compile: impl FnOnce(),
+) -> Result<String, Error> {
+    compile_inner(
+        source,
+        Path::new("styles"),
+        provider,
+        Mode::Stylesheet,
+        cache,
+        true,
+        before_compile,
+    )
+}
+
+fn compile_inner<P: SourceProvider<Error = std::io::Error>>(
+    source: &Path,
+    root: &Path,
+    provider: &P,
+    mode: Mode,
+    cache: Option<&ArtifactCache>,
+    logical_files: bool,
+    before_compile: impl FnOnce(),
+) -> Result<String, Error> {
     let Some(cache) = cache else {
         log::info!("Compiling CSS {}", source.display());
+        before_compile();
         return super::compile_with(source, provider, mode.options()?);
     };
-    let canonical_root = root.canonicalize()?;
+    let canonical_root = if logical_files {
+        root.to_owned()
+    } else {
+        root.canonicalize()?
+    };
     // Normalize aliases such as /tmp -> /private/tmp, while retaining a source
     // file's own alias (relative imports are resolved beside that alias).
     let source = source
@@ -42,18 +76,19 @@ pub(super) fn compile<P: SourceProvider<Error = std::io::Error>>(
         .map(|relative| canonical_root.join(relative))
         .unwrap_or_else(|_| source.to_owned());
     let root = canonical_root;
-    let identity =
-        logical(&root, &source).and_then(|entry| Ok((entry, mode, implementation_fingerprint()?)));
+    let identity = logical(&root, &source)
+        .and_then(|entry| Ok((entry, mode, implementation_fingerprint()?, logical_files)));
     let Ok(identity) = identity else {
         log::info!("Compiling CSS {}", source.display());
+        before_compile();
         return super::compile_with(&source, provider, mode.options()?);
     };
-    let hint_key = CacheKey::new("css-dependencies/v1", &identity)?;
+    let hint_key = CacheKey::new("css-dependencies/v2", &identity)?;
     if let Some(hint) = cache.load::<Dependencies>(&hint_key)
         && hint.value.files.contains_key(&identity.0)
-        && hint.value.verify(&root, provider)
+        && hint.value.verify(&root, provider, logical_files)
     {
-        let key = CacheKey::new("css-output/v1", &(&identity, &hint.value))?;
+        let key = CacheKey::new("css-output/v2", &(&identity, &hint.value))?;
         if let Some(output) = cache.load::<()>(&key)
             && let Ok(css) = String::from_utf8(output.bytes)
         {
@@ -64,7 +99,9 @@ pub(super) fn compile<P: SourceProvider<Error = std::io::Error>>(
     log::info!("Compiling CSS {}", identity.0.display());
     // Lightning CSS's SourceProvider is Send + Sync and may read imports in
     // parallel. The lock is only for recording, not shared pipeline ownership.
+    before_compile();
     let tracked = Tracking {
+        logical_files,
         provider,
         root: &root,
         dependencies: Mutex::new(Some(Dependencies::default())),
@@ -75,7 +112,7 @@ pub(super) fn compile<P: SourceProvider<Error = std::io::Error>>(
         .into_inner()
         .map_err(|_| anyhow!("CSS dependency lock poisoned"))?
     {
-        let key = CacheKey::new("css-output/v1", &(&identity, &dependencies))?;
+        let key = CacheKey::new("css-output/v2", &(&identity, &dependencies))?;
         cache.store(
             &key,
             &Artifact {
@@ -95,10 +132,15 @@ pub(super) fn compile<P: SourceProvider<Error = std::io::Error>>(
 }
 
 impl Dependencies {
-    fn verify<P: SourceProvider<Error = std::io::Error>>(&self, root: &Path, provider: &P) -> bool {
+    fn verify<P: SourceProvider<Error = std::io::Error>>(
+        &self,
+        root: &Path,
+        provider: &P,
+        logical_files: bool,
+    ) -> bool {
         self.files.iter().all(|(path, expected)| {
             safe_relative(path)
-                && file_record(root, &root.join(path), provider)
+                && file_record(root, &root.join(path), provider, logical_files)
                     .is_ok_and(|actual| &actual == expected)
         }) && self.imports.iter().all(|(origin, specifier, expected)| {
             safe_relative(origin)
@@ -106,7 +148,7 @@ impl Dependencies {
                 && provider
                     .resolve(specifier, &root.join(origin))
                     .ok()
-                    .and_then(|result| destination(root, &result).ok())
+                    .and_then(|result| destination(root, &result, logical_files).ok())
                     .as_ref()
                     == Some(expected)
         })
@@ -114,6 +156,7 @@ impl Dependencies {
 }
 
 struct Tracking<'a, P> {
+    logical_files: bool,
     provider: &'a P,
     root: &'a Path,
     dependencies: Mutex<Option<Dependencies>>,
@@ -124,7 +167,7 @@ impl<P: SourceProvider<Error = std::io::Error>> SourceProvider for Tracking<'_, 
     fn read<'a>(&'a self, path: &Path) -> Result<&'a str, Self::Error> {
         let text = self.provider.read(path)?;
         let record = logical(self.root, path).and_then(|name| {
-            let target = confined(self.root, path)?;
+            let target = target(self.root, path, self.logical_files)?;
             Ok((name, (target, hash(text.as_bytes()))))
         });
         let mut dependencies = self
@@ -148,7 +191,7 @@ impl<P: SourceProvider<Error = std::io::Error>> SourceProvider for Tracking<'_, 
     fn resolve(&self, specifier: &str, origin: &Path) -> Result<ResolveResult, Self::Error> {
         let result = self.provider.resolve(specifier, origin)?;
         let record = logical(self.root, origin).and_then(|origin| {
-            let target = destination(self.root, &result)?;
+            let target = destination(self.root, &result, self.logical_files)?;
             Ok((origin, specifier.to_owned(), target))
         });
         let mut dependencies = self
@@ -170,16 +213,29 @@ fn file_record<P: SourceProvider<Error = std::io::Error>>(
     root: &Path,
     path: &Path,
     provider: &P,
+    logical_files: bool,
 ) -> Result<(PathBuf, String), Error> {
-    let target = confined(root, path)?;
+    let target = target(root, path, logical_files)?;
     Ok((target, hash(provider.read(path)?.as_bytes())))
 }
 
-fn destination(root: &Path, result: &ResolveResult) -> Result<Destination, Error> {
+fn destination(
+    root: &Path,
+    result: &ResolveResult,
+    logical_files: bool,
+) -> Result<Destination, Error> {
     Ok(match result {
-        ResolveResult::File(path) => Destination::File(confined(root, path)?),
+        ResolveResult::File(path) => Destination::File(target(root, path, logical_files)?),
         ResolveResult::External(url) => Destination::External(url.clone()),
     })
+}
+
+fn target(root: &Path, path: &Path, logical_files: bool) -> Result<PathBuf, Error> {
+    if logical_files {
+        logical(root, path)
+    } else {
+        confined(root, path)
+    }
 }
 
 fn confined(root: &Path, path: &Path) -> Result<PathBuf, Error> {

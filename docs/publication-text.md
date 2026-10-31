@@ -1,11 +1,11 @@
 # Direct publication text
 
-`render_publication_text` interprets a resolved publication independently of
+`render_text` interprets a resolved publication independently of
 HTML. It walks the shared component/semantic document representation; it neither
 loads Tera nor renders and strips HTML.
 
 ```rhai
-output render_publication_text(composed, "_text",
+output render_text(composed, "_text",
     text_config(#{profile: "linkedin_draft"}));
 ```
 

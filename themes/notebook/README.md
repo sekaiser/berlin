@@ -8,13 +8,13 @@ navigation margin. No frontend framework, npm packages, downloads, or browser-si
 ## Select the theme in your pipeline
 
 ```rhai
-let presentation = website_config(#{
+let presentation = html_config(#{
     theme: "themes/notebook",
     url: "https://example.com",
     title: "My notebook",
     author: "Your name"
 });
-output render_website(website, "_site", presentation);
+output render_html(compose(sources, Fn("notebook")), "_site", presentation);
 ```
 
 `theme` accepts an explicit local directory path (project-relative or absolute),
@@ -39,18 +39,16 @@ The theme also supplies version-1 portfolio components under
 `shared/pages/components/berlin/`, the page wrapper
 `shared/pages/publications/page.tera`, and
 `shared/styles/publications/portfolio.css`. This stylesheet is compiled only for
-a publication that binds it; legacy website output inventories remain unchanged.
-Select it with
-`render_publication_website` to compose curated/query-based work, introductions,
-annotations and excerpts. This is separate from the article website's fixed page
-families. [Try the synthetic portfolio](../../docs/composable-publications.md)
-and see the [Tera slot contract](../../docs/tera-components.md) before overriding
-a component. These templates support static HTML without a frontend runtime.
+a publication that binds it. `render_html` accepts single publications and explicit
+multipage site compositions through the same catalog pipeline.
+[Try the synthetic portfolio](../../docs/composable-publications.md) and see the
+[Tera slot contract](../../docs/tera-components.md) before overriding a component.
 
-The themed render operation resolves templates, compiles `styles/entries/*.css`, and
-copies effective `static/` assets into its staged output. Do not also declare
-CSS/copy operations for those same files. Pipelines without `theme` keep their
-existing explicit CSS and asset operations.
+The themed render operation captures effective template/style/static bytes,
+compiles only bound CSS entries, and installs files in the output transaction.
+Do not separately copy effective `static/` files or compile CSS over those paths.
+Use `.with_assets(...)` for additional confined attachments. The example includes
+an executable notebook composer in its pipeline configuration.
 
 ## Try the synthetic specimen
 
@@ -85,7 +83,7 @@ All specimen content is synthetic. No personal website files are required.
 Precedence is **project → shared → defaults**, by relative filename within
 `pages/`, `styles/`, and `static/`. Only effective files are included in the build
 receipt. Templates are parsed together after merging, allowing inheritance across
-layers. CSS imports see the same merged filesystem in a temporary workspace.
+layers. CSS imports use the same merged, captured bytes without a temporary stylesheet tree.
 Images, fonts, and scripts belong under `static/`. Stylesheet entry points are
 the `.css` files directly inside `styles/entries/`; each becomes
 `assets/css/NAME.css` in the output. Supporting files elsewhere in `styles/`

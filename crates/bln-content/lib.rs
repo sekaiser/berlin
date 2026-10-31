@@ -163,109 +163,6 @@ fn validate_collection_document(document: &Document) -> Result<(), CollectionErr
     Ok(())
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct FeedItem {
-    pub id: FeedItemId,
-    pub title: String,
-    pub date_added: String,
-    pub url: String,
-    pub host: String,
-    pub tags: Vec<String>,
-    /// The curator's own plain-text note, distinct from the linked work's abstract.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub annotation: Option<String>,
-    pub source: String,
-}
-
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct FeedItemId(pub String);
-
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct FeedItemRef(pub FeedItemId);
-
-impl From<&FeedItem> for FeedItemRef {
-    fn from(item: &FeedItem) -> Self {
-        Self(item.id.clone())
-    }
-}
-
-pub type Feed = Collection<FeedItem>;
-
-impl Collection<FeedItem> {
-    pub fn validate(&self) -> Result<(), CollectionError> {
-        let mut ids = HashSet::with_capacity(self.items.len());
-        for item in &self.items {
-            if !ids.insert(&item.id) {
-                return Err(CollectionError::DuplicateFeedItem(item.id.clone()));
-            }
-        }
-        Ok(())
-    }
-
-    pub fn get(&self, reference: &FeedItemRef) -> Option<&FeedItem> {
-        self.items.iter().find(|item| item.id == reference.0)
-    }
-
-    pub fn references(&self) -> Collection<FeedItemRef> {
-        Collection::new(self.items.iter().map(FeedItemRef::from).collect::<Vec<_>>())
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct WebsiteAssembly {
-    documents: DocumentCollection,
-    feed: Feed,
-    documents_by_published: Collection<DocumentRef>,
-    tags: TagIndex,
-    references: ReferenceIndex,
-}
-
-impl WebsiteAssembly {
-    pub fn new(documents: DocumentCollection, feed: Feed) -> Result<Self, CollectionError> {
-        documents.validate()?;
-        feed.validate()?;
-        // Publication scope is fixed before deriving views or inspecting links.
-        let documents = DocumentCollection::new(
-            documents
-                .into_iter()
-                .filter(|document| !document.metadata.draft)
-                .collect::<Vec<_>>(),
-        );
-        let references = ReferenceIndex::new(&documents)?;
-        let documents_by_published = documents.references_by_published_desc();
-        let tags = TagIndex::from_content(&documents, &feed);
-        Ok(Self {
-            documents,
-            feed,
-            documents_by_published,
-            tags,
-            references,
-        })
-    }
-
-    pub fn documents(&self) -> &DocumentCollection {
-        &self.documents
-    }
-
-    pub fn feed(&self) -> &Feed {
-        &self.feed
-    }
-
-    pub fn documents_by_published(&self) -> &Collection<DocumentRef> {
-        &self.documents_by_published
-    }
-
-    pub fn tags(&self) -> &TagIndex {
-        &self.tags
-    }
-
-    pub fn references(&self) -> &ReferenceIndex {
-        &self.references
-    }
-}
-
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TagIndex {
     groups: BTreeMap<String, TagGroup>,
@@ -274,21 +171,13 @@ pub struct TagIndex {
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TagGroup {
     pub documents: Collection<DocumentRef>,
-    pub feed_items: Collection<FeedItemRef>,
 }
 
 impl TagIndex {
     pub fn from_documents(documents: &DocumentCollection) -> Self {
-        Self::from_content(documents, &Feed::default())
-    }
-
-    pub fn from_content(documents: &DocumentCollection, feed: &Feed) -> Self {
         let mut index = Self::default();
         for document in documents.as_slice() {
             index.add_document(document);
-        }
-        for item in feed.as_slice() {
-            index.add_feed_item(item);
         }
         index
     }
@@ -301,17 +190,6 @@ impl TagIndex {
                 .documents
                 .items
                 .push(DocumentRef::from(document));
-        }
-    }
-
-    fn add_feed_item(&mut self, item: &FeedItem) {
-        for tag in effective_tags(&item.tags) {
-            self.groups
-                .entry(tag.to_owned())
-                .or_default()
-                .feed_items
-                .items
-                .push(FeedItemRef::from(item));
         }
     }
 
@@ -330,18 +208,6 @@ impl TagIndex {
             .flat_map(|group| group.documents.as_slice())
             .filter_map(|reference| source.get(reference))
     }
-
-    pub fn feed_items<'a>(
-        &'a self,
-        tag: &str,
-        source: &'a Feed,
-    ) -> impl Iterator<Item = &'a FeedItem> {
-        self.groups
-            .get(tag)
-            .into_iter()
-            .flat_map(|group| group.feed_items.as_slice())
-            .filter_map(|reference| source.get(reference))
-    }
 }
 
 fn effective_tags(tags: &[String]) -> impl Iterator<Item = &str> {
@@ -357,7 +223,6 @@ pub enum CollectionError {
         source: String,
     },
     DuplicateDocument(ContentId),
-    DuplicateFeedItem(FeedItemId),
     UnresolvedReference {
         source: String,
         anchor: String,
@@ -387,9 +252,6 @@ impl fmt::Display for CollectionError {
                     "document collection contains duplicate ID '{}'",
                     id.0
                 )
-            }
-            Self::DuplicateFeedItem(id) => {
-                write!(formatter, "feed contains duplicate ID '{}'", id.0)
             }
         }
     }
@@ -496,59 +358,5 @@ mod tests {
             Err(CollectionError::MissingDocumentId { source })
                 if source == "file:///article.md"
         ));
-    }
-
-    #[test]
-    fn tag_indexes_combine_document_and_feed_references() {
-        let documents =
-            DocumentCollection::new(vec![document("article", "2026-01-01", &["berlin"], false)]);
-        let feed = Feed::new(vec![FeedItem {
-            id: FeedItemId("https://example.com/item".into()),
-            title: "An item".into(),
-            date_added: "2026-01-02".into(),
-            url: "https://example.com/item".into(),
-            host: "example.com".into(),
-            tags: vec!["berlin".into()],
-            annotation: None,
-            source: "file:///data/feed.csv".into(),
-        }]);
-
-        let index = TagIndex::from_content(&documents, &feed);
-
-        assert_eq!(index.groups()["berlin"].documents.len(), 1);
-        assert_eq!(index.groups()["berlin"].feed_items.len(), 1);
-        assert_eq!(
-            index
-                .feed_items("berlin", &feed)
-                .map(|item| item.title.as_str())
-                .collect::<Vec<_>>(),
-            vec!["An item"]
-        );
-    }
-
-    #[test]
-    fn website_assembly_owns_sources_and_derived_views() {
-        let documents = DocumentCollection::new(vec![
-            document("older", "2025-01-01", &["rust"], false),
-            document("newer", "2026-01-01", &["berlin"], false),
-        ]);
-        let feed = Feed::new(vec![FeedItem {
-            id: FeedItemId("https://example.com/item".into()),
-            title: "An item".into(),
-            date_added: "2026-01-02".into(),
-            url: "https://example.com/item".into(),
-            host: "example.com".into(),
-            tags: vec!["berlin".into()],
-            annotation: None,
-            source: "file:///data/feed.csv".into(),
-        }]);
-
-        let website = WebsiteAssembly::new(documents, feed).unwrap();
-
-        assert_eq!(website.documents().len(), 2);
-        assert_eq!(website.feed().len(), 1);
-        assert_eq!(website.documents_by_published().as_slice()[0].0.0, "newer");
-        assert_eq!(website.tags().groups()["berlin"].documents.len(), 1);
-        assert_eq!(website.tags().groups()["berlin"].feed_items.len(), 1);
     }
 }

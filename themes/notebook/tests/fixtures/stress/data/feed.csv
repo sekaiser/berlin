@@ -1,3 +1,0 @@
-Title,Url,Date Added,Manual Tags,Annotation
-A reference without tags,https://example.com/untagged,2026-09-04,,This entry remains available when no tag is selected.
-A deliberately long saved reference title that must wrap without colliding with the saved date or widening a narrow collection page,https://example.com/many-tags,2026-09-05,design; systems; parsing; rendering; publishing; performance; reliability; accessibility; architecture; testing; rust; markdown; diagrams; typography; navigation; collections; references; workflows; local-first; configuration,Twenty tags exercise the filter controls and entry metadata using the real reading-list implementation.

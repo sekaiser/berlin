@@ -4,8 +4,6 @@ use std::path::PathBuf;
 use anyhow::Context;
 use anyhow::Error;
 use berlin_content::DocumentCollection;
-use berlin_content::Feed as ContentFeed;
-use berlin_content::WebsiteAssembly;
 use berlin_core::ArtifactKind;
 
 use crate::project::Project;
@@ -18,8 +16,8 @@ mod composed;
 mod copy_static;
 mod css;
 mod executor;
-mod feed;
 pub(crate) mod graphics;
+mod links;
 mod org;
 mod origins;
 mod output;
@@ -31,7 +29,6 @@ pub(crate) mod release;
 mod resources;
 mod run;
 pub(crate) mod theme;
-mod website;
 
 #[derive(Clone, Debug)]
 struct SourceFile {
@@ -44,15 +41,12 @@ struct SourceFile {
 enum RuntimeArtifact {
     Catalog(berlin_publication::PublicationCatalog),
     Composed(berlin_publication::ComposedArtifact),
-    PublicationAssembly(Box<berlin_publication::PublicationAssembly>),
     LatexSources(Vec<paper::Source>),
-    OrgSources(Vec<PathBuf>),
+    OrgSources(Vec<SourceFile>),
     MarkdownSources(Vec<SourceFile>),
     Documents(std::sync::Arc<DocumentCollection>),
     DataSources(Vec<SourceFile>),
     ExternalResources(berlin_publication::ExternalResourceCollection),
-    Feed(ContentFeed),
-    WebsiteAssembly(WebsiteAssembly),
     CssSources(Vec<SourceFile>),
     StaticSources {
         source_root: PathBuf,
@@ -65,15 +59,12 @@ impl RuntimeArtifact {
         match self {
             Self::Catalog(_) => ArtifactKind::Catalog,
             Self::Composed(_) => ArtifactKind::Composed,
-            Self::PublicationAssembly(_) => ArtifactKind::PublicationAssembly,
             Self::LatexSources(_) => ArtifactKind::LatexSources,
             Self::OrgSources(_) => ArtifactKind::OrgSources,
             Self::MarkdownSources(_) => ArtifactKind::MarkdownSources,
             Self::Documents(_) => ArtifactKind::Documents,
             Self::DataSources(_) => ArtifactKind::DataSources,
             Self::ExternalResources(_) => ArtifactKind::ExternalResources,
-            Self::Feed(_) => ArtifactKind::Feed,
-            Self::WebsiteAssembly(_) => ArtifactKind::WebsiteAssembly,
             Self::CssSources(_) => ArtifactKind::CssSources,
             Self::StaticSources { .. } => ArtifactKind::StaticAssets,
         }
@@ -238,18 +229,6 @@ mod runtime_tests {
         assert_eq!(
             RuntimeArtifact::CssSources(Vec::new()).kind(),
             ArtifactKind::CssSources
-        );
-        assert_eq!(
-            RuntimeArtifact::Feed(ContentFeed::default()).kind(),
-            ArtifactKind::Feed
-        );
-        assert_eq!(
-            RuntimeArtifact::WebsiteAssembly(
-                WebsiteAssembly::new(DocumentCollection::default(), ContentFeed::default())
-                    .unwrap()
-            )
-            .kind(),
-            ArtifactKind::WebsiteAssembly
         );
     }
 

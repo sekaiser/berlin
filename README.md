@@ -47,14 +47,13 @@ Current capabilities include:
 - Staged output replacement with recovery support, plus a local preview server.
 - [Sealed website releases and explicit GitHub Pages publishing](docs/website-releases.md), with optional native production URL/asset preparation, file and document revision comparisons, and recoverable publication records.
 
-The article website renderer uses a fixed set of page families and template
-names. The [notebook theme](themes/notebook/README.md) provides reusable Tera/CSS
-layouts and a synthetic component specimen within that contract. Select a local
-theme with `website_config(#{theme: "themes/notebook"})`; project templates
-and assets override its defaults without an installation step. It is not a
-general-purpose frontend framework. Composed publications use a separate,
-versioned component contract and ordinary theme templates. Content and
-templates are trusted inputs; raw HTML is supported, not sanitized.
+One catalog combines local semantic documents and explicitly authored external
+resources. Composers select and arrange these into a single publication or a
+multipage notebook. Rust builders and Rhai use the same typed components; Tera
+presents HTML and a separate renderer produces plain text or LinkedIn drafts.
+The [notebook theme](themes/notebook/README.md) supplies local templates, styles
+and progressive controls. Project files override shared theme files and defaults.
+Raw HTML in authored documents remains trusted input.
 
 ## Try it
 
@@ -77,6 +76,7 @@ berlin_project=$(mktemp -d)
 cp -R support/fixtures/publishing/. "$berlin_project/"
 mkdir -p "$berlin_project/support"
 cp -R support/ox-hugo "$berlin_project/support/"
+export BERLIN_THEME_DIR="$PWD/themes"
 
 BERLIN_DIR="$berlin_project" target/debug/bln plan --pipeline site
 nix develop --command env BERLIN_DIR="$berlin_project" target/debug/bln build --pipeline org
@@ -167,48 +167,63 @@ files are included in build receipts and watched by `serve --watch`.
 does not execute every pipeline they define. Combined-program errors include
 the starting line of each source file.
 
-This configuration
-uses the same Markdown sources for a website and LinkedIn drafts:
+This executable configuration uses the same catalog for notebook HTML and
+complete-article text drafts. Page selection is explicit; the renderer does not
+invent extra pages.
 
 ```rhai
-fn documents() {
-    parse_markdown(load_markdown(".berlin/generated/org/content/notes/*.md"))
-}
-
-pipeline site {
-    let presentation = website_config(#{
-        url: "https://example.com",
-        title: "My notebook",
-        author: "Example Author",
-        description: "Notes on software and things worth exploring"
-    });
-
-    let feed = parse_feed(load_data("data/feed.csv"));
-    let website = assemble_website(documents(), feed);
-
-    output render_website(website, "_site", presentation);
-    output compile_css(load_css("css/styles.css"), "_site/css/styles.css");
-    output copy_assets(load_assets("static/**/*"), "_site/static");
-    output copy_assets(
-        load_assets(".berlin/generated/org/static/attachments/**/*").named("org_assets"),
-        "_site/attachments"
-    ).named("published_org_assets");
-}
-
-pipeline linkedin {
-    output render_linkedin(documents(), ".berlin/linkedin");
-}
-
-// Export Org before running either publishing pipeline.
+// Synthetic Org notebook using the same catalog/composition path as portfolios.
 pipeline org {
     output export_org(load_org("data/*.org"), "ox-hugo", ".berlin/generated/org", "notes");
 }
+fn sources() {
+    catalog([
+        documents(load_markdown(".berlin/generated/org/content/notes/*.md")),
+        resources(load_data("data/resources.yaml"))
+    ],publication_options(#{source_site_url:"https://example.com"}))
+}
+fn notebook(c) {
+    let authored=c.select(#{origins_any:["local"],order:"published_desc"});
+    let reading=c.select(#{origins_any:["external"],order:"added_desc"});
+    let result=site("example-notebook",#{title:"Example notebook"});
+    result.add_page("home","index.html",home_page(authored,reading));
+    result.add_page("notes","notes.html",publication("notes",#{title:"Notes"},[section("Notes",authored.map_featured())]));
+    result.add_page("reading","feed.html",publication("reading",#{title:"Reading"},[reading_list("Reading",reading.map_cards())]));
+    result.add_page("about","about.html",publication("about",#{title:"About"},[view_component("berlin.introduction@1",#{text:"A synthetic publishing fixture."},#{})]));
+    result.add_document_pages(authored,"notes");
+    let all=c.select(#{order:"id_asc"});
+    result.add_tag_pages(all);
+    result.add_search(all);
+    result.add_redirects(authored);
+    result
+}
+fn article_drafts(c) {
+    let entries=[];
+    for source in c.select(#{origins_any:["local"],order:"id_asc"}) {
+        entries.push(view_component("berlin.excerpt@1",#{source:document_excerpt(c,source.id),key:source.id},#{}));
+    }
+    publication("article-drafts",#{title:"Notebook drafts"},entries)
+}
+pipeline site {
+    let presentation = html_config(#{
+        theme: "@notebook",
+        url: "https://example.com",
+        title: "Example notebook",
+        author: "Example Author",
+        description: "A synthetic publishing fixture"
+    });
+    output render_html(compose(sources(),Fn("notebook")),"_site",presentation)
+        .with_assets(load_assets(".berlin/generated/org/static/attachments/**/*").named("org_assets"),"attachments");
+}
+pipeline linkedin {
+    output render_text(compose(sources(),Fn("article_drafts")),".berlin/linkedin",text_config(#{profile:"linkedin_draft"}));
+}
 ```
 
-The `documents()` helper shares the parsing definition, not a cache: each selected
-pipeline loads its own inputs. The website renderer uses templates from `pages/`;
-LinkedIn drafts use the same semantic documents without those templates. Neither
-pipeline sends content to a remote service.
+Both renderers consume validated compositions. HTML uses effective Tera files;
+text walks the semantic representation directly. Neither build sends content
+to a remote service. [Unified publications](docs/unified-publications.md) covers
+external-resource schemas, queries, source URLs and output ownership.
 
 This example works with the files in the [synthetic project](support/fixtures/publishing/).
 Run each pipeline explicitly, using the project directory from the quick start:
@@ -246,6 +261,8 @@ Berlin bundles and minifies CSS through Lightning CSS in its Rust build pipeline
 No npm installation is required. Node.js runs the JavaScript regression tests.
 
 ## Further reading
+
+- [Unified publications](docs/unified-publications.md) and [breaking migration](docs/unified-publications-migration.md).
 
 - [Architecture and design boundaries](ARCHITECTURE.md)
 - [Local publishing projects](docs/local-publishing.md)

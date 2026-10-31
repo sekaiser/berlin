@@ -68,14 +68,10 @@ pub enum ArtifactKind {
     ExternalResources,
     Catalog,
     Composed,
-    Feed,
-    WebsiteAssembly,
     CssSources,
     Stylesheets,
     StaticAssets,
     Website,
-    LinkedInDrafts,
-    PublicationAssembly,
     PublicationText,
 }
 
@@ -113,7 +109,6 @@ pub enum Operation {
     ParseMarkdown,
     ParseDocuments,
     MergeDocuments,
-    ParseFeed,
     ParseResources {
         namespace: String,
     },
@@ -135,31 +130,14 @@ pub enum Operation {
     MapDocuments {
         mapper: FunctionRef,
     },
-    AssembleWebsite,
     CompileCss,
     CopyAssets,
-    RenderWebsite {
-        config: Box<WebsiteConfig>,
-    },
-    RenderLinkedIn,
-    ComposePublication {
-        composer: FunctionRef,
-        options: Box<berlin_publication::PublicationOptions>,
-    },
-    RenderPublicationWebsite {
-        config: Box<WebsiteConfig>,
-    },
-    RenderPublicationText {
-        config: berlin_publication::TextConfig,
-    },
 }
 
 impl Operation {
     pub fn website_config(&self) -> Option<&WebsiteConfig> {
         match self {
-            Self::RenderWebsite { config }
-            | Self::RenderPublicationWebsite { config }
-            | Self::RenderHtml { config, .. } => Some(config),
+            Self::RenderHtml { config, .. } => Some(config),
             _ => None,
         }
     }
@@ -187,20 +165,8 @@ impl Operation {
             Self::RenderText { .. } => {
                 OperationSignature::output(&[ArtifactKind::Composed], ArtifactKind::PublicationText)
             }
-            Self::ComposePublication { .. } => OperationSignature::artifact(
-                &[ArtifactKind::Documents],
-                ArtifactKind::PublicationAssembly,
-            ),
-            Self::RenderPublicationWebsite { .. } => OperationSignature::output(
-                &[ArtifactKind::PublicationAssembly],
-                ArtifactKind::Website,
-            ),
-            Self::RenderPublicationText { .. } => OperationSignature::output(
-                &[ArtifactKind::PublicationAssembly],
-                ArtifactKind::PublicationText,
-            ),
             Self::LoadLatex { .. } => OperationSignature::source(ArtifactKind::LatexSources),
-            Self::CompileDiagrams { .. } => OperationSignature::output(
+            Self::CompileDiagrams { .. } => OperationSignature::artifact_and_output(
                 &[ArtifactKind::DataSources, ArtifactKind::StaticAssets],
                 ArtifactKind::StaticAssets,
             ),
@@ -221,9 +187,6 @@ impl Operation {
                 &[ArtifactKind::MarkdownSources],
                 ArtifactKind::Documents,
             ),
-            Self::ParseFeed => {
-                OperationSignature::artifact(&[ArtifactKind::DataSources], ArtifactKind::Feed)
-            }
             Self::ParseResources { .. } => OperationSignature::artifact(
                 &[ArtifactKind::DataSources],
                 ArtifactKind::ExternalResources,
@@ -238,10 +201,6 @@ impl Operation {
             Self::MapDocuments { .. } => {
                 OperationSignature::artifact(&[ArtifactKind::Documents], ArtifactKind::Documents)
             }
-            Self::AssembleWebsite => OperationSignature::artifact(
-                &[ArtifactKind::Documents, ArtifactKind::Feed],
-                ArtifactKind::WebsiteAssembly,
-            ),
             Self::CompileCss => {
                 OperationSignature::output(&[ArtifactKind::CssSources], ArtifactKind::Stylesheets)
             }
@@ -249,12 +208,6 @@ impl Operation {
                 &[ArtifactKind::StaticAssets],
                 ArtifactKind::StaticAssets,
             ),
-            Self::RenderWebsite { .. } => {
-                OperationSignature::output(&[ArtifactKind::WebsiteAssembly], ArtifactKind::Website)
-            }
-            Self::RenderLinkedIn => {
-                OperationSignature::output(&[ArtifactKind::Documents], ArtifactKind::LinkedInDrafts)
-            }
         }
     }
 
@@ -399,6 +352,12 @@ impl PipelinePlan {
                     message: "invalid or oversized graph node identity",
                 });
             }
+            if node.dependencies.len() > 10_000 {
+                return Err(PipelineValidationError::InvalidCatalog {
+                    node: node.id.clone(),
+                    message: "graph dependency count exceeds 10000",
+                });
+            }
             if nodes_by_id.insert(node.id.clone(), node).is_some() {
                 return Err(PipelineValidationError::DuplicateNode(node.id.clone()));
             }
@@ -426,19 +385,48 @@ impl PipelinePlan {
         for node in self.nodes.iter().filter(|node| {
             matches!(
                 node.operation,
-                Operation::RenderPublicationWebsite { .. }
-                    | Operation::RenderPublicationText { .. }
-                    | Operation::RenderHtml { .. }
-                    | Operation::RenderText { .. }
+                Operation::RenderHtml { .. } | Operation::RenderText { .. }
             )
         }) {
             let Some(root) = &node.output_path else {
                 continue;
             };
+            let mut ancestors = HashSet::new();
+            let mut pending = node.dependencies.iter().collect::<Vec<_>>();
+            while let Some(id) = pending.pop() {
+                if ancestors.insert(id)
+                    && let Some(parent) = nodes_by_id.get(id)
+                {
+                    pending.extend(parent.dependencies.iter());
+                }
+            }
             for other in self.nodes.iter().filter(|other| other.id != node.id) {
                 if let Some(path) = &other.output_path
                     && (path.starts_with(root) || root.starts_with(path))
                 {
+                    if matches!(node.operation, Operation::RenderHtml { .. })
+                        && ancestors.contains(&other.id)
+                        && path != root
+                        && path.starts_with(root)
+                        && matches!(
+                            other.operation,
+                            Operation::CompilePapers { .. } | Operation::CompileDiagrams { .. }
+                        )
+                    {
+                        if self.nodes.iter().any(|candidate| {
+                            candidate.id != node.id
+                                && candidate.id != other.id
+                                && candidate.output_path.as_ref().is_some_and(|other_path| {
+                                    other_path.starts_with(path) || path.starts_with(other_path)
+                                })
+                        }) {
+                            return Err(PipelineValidationError::PublicationOutputConflict {
+                                first: node.id.clone(),
+                                second: other.id.clone(),
+                            });
+                        }
+                        continue;
+                    }
                     return Err(PipelineValidationError::PublicationOutputConflict {
                         first: node.id.clone(),
                         second: other.id.clone(),
@@ -872,20 +860,44 @@ mod tests {
                     pattern: "data/feed.csv".into(),
                 },
             ))
-            .with_node(PipelineNode::new("feed", Operation::ParseFeed).depends_on("feed_data"))
             .with_node(
-                PipelineNode::new("website_assembly", Operation::AssembleWebsite)
-                    .depends_on("documents")
-                    .depends_on("feed"),
+                PipelineNode::new(
+                    "feed",
+                    Operation::ParseResources {
+                        namespace: "reading".into(),
+                    },
+                )
+                .depends_on("feed_data"),
+            )
+            .with_node(
+                PipelineNode::new(
+                    "website_assembly",
+                    Operation::AssembleCatalog {
+                        parts: vec![ArtifactKind::Documents, ArtifactKind::ExternalResources],
+                        options: Box::default(),
+                    },
+                )
+                .depends_on("documents")
+                .depends_on("feed"),
+            )
+            .with_node(
+                PipelineNode::new(
+                    "composed",
+                    Operation::Compose {
+                        composer: FunctionRef::new("notebook"),
+                    },
+                )
+                .depends_on("website_assembly"),
             )
             .with_node(
                 PipelineNode::new(
                     "website",
-                    Operation::RenderWebsite {
+                    Operation::RenderHtml {
                         config: Box::default(),
+                        asset_mounts: vec![],
                     },
                 )
-                .depends_on("website_assembly")
+                .depends_on("composed")
                 .output_to("_site"),
             )
     }
@@ -908,6 +920,7 @@ mod tests {
                 "feed_data",
                 "feed",
                 "website_assembly",
+                "composed",
                 "website"
             ]
         );
@@ -990,8 +1003,14 @@ mod tests {
                 PipelineNode::new("documents", Operation::ParseMarkdown).depends_on("markdown"),
             )
             .with_node(
-                PipelineNode::new("website_assembly", Operation::AssembleWebsite)
-                    .depends_on("documents"),
+                PipelineNode::new(
+                    "website_assembly",
+                    Operation::AssembleCatalog {
+                        parts: vec![ArtifactKind::Documents, ArtifactKind::ExternalResources],
+                        options: Box::default(),
+                    },
+                )
+                .depends_on("documents"),
             );
 
         assert!(matches!(
@@ -1059,11 +1078,12 @@ mod tests {
         let plan = org_site_plan().with_node(
             PipelineNode::new(
                 "other_website",
-                Operation::RenderWebsite {
+                Operation::RenderHtml {
                     config: Box::default(),
+                    asset_mounts: vec![],
                 },
             )
-            .depends_on("website_assembly")
+            .depends_on("composed")
             .output_to("_site"),
         );
 

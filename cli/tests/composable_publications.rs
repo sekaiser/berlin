@@ -246,6 +246,7 @@ fn p09_preview_selects_the_output_and_watches_overrides_without_output_loops() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     drop(listener);
+    let server_log = tempfile::NamedTempFile::new().unwrap();
     let mut server = Server(
         Command::new(env!("CARGO_BIN_EXE_bln"))
             .env("BERLIN_DIR", root)
@@ -258,8 +259,8 @@ fn p09_preview_selects_the_output_and_watches_overrides_without_output_loops() {
                 "--port",
                 &port.to_string(),
             ])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
+            .stdout(server_log.reopen().unwrap())
+            .stderr(server_log.reopen().unwrap())
             .spawn()
             .unwrap(),
     );
@@ -283,15 +284,26 @@ fn p09_preview_selects_the_output_and_watches_overrides_without_output_loops() {
             if get("/").contains(expected) {
                 break;
             }
-            assert!(Instant::now() < deadline, "preview did not show {expected}");
+            assert!(
+                Instant::now() < deadline,
+                "preview did not show {expected}: {}",
+                fs::read_to_string(server_log.path()).unwrap()
+            );
             std::thread::sleep(Duration::from_millis(100));
         }
     };
     wait("Selected Work in System Design");
     assert!(root.join("_portfolio/index.html").is_file());
     assert!(!root.join("_site").exists());
-    // The HTML becomes visible just before the initial build updates revision.
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait for native watcher registration, not a guessed build duration.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !fs::read_to_string(server_log.path())
+        .unwrap()
+        .contains("Watching")
+    {
+        assert!(Instant::now() < deadline, "watcher did not start");
+        std::thread::sleep(Duration::from_millis(100));
+    }
     let revision = || {
         get("/__berlin/revision")
             .split("\r\n\r\n")
@@ -313,10 +325,9 @@ fn p09_preview_selects_the_output_and_watches_overrides_without_output_loops() {
     let path = override_dir.join("featured_work.v1.tera");
     fs::write(
         &path,
-        format!(
-            "<p>override-created</p>{}",
-            fs::read_to_string(&original).unwrap()
-        ),
+        fs::read_to_string(&original)
+            .unwrap()
+            .replace("<article ", "<p>override-created</p><article "),
     )
     .unwrap();
     wait("override-created");

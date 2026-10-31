@@ -82,24 +82,6 @@ pub struct RhaiPipelineLoader {
 }
 
 impl RhaiPipelineLoader {
-    pub fn compose_publication(
-        &self,
-        composer: &FunctionRef,
-        documents: &DocumentCollection,
-        options: &berlin_publication::PublicationOptions,
-    ) -> Result<berlin_publication::PublicationAssembly, CompileError> {
-        let catalog =
-            berlin_publication::PublicationCatalog::new(documents.clone(), options.clone())?;
-        self.compose_catalog(composer, catalog)
-    }
-
-    pub fn compose_catalog(
-        &self,
-        composer: &FunctionRef,
-        catalog: berlin_publication::PublicationCatalog,
-    ) -> Result<berlin_publication::PublicationAssembly, CompileError> {
-        Ok(self.compose_artifact(composer, catalog)?.single()?.clone())
-    }
     pub fn compose_artifact(
         &self,
         composer: &FunctionRef,
@@ -286,8 +268,7 @@ fn compile_and_evaluate(
 
 fn validate_document_mappers(plan: &PipelinePlan, ast: &AST) -> Result<(), CompileError> {
     for node in plan.nodes() {
-        if let Operation::ComposePublication { composer, .. } | Operation::Compose { composer } =
-            &node.operation
+        if let Operation::Compose { composer } = &node.operation
             && !ast
                 .iter_functions()
                 .any(|f| f.name == composer.as_str() && f.params.len() == 1)

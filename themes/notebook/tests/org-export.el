@@ -36,17 +36,14 @@ ASSETS maps theme-relative fixture paths to local source filenames."
           ;; fixtures are checked after attachment URLs and captions are rendered.
           (dolist (figure figures) (should (string-match-p (regexp-quote figure) markdown)))
           (when-let* ((binary (getenv "BERLIN_TEST_BINARY")))
-            (with-temp-file (expand-file-name "feed.csv" directory)
-              (insert "Title,Url,Date Added,Manual Tags,Annotation\n"))
             (with-temp-file (expand-file-name "berlin.pipeline.rhai" directory)
-              (insert "pipeline test {\n"
-                      "let documents = parse_markdown(load_markdown(\"content/notes/*.md\"));\n"
-                      "let feed = parse_feed(load_data(\"feed.csv\"));\n"
-                      "output render_website(assemble_website(documents, feed), \"_site\", website_config(#{theme: "
+              (insert-file-contents (expand-file-name "../../cli/tests/support/notebook.rhai" notebook-test-theme))
+              (goto-char (point-max))
+              (insert "\npipeline test {\n"
+                      "let sources=catalog([documents(load_markdown(\"content/notes/*.md\"))],publication_options(#{source_site_url:\"https://notebook.example\"}));\n"
+                      "output render_html(compose(sources,Fn(\"notebook\")),\"_site\",html_config(#{theme: "
                       (prin1-to-string notebook-test-theme)
-                      ", url: \"https://notebook.example\", title: \"Example\", author: \"Example Author\", description: \"Synthetic theme specimen\"}));\n"
-                      (if assets "output copy_assets(load_assets(\"static/attachments/**/*\"), \"_site/attachments\");\n" "")
-                      "}"))
+                      ", url: \"https://notebook.example\", title: \"Example\", author: \"Example Author\", description: \"Synthetic theme specimen\"}));\n}\n"))
             (let ((default-directory directory) (process-environment (copy-sequence process-environment)))
               (setenv "BERLIN_DIR" directory)
               (with-temp-buffer

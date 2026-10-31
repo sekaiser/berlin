@@ -1,26 +1,40 @@
 // Local filtering only. Without JavaScript, every bookmark and tag link remains.
-document.addEventListener('DOMContentLoaded', () => {
-  const form = document.querySelector('.reading-tools');
-  const entries = [...document.querySelectorAll('#reading-entries .journal-bookmark')];
-  if (!form || !entries.length) return;
+function matchingReferences(items, query, selectedTags) {
+  const words = normalizeReading(query).split(/\s+/).filter(Boolean);
+  return items.filter(item => words.every(word => item.text.includes(word))
+    && selectedTags.every(tag => item.tags.includes(tag)));
+}
+const normalizeReading = text => text.normalize('NFKC').toLocaleLowerCase().trim();
+if (typeof module !== 'undefined') module.exports = {matchingReferences, normalizeReading};
+if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[data-reading-list]').forEach(initializeReadingList);
+});
+function initializeReadingList(root, listIndex) {
+  const form = root.querySelector('.reading-tools');
+  const container = root.querySelector('.publication-resource-items');
+  const entries = [...container.querySelectorAll('.publication-resource')];
+  if (!form || !entries.length || form.dataset.initialized) return;
+  form.dataset.initialized = 'true';
   const query = form.elements.q;
   const tagOptions = form.querySelector('.reading-tag-options');
   const count = form.querySelector('output');
   const reset = form.querySelector('button[type="reset"]');
-  const empty = document.querySelector('.reading-no-results');
-  const normalize = text => text.normalize('NFKC').toLocaleLowerCase().trim();
+  const empty = root.querySelector('.reading-no-results');
+  const normalize = normalizeReading;
   const items = entries.map(element => ({element,
-    text: normalize([...element.querySelectorAll('h2, .journal-label, .journal-summary p, .journal-annotation p, .journal-topics')].map(el => el.textContent).join(' ')),
+    text: normalize(element.textContent),
     tags: [...element.querySelectorAll('.paper-tag')].map(el => el.dataset.tag),
   }));
   const tags = [...new Set(items.flatMap(item => item.tags))].sort((a, b) => a.localeCompare(b));
   // Reuse the server-rendered slot; filter buttons match the corresponding links.
-  const tagColors = new Map([...document.querySelectorAll('#reading-entries .paper-tag')]
+  const tagColors = new Map([...container.querySelectorAll('.paper-tag')]
     .map(tag => [tag.dataset.tag, tag.dataset.tagColor]));
   const parameters = new URL(location.href).searchParams;
-  query.value = parameters.get('q') || '';
+  const queryKey = listIndex ? `q.${root.id}` : 'q';
+  const tagKey = listIndex ? `tag.${root.id}` : 'tag';
+  query.value = parameters.get(queryKey) || '';
   // Keep previously shared single-topic URLs usable; new links use repeated tag keys.
-  const initialTags = new Set([...parameters.getAll('tag'), ...parameters.getAll('topic')]);
+  const initialTags = new Set([...parameters.getAll(tagKey), ...(listIndex ? [] : parameters.getAll('topic'))]);
   const tagButtons = tags.map(tag => {
     const button = document.createElement('button');
     button.type = 'button';
@@ -29,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
     button.dataset.tagColor = tagColors.get(tag) || '0';
     button.setAttribute('aria-label', tag);
     button.setAttribute('aria-pressed', String(initialTags.has(tag)));
-    button.setAttribute('aria-controls', 'reading-entries');
+    button.setAttribute('aria-controls', container.id);
     const label = document.createElement('span');
     label.textContent = tag;
     const total = document.createElement('span');
@@ -37,7 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
     total.setAttribute('aria-hidden', 'true');
     const explanation = document.createElement('span');
     explanation.className = 'reading-tag-description';
-    explanation.id = `reading-tag-count-${tagOptions.children.length}`;
+    explanation.id = `${root.id}-tag-count-${tagOptions.children.length}`;
     button.setAttribute('aria-describedby', explanation.id);
     button.append(label, total, explanation);
     button.addEventListener('click', () => {
@@ -53,7 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const selectedTags = tagButtons.filter(button => button.getAttribute('aria-pressed') === 'true').map(button => button.dataset.tag);
     const matchingText = items.filter(item => words.every(word => item.text.includes(word)));
     const matchesTags = (item, tags) => tags.every(tag => item.tags.includes(tag));
-    const matches = new Set(matchingText.filter(item => matchesTags(item, selectedTags)));
+    const matches = new Set(matchingReferences(items, query.value, selectedTags));
     const shown = matches.size;
     for (const item of items) {
       item.element.hidden = !matches.has(item);
@@ -80,10 +94,10 @@ document.addEventListener('DOMContentLoaded', () => {
     reset.disabled = !query.value && !selectedTags.length;
     if (updateUrl) {
       const url = new URL(location.href);
-      if (query.value) url.searchParams.set('q', query.value); else url.searchParams.delete('q');
-      url.searchParams.delete('topic');
-      url.searchParams.delete('tag');
-      for (const tag of selectedTags) url.searchParams.append('tag', tag);
+      if (query.value) url.searchParams.set(queryKey, query.value); else url.searchParams.delete(queryKey);
+      if (!listIndex) url.searchParams.delete('topic');
+      url.searchParams.delete(tagKey);
+      for (const tag of selectedTags) url.searchParams.append(tagKey, tag);
       history.replaceState(null, '', url);
     }
   }
@@ -98,4 +112,4 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   filter(false);
   form.hidden = false;
-});
+}

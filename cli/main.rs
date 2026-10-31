@@ -4,7 +4,6 @@ mod pipeline;
 mod project;
 
 mod tasks;
-mod templates;
 mod tools;
 mod util;
 mod version;

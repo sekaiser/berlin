@@ -11,16 +11,21 @@ bibliographies and figures. `compile_papers` produces a document collection and 
 into the pipeline's staged output.
 
 ```rhai
+fn notebook(c) {
+    let local=c.select(#{origins_any:["local"],order:"published_desc"});
+    let result=site("papers",#{title:"Papers and notes"});
+    result.add_page("home","index.html",home_page(local,c.select(#{origins_any:["external"]})));
+    result.add_document_pages(local,"notes");
+    result.add_search(local);
+    result
+}
 pipeline site {
-    let notes = parse_markdown(load_markdown("content/notes/*.md"));
+    let notes = documents(load_markdown("content/notes/*.md"));
     let papers = compile_papers(load_latex("papers/*.tex"), "_site/papers");
-    let documents = merge_documents(notes, papers);
-    output render_website(
-        assemble_website(documents, parse_feed(load_data("data/feed.csv"))),
-        "_site", website_config(#{
-            theme: "themes/notebook", url: "https://your-site.example"
-        })
-    );
+    let sources=catalog([notes,papers],publication_options(#{source_site_url:"https://your-site.example"}));
+    output render_html(compose(sources,Fn("notebook")),"_site",html_config(#{
+        theme:"themes/notebook",url:"https://your-site.example"
+    }));
 }
 ```
 
@@ -132,7 +137,7 @@ website assembly and template rendering execute each run.
 `build --dry-run` checks source metadata and bibliography discovery without
 executing TeX or writing output. It cannot establish that a paper compiles.
 `bln check` remains read-only and does not execute compilation pipelines.
-`parse_documents(load_data(...))` remains available for independently prepared
+`documents(load_data(...))` remains available for independently prepared
 semantic JSON. `merge_documents` validates combined IDs in either workflow.
 
 ## Supported paper profile

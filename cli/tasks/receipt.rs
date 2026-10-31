@@ -22,7 +22,6 @@ use berlin_core::PipelinePlan;
 
 use super::RuntimeArtifact;
 use super::SourceFile;
-use crate::util::fs::load_files;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct Diagnostic {
@@ -73,12 +72,7 @@ pub(super) struct ReceiptContext<'a> {
 }
 
 pub(super) fn write(context: ReceiptContext<'_>) -> Result<(), Error> {
-    let inputs = if context.plan.nodes().iter().any(|node| {
-        matches!(
-            node.operation,
-            Operation::ComposePublication { .. } | Operation::Compose { .. }
-        )
-    }) {
+    let inputs = {
         let mut inputs = BTreeMap::new();
         for snapshot in context.consumed_inputs {
             let uri = url::Url::from_file_path(&snapshot.path)
@@ -101,8 +95,6 @@ pub(super) fn write(context: ReceiptContext<'_>) -> Result<(), Error> {
         )?;
         enrich_content_ids(&mut inputs, context.plan, context.artifacts)?;
         inputs.into_values().collect()
-    } else {
-        input_receipts(context.project, context.plan, context.artifacts)?
     };
     let receipt = BuildReceipt {
         schema_version: 1,
@@ -208,29 +200,6 @@ fn receipt_filename(pipeline: &str) -> String {
     }
 }
 
-fn input_receipts(
-    project: &crate::project::Project,
-    plan: &PipelinePlan,
-    artifacts: &HashMap<NodeId, RuntimeArtifact>,
-) -> Result<Vec<InputReceipt>, Error> {
-    let mut inputs = BTreeMap::new();
-    collect_operational_inputs(&mut inputs, project, plan)?;
-    collect_source_inputs(&mut inputs, project.root(), plan, artifacts)?;
-    enrich_content_ids(&mut inputs, plan, artifacts)?;
-    Ok(inputs.into_values().collect())
-}
-
-fn collect_operational_inputs(
-    inputs: &mut BTreeMap<String, InputReceipt>,
-    project: &crate::project::Project,
-    plan: &PipelinePlan,
-) -> Result<(), Error> {
-    for path in operational_inputs(project, plan)? {
-        insert_file_input(inputs, project.root(), &path, None)?;
-    }
-    Ok(())
-}
-
 fn collect_source_inputs(
     inputs: &mut BTreeMap<String, InputReceipt>,
     project_root: &Path,
@@ -280,7 +249,14 @@ fn collect_artifact_inputs(
                 }
             }
         }
-        RuntimeArtifact::OrgSources(paths) => collect_org_inputs(inputs, project_root, paths)?,
+        RuntimeArtifact::OrgSources(sources) => {
+            collect_text_inputs(inputs, project_root, sources);
+            for source in sources {
+                if let Some(input) = inputs.get_mut(&source.uri) {
+                    input.content_id = org_content_id(&source.text);
+                }
+            }
+        }
         RuntimeArtifact::MarkdownSources(sources)
         | RuntimeArtifact::DataSources(sources)
         | RuntimeArtifact::CssSources(sources) => {
@@ -303,25 +279,10 @@ fn collect_artifact_inputs(
                 });
             }
         }
-        RuntimeArtifact::PublicationAssembly(_)
-        | RuntimeArtifact::Catalog(_)
+        RuntimeArtifact::Catalog(_)
         | RuntimeArtifact::Composed(_)
         | RuntimeArtifact::ExternalResources(_)
-        | RuntimeArtifact::Documents(_)
-        | RuntimeArtifact::Feed(_)
-        | RuntimeArtifact::WebsiteAssembly(_) => {}
-    }
-    Ok(())
-}
-
-fn collect_org_inputs(
-    inputs: &mut BTreeMap<String, InputReceipt>,
-    project_root: &Path,
-    paths: &[PathBuf],
-) -> Result<(), Error> {
-    for path in paths {
-        let text = fs::read_to_string(path)?;
-        insert_file_input(inputs, project_root, path, org_content_id(&text))?;
+        | RuntimeArtifact::Documents(_) => {}
     }
     Ok(())
 }
@@ -386,35 +347,6 @@ fn merge_content_id(input: &mut InputReceipt, content_id: &str) -> Result<(), Er
         None => input.content_id = Some(content_id.into()),
     }
     Ok(())
-}
-
-fn operational_inputs(
-    project: &crate::project::Project,
-    plan: &PipelinePlan,
-) -> Result<Vec<PathBuf>, Error> {
-    let project_root = project.root();
-    let mut inputs = project.pipeline_files().to_vec();
-    for node in plan.nodes() {
-        if let Operation::RenderWebsite { config } = &node.operation {
-            match &config.theme {
-                Some(selected) => inputs.extend(
-                    super::theme::Theme::load(project_root, selected)?
-                        .inputs()
-                        .cloned(),
-                ),
-                None => inputs.extend(load_files(project, "pages/**/*.tera")?),
-            }
-        }
-    }
-    if plan
-        .nodes()
-        .iter()
-        .any(|node| matches!(&node.operation, Operation::ExportOrg { .. }))
-        && let Some(path) = super::org::exporter_override(project_root)
-    {
-        inputs.push(path);
-    }
-    Ok(inputs)
 }
 
 fn insert_file_input(
@@ -526,7 +458,7 @@ mod tests {
         let source = root.path().join("source.md");
         let program=berlin_pipeline_dsl::RhaiPipelineLoader::new(r#"
             fn compose(c){throw "not run in receipt test";}
-            pipeline text {output render_publication_text(compose_publication(parse_markdown(load_markdown("*.md")),Fn("compose"),publication_options(#{})),"_text",text_config(#{}));}
+            pipeline text {output render_text(compose(catalog([documents(load_markdown("*.md"))]),Fn("compose")),"_text",text_config(#{}));}
         "#).unwrap();
         let plan = program.load("text").unwrap();
         let snapshots = vec![
@@ -601,6 +533,24 @@ mod tests {
             org_content_id(":PROPERTIES:\n:ID: stable-id\n:END:\n"),
             Some("stable-id".into())
         );
+    }
+
+    #[test]
+    fn original_org_receipt_uses_loaded_text_after_source_changes() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("note.org");
+        fs::write(&path, ":PROPERTIES:\n:ID: captured\n:END:\nOriginal.").unwrap();
+        let source = SourceFile::read(path.clone()).unwrap();
+        fs::write(&path, ":PROPERTIES:\n:ID: changed\n:END:\nLater.").unwrap();
+        let mut inputs = BTreeMap::new();
+        collect_artifact_inputs(
+            &mut inputs,
+            root.path(),
+            &RuntimeArtifact::OrgSources(vec![source.clone()]),
+        )
+        .unwrap();
+        assert_eq!(inputs[&source.uri].sha256, digest(source.text.as_bytes()));
+        assert_eq!(inputs[&source.uri].content_id.as_deref(), Some("captured"));
     }
 
     #[test]

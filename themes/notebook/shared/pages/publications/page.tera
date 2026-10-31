@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ publication.title }}</title>
   {% if publication.description %}<meta name="description" content="{{ publication.description }}">{% endif %}
+  <script defer src="{{ config_site_url }}/static/js/reading.js"></script>
   {% for stylesheet in site.stylesheets %}<link rel="stylesheet" href="{{ stylesheet }}">{% endfor %}
 </head>
 <body class="publication-page">

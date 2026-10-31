@@ -9,6 +9,8 @@ fn templates() -> BTreeMap<String, String> {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../themes/notebook/shared/pages");
     let mut templates = BTreeMap::new();
     for name in [
+        "partials/engineering-desk.tera",
+        "macros/notebook_entry_layout.tera",
         "publications/page.tera",
         "components/berlin/portfolio.v1.tera",
         "components/berlin/resource_card.v1.tera",

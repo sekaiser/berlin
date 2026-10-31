@@ -17,7 +17,7 @@ file-level Org ID. See [ox-hugo's custom front matter documentation](https://ox-
 
 ## Website configuration
 
-Pass an optional `giscus` map inside `website_config(...)`:
+Pass an optional `giscus` map inside `html_config(...)`:
 
 ```rhai
 giscus: #{

@@ -5,34 +5,27 @@ use std::process::{Command, Output};
 fn project() -> tempfile::TempDir {
     let root = tempfile::tempdir().unwrap();
     fs::create_dir(root.path().join("content")).unwrap();
-    fs::create_dir_all(root.path().join("pages/notes")).unwrap();
-    fs::create_dir_all(root.path().join("pages/tags")).unwrap();
+    fs::create_dir_all(root.path().join("pages/publications")).unwrap();
     fs::write(
         root.path().join("berlin.pipeline.rhai"),
-        r#"
+        concat!(include_str!("support/notebook.rhai"),r#"
 fn rename(doc) { if doc.id == "target" { doc.title = "Mapped title"; } doc }
 pipeline site {
-    let documents = map_documents(parse_markdown(load_markdown("content/*.md")), Fn("rename"));
-    let website = assemble_website(documents, parse_feed(load_data("feed.csv")));
-    output render_website(website, "_site", website_config(#{url: "https://example.com/notebook"}));
+    let source = map_documents(documents(load_markdown("content/*.md")), Fn("rename"));
+    let selected = compose(catalog([source],publication_options(#{source_site_url:"https://example.com/notebook"})),Fn("notebook"));
+    output render_html(selected, "_site", html_config(#{theme:"@notebook",url: "https://example.com/notebook"}));
 }
-"#,
+"#),
     )
     .unwrap();
-    fs::write(root.path().join("feed.csv"), "Title,URL,Date,Tags\n").unwrap();
     for (path, text) in [
         (
-            "index.tera",
-            "{% for a in articles %}<a href=\"{{config_site_url}}{{a.target}}\">{{a.title}}</a>{% endfor %}",
+            "publications/site_page.tera",
+            include_str!("support/minimal-site.tera"),
         ),
-        ("notes.tera", "Notes"),
-        ("feed.tera", "Reading"),
-        ("about.tera", "About"),
-        ("search.tera", "Search"),
-        ("tags/base.tera", "Tag"),
         (
-            "notes/[slug].tera",
-            "<link rel=\"canonical\" href=\"{{config_site_url}}{{page_path}}\">{{render()}}{% for b in page_backlinks %}<a href=\"{{config_site_url}}{{b.path}}\">{{b.title}}</a>{% endfor %}",
+            "publications/document.tera",
+            include_str!("support/minimal-document.tera"),
         ),
     ] {
         fs::write(root.path().join("pages").join(path), text).unwrap();
@@ -54,6 +47,10 @@ fn note(root: &Path, id: &str, title: &str, fields: &str, body: &str) {
 fn build(root: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_bln"))
         .env("BERLIN_DIR", root)
+        .env(
+            "BERLIN_THEME_DIR",
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../themes"),
+        )
         .args(["build", "--pipeline", "site"])
         .output()
         .unwrap()
@@ -181,20 +178,13 @@ fn draft_routes_and_redirects_are_not_published() {
 }
 
 #[test]
-fn redirects_without_a_site_url_use_a_sibling_destination_and_escape_titles() {
+fn missing_destination_url_is_refused_and_redirect_titles_are_escaped() {
     let root = project();
     let pipeline = root.path().join("berlin.pipeline.rhai");
     let source = fs::read_to_string(&pipeline)
         .unwrap()
-        .replace("if doc.id == \"target\"", "if doc.id == \"unused\"")
-        .replace(
-            "website_config(#{url: \"https://example.com/notebook\"})",
-            "website_config(#{})",
-        );
-    fs::write(pipeline, source).unwrap();
-    // These templates deliberately do not require optional config_site_url.
-    fs::write(root.path().join("pages/index.tera"), "Index").unwrap();
-    fs::write(root.path().join("pages/notes/[slug].tera"), "{{render()}}").unwrap();
+        .replace("if doc.id == \"target\"", "if doc.id == \"unused\"");
+    fs::write(&pipeline, &source).unwrap();
     note(
         root.path(),
         "target",
@@ -209,8 +199,23 @@ fn redirects_without_a_site_url_use_a_sibling_destination_and_escape_titles() {
         String::from_utf8_lossy(&result.stderr)
     );
     let redirect = html(root.path(), "notes/old-name.html");
-    assert!(redirect.contains("rel=\"canonical\" href=\"stable-name.html\""));
-    assert!(redirect.contains("content=\"0;url=stable-name.html\""));
+    assert!(redirect.contains("https://example.com/notebook/notes/stable-name.html"));
     assert!(redirect.contains("&lt;script&gt;"));
     assert!(!redirect.contains("<script>alert"));
+    let installed = fs::read(root.path().join("_site/notes/old-name.html")).unwrap();
+    fs::write(
+        &pipeline,
+        source.replace(
+            "theme:\"@notebook\",url: \"https://example.com/notebook\"",
+            "theme:\"@notebook\"",
+        ),
+    )
+    .unwrap();
+    let rejected = build(root.path());
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("destination URL"));
+    assert_eq!(
+        fs::read(root.path().join("_site/notes/old-name.html")).unwrap(),
+        installed
+    );
 }

@@ -33,6 +33,31 @@ for (const pipeline of ['portfolio','text','site','excerpts','excerpt_text']) ru
 const first=snapshot(path.join(project,'_site'));
 run('build','--pipeline','site');
 assert.deepEqual(snapshot(path.join(project,'_site')),first,'site rebuild is nondeterministic');
+// Invalid ingestion must fail before replacing any installed publication.
+const resourceFile=path.join(project,'data/resources.yaml');
+const resourceBytes=fs.readFileSync(resourceFile);
+fs.writeFileSync(resourceFile,'schema_version: 1\nresources:\n  - id: incomplete\n');
+const badResource=spawnSync(binary,['build','--pipeline','site'],{env,encoding:'utf8'});
+assert.notEqual(badResource.status,0);
+assert.match(badResource.stderr,/InvalidResource/);
+assert.deepEqual(snapshot(path.join(project,'_site')),first,'parse failure installed partial resources');
+fs.writeFileSync(resourceFile,resourceBytes);
+
+// Explicit helper bytes are consumed even when a change leaves composition alone.
+const helper=path.join(project,'qualified-helper.rhai');
+fs.writeFileSync(helper,'const QUALIFICATION_HELPER = 1;\n');
+const selectedFiles=['--pipeline-file',helper,'--pipeline-file',path.join(project,'berlin.pipeline.rhai')];
+run('build','--pipeline','portfolio',...selectedFiles);
+const firstHelper=json('_portfolio/publication.json');
+fs.writeFileSync(helper,'const QUALIFICATION_HELPER = 2;\n');
+run('build','--pipeline','portfolio',...selectedFiles);
+const secondHelper=json('_portfolio/publication.json');
+assert.equal(firstHelper.composition_fingerprint,secondHelper.composition_fingerprint);
+assert.notEqual(firstHelper.render_input_fingerprint,secondHelper.render_input_fingerprint);
+assert.equal(json('.berlin/receipts/portfolio.json').inputs.find(input=>input.path==='qualified-helper.rhai').sha256,
+  createHash('sha256').update(fs.readFileSync(helper)).digest('hex'));
+fs.rmSync(helper);
+run('build','--pipeline','portfolio');
 // Only selected stylesheet bytes enter the operational fingerprint. An unused
 // override cannot break or alter a publication; a selected invalid import must
 // fail equally in check, dry-run and the real transaction.

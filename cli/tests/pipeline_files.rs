@@ -9,6 +9,10 @@ fn run(root: &Path, args: &[&str]) -> Output {
         // File selection, sources, and outputs are relative to BERLIN_DIR, not cwd.
         .current_dir(root.parent().unwrap())
         .env("BERLIN_DIR", root)
+        .env(
+            "BERLIN_THEME_DIR",
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../themes"),
+        )
         .args(args)
         .output()
         .unwrap()
@@ -146,14 +150,15 @@ fn check_uses_mappers_and_source_roots_from_selected_files() {
         r#"
         const SOURCE_ROOTS = #{notes: "notes"};
         fn hide(document) { document.draft = true; document }
-        fn documents() { map_documents(parse_markdown(load_markdown("@notes/*.md")), Fn("hide")) }
+        fn prepared_documents() { map_documents(documents(load_markdown("@notes/*.md")), Fn("hide")) }
     "#,
     )
     .unwrap();
     fs::write(root.path().join("site.rhai"), r#"
+        fn review(c) {publication("check",#{title:"Check"},[view_component("berlin.introduction@1",#{text:"Source-root check."},#{})])}
         pipeline site {
-            let config = website_config(#{url: "https://example.com", title: "Test", author: "Author", description: "Test"});
-            output render_website(assemble_website(documents(), parse_feed(load_data("missing.csv"))), "public", config);
+            let config = html_config(#{theme:"@notebook",url: "https://example.com", title: "Test", author: "Author", description: "Test"});
+            output render_html(compose(catalog([prepared_documents()]),Fn("review")), "public", config);
         }
     "#).unwrap();
     let result = run(
@@ -169,5 +174,5 @@ fn check_uses_mappers_and_source_roots_from_selected_files() {
     );
     success(&result);
     let report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
-    assert_eq!(report["report"]["excluded_drafts"], 1);
+    assert_eq!(report["report"]["authoring"]["excluded_drafts"], 1);
 }

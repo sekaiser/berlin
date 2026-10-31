@@ -1,0 +1,1 @@
+<!doctype html><html><head><link rel="canonical" href="{{config_site_url}}{{page_path}}"><link rel="stylesheet" href="{{config_site_url}}/static/style.css"></head><body><main>{{ render_slot(owner=view.id, name="body") }}</main>{% for backlink in page_backlinks %}<a href="{{config_site_url}}{{backlink.path}}">{{backlink.title}}</a>{% endfor %}</body></html>

@@ -13,24 +13,25 @@ mod manual_announcements;
 #[path = "document_releases/production.rs"]
 mod production;
 
-const PIPELINE: &str = r#"
+const PIPELINE: &str = concat!(
+    include_str!("support/notebook.rhai"),
+    r#"
 fn edit(document) { document }
 pipeline site {
-    let documents = map_documents(parse_markdown(load_markdown("content/*.md")), Fn("edit"));
-    let website = assemble_website(documents, parse_feed(load_data("feed.csv")));
-    output render_website(website, "_site", website_config(#{url: "https://example.com"}))
+    let source = map_documents(documents(load_markdown("content/*.md")), Fn("edit"));
+    let selected = compose(catalog([source],publication_options(#{source_site_url:"https://example.com"})),Fn("notebook"));
+    output render_html(selected, "_site", html_config(#{theme:"@notebook",url: "https://example.com"}))
         .deploy_to(github_pages("owner/site"));
-    output copy_assets(load_assets("static/**/*"), "_site/static");
 }
-"#;
+"#
+);
 
 fn fixture() -> tempfile::TempDir {
     let root = tempfile::tempdir().unwrap();
-    for path in ["content", "pages/notes", "pages/tags", "static"] {
+    for path in ["content", "pages/publications", "static"] {
         fs::create_dir_all(root.path().join(path)).unwrap();
     }
     fs::write(root.path().join("berlin.pipeline.rhai"), PIPELINE).unwrap();
-    fs::write(root.path().join("feed.csv"), "Title,URL,Date,Tags\n").unwrap();
     fs::write(
         root.path().join("static/style.css"),
         "body { color: green; }",
@@ -38,14 +39,13 @@ fn fixture() -> tempfile::TempDir {
     .unwrap();
     for (path, text) in [
         (
-            "index.tera",
-            "Index: {% for a in articles %}{{a.title}}{% endfor %}",
+            "publications/site_page.tera",
+            include_str!("support/minimal-site.tera"),
         ),
-        ("notes.tera", "Notes"),
-        ("feed.tera", "Reading"),
-        ("about.tera", "About"),
-        ("tags/base.tera", "Tag"),
-        ("notes/[slug].tera", "{{render()}}"),
+        (
+            "publications/document.tera",
+            include_str!("support/minimal-document.tera"),
+        ),
     ] {
         fs::write(root.path().join("pages").join(path), text).unwrap();
     }
@@ -60,6 +60,10 @@ fn note(root: &Path, id: &str, title: &str, fields: &str, body: &str) {
 fn run(root: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_bln"))
         .env("BERLIN_DIR", root)
+        .env(
+            "BERLIN_THEME_DIR",
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../themes"),
+        )
         .env("PATH", root.join("no-external-tools"))
         .args(args)
         .output()
@@ -121,8 +125,8 @@ fn distinguishes_content_metadata_and_presentation_changes_in_real_releases() {
     }
 
     fs::write(
-        root.path().join("pages/notes/[slug].tera"),
-        "<main>{{render()}}</main>",
+        root.path().join("pages/publications/document.tera"),
+        "<main class='alternative'>{{ render_slot(owner=view.id, name=\"body\") }}</main>",
     )
     .unwrap();
     fs::write(
@@ -163,23 +167,41 @@ fn distinguishes_content_metadata_and_presentation_changes_in_real_releases() {
     assert_eq!(modified["content_changed"], false);
     assert_eq!(modified["metadata_changed"], true);
     assert_eq!(modified["route_changed"], false);
-    // The fixture templates do not display lastmod: an invisible metadata edit
-    // must still be bound by a new release ID, not lost through equal file hashes.
+    // The HTML does not display lastmod; the public provenance manifest now
+    // records it. Release identity must still bind the metadata revision.
     assert_eq!(
-        manifest(root.path(), &body)["files"],
-        manifest(root.path(), &metadata)["files"]
+        fs::read(
+            root.path()
+                .join(".berlin/releases")
+                .join(&body)
+                .join("site/notes/note.html")
+        )
+        .unwrap(),
+        fs::read(
+            root.path()
+                .join(".berlin/releases")
+                .join(&metadata)
+                .join("site/notes/note.html")
+        )
+        .unwrap()
     );
     assert_ne!(body, metadata);
     assert_eq!(release(root.path()), metadata);
     let text = success(run(root.path(), &["release-diff", &body, &metadata]));
     assert!(text.contains("1 modified"));
     assert!(text.contains("\"Note\" [metadata]"));
-    assert!(text.contains("No file changes."));
+    assert!(
+        report["files"]["modified"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|file| file["after"]["path"] == "publication.json")
+    );
     assert!(!root.path().join("_site").exists());
 }
 
 #[test]
-fn ignores_source_moves_and_yaml_comments_and_compares_offline_after_sources_disappear() {
+fn source_moves_and_yaml_comments_preserve_document_revisions_and_offline_comparison() {
     let root = fixture();
     let before = release(root.path());
     let source = fs::read_to_string(root.path().join("content/note.md")).unwrap();
@@ -193,10 +215,33 @@ fn ignores_source_moves_and_yaml_comments_and_compares_offline_after_sources_dis
         root.path().join("content/renamed.md"),
     )
     .unwrap();
-    assert_eq!(release(root.path()), before);
+    let after = release(root.path());
+    // Raw consumed bytes have changed, so their provenance changes the sealed
+    // bundle. The authored document and editorial composition remain identical.
+    assert_ne!(after, before);
+    assert_eq!(
+        manifest(root.path(), &before)["documents"],
+        manifest(root.path(), &after)["documents"]
+    );
+    let public = |id: &str| -> Value {
+        serde_json::from_slice(
+            &fs::read(
+                root.path()
+                    .join(".berlin/releases")
+                    .join(id)
+                    .join("site/publication.json"),
+            )
+            .unwrap(),
+        )
+        .unwrap()
+    };
+    assert_eq!(
+        public(&before)["composition_fingerprint"],
+        public(&after)["composition_fingerprint"]
+    );
     fs::remove_file(root.path().join("content/renamed.md")).unwrap();
     fs::remove_file(root.path().join("berlin.pipeline.rhai")).unwrap();
-    let report = compare(root.path(), &before, &before);
+    let report = compare(root.path(), &before, &after);
     assert_eq!(changes(&report)["unchanged"], 1);
 }
 

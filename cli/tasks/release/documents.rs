@@ -3,7 +3,6 @@
 
 use super::{ReleaseFile, digest, validate_id};
 use anyhow::{Context, Error, bail};
-use berlin_content::WebsiteAssembly;
 use berlin_document::{Block, ContentId, Document, DocumentKind, Relation};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
@@ -48,7 +47,7 @@ impl DocumentRevision {
                 .title
                 .clone()
                 .context("document has no title")?,
-            path: crate::tasks::website::document_route(document)?,
+            path: berlin_content::document_route(document)?,
             content_sha256: digest(&serde_json::to_vec(&content)?),
             // Authored dates, tags, descriptions, slugs, etc. are metadata changes,
             // not body edits. Provenance and generated HTML enter neither hash.
@@ -72,20 +71,6 @@ impl DocumentInventory {
             entries,
         })
     }
-    pub(super) fn from_website(website: &WebsiteAssembly) -> Result<Self, Error> {
-        let mut entries = website
-            .documents()
-            .as_slice()
-            .iter()
-            .map(DocumentRevision::from_document)
-            .collect::<Result<Vec<_>, _>>()?;
-        entries.sort_by(|left, right| left.id.0.cmp(&right.id.0));
-        Ok(Self {
-            fingerprint_version: 1,
-            entries,
-        })
-    }
-
     pub(super) fn validate(&self, files: &[ReleaseFile]) -> Result<(), Error> {
         if self.fingerprint_version != 1 {
             bail!(

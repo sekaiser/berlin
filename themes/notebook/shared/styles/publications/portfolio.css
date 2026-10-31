@@ -1,5 +1,8 @@
 @import "../tokens.css";
+@import "../components/tags.css";
+@import "../entries/reading.css";
 @import "../components/code.css";
+@import "../components/entry.css";
 .publication-page { margin: 0; color: var(--ink); background: var(--canvas); font-family: var(--font-reading); line-height: 1.7; }
 .publication-page main { box-sizing: border-box; max-width: 1040px; margin: 3rem auto; padding: clamp(1.5rem, 5vw, 4rem); background: var(--paper); }
 .publication-page h1, .publication-page h2, .publication-page h3 { font-family: var(--font-display); line-height: 1.2; }
@@ -23,3 +26,10 @@
 .publication-site-content { padding: clamp(1.5rem, 5vw, 4rem); background: var(--paper); }
 .publication-page a:focus-visible { outline: 2px solid var(--ink); outline-offset: .25rem; }
 @media (max-width: 600px) { .publication-page main { margin: 0; } }
+
+.publication-resource[hidden] { display: none; }
+
+.notebook-home .publication-opening { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 38%); align-items: center; gap: 2rem; }
+.notebook-home .publication-opening .journal-desk { margin: 0; }
+.notebook-home .publication-opening .journal-desk img { width: 100%; height: auto; }
+@media (max-width: 600px) { .notebook-home .publication-opening { grid-template-columns: minmax(0, 1fr); } .notebook-home .publication-opening .journal-desk { max-width: 180px; justify-self: end; } }

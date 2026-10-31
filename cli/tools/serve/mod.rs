@@ -277,7 +277,7 @@ mod tests {
         std::fs::create_dir(root.path().join("research")).unwrap();
         for pattern in ["research/*.tex", "research/future/*.tex"] {
             let script = pipeline("_site").replace(
-                "parse_markdown(load_markdown(\"content/*.md\"))",
+                "documents(load_markdown(\"content/*.md\"))",
                 &format!("compile_papers(load_latex({pattern:?}), \"_site/papers\")"),
             );
             std::fs::write(root.path().join("berlin.pipeline.rhai"), script).unwrap();
@@ -292,12 +292,11 @@ mod tests {
 
     fn pipeline(output: &str) -> String {
         format!(
-            r#"pipeline site {{
-            let documents = parse_markdown(load_markdown("content/*.md"));
-            let feed = parse_feed(load_data("data/*.csv"));
-            let website = assemble_website(documents, feed);
-            let config = website_config(#{{url: "http://localhost:8081", title: "Example", author: "Author", description: "Test"}});
-            output render_website(website, "{output}", config);
+            r#"fn notebook(c) {{throw "not executed while selecting preview";}} pipeline site {{
+            let sources = catalog([documents(load_markdown("content/*.md"))]);
+            let website = compose(sources,Fn("notebook"));
+            let config = html_config(#{{url: "http://localhost:8081", title: "Example", author: "Author", description: "Test"}});
+            output render_html(website, "{output}", config);
         }}"#
         )
     }
@@ -354,10 +353,10 @@ mod tests {
     fn f07_composed_preview_rejects_text_and_ambiguous_targets() {
         let root = tempfile::tempdir().unwrap();
         let base = r#"fn compose(c){throw "not executed by preview selection";}
-            pipeline portfolio {let p=compose_publication(parse_markdown(load_markdown("missing/*.md")),Fn("compose"),publication_options(#{})); OUTPUT }"#;
+            pipeline portfolio {let p=compose(catalog([documents(load_markdown("missing/*.md"))]),Fn("compose")); OUTPUT }"#;
         for output in [
-            "output render_publication_text(p,\"_text\",text_config(#{}));",
-            "output render_publication_website(p,\"one\",website_config(#{}));output render_publication_website(p,\"two\",website_config(#{}));",
+            "output render_text(p,\"_text\",text_config(#{}));",
+            "output render_html(p,\"one\",html_config(#{}));output render_html(p,\"two\",html_config(#{}));",
         ] {
             std::fs::write(
                 root.path().join("berlin.pipeline.rhai"),
@@ -375,8 +374,8 @@ mod tests {
     fn preview_does_not_guess_between_multiple_websites() {
         let root = tempfile::tempdir().unwrap();
         let source = pipeline("one").replace(
-            "output render_website(website, \"one\", config);",
-            "output render_website(website, \"one\", config).named(\"first\"); output render_website(website, \"two\", config).named(\"second\");",
+            "output render_html(website, \"one\", config);",
+            "output render_html(website, \"one\", config).named(\"first\"); output render_html(website, \"two\", config).named(\"second\");",
         );
         std::fs::write(root.path().join("berlin.pipeline.rhai"), source).unwrap();
         assert!(

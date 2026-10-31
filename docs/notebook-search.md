@@ -2,7 +2,7 @@
 
 Add `pages/search.tera` to opt a website into search. Without that template,
 Berlin generates neither a search page nor an index and existing themes are
-unchanged. The [publishing fixture](../support/fixtures/publishing/pages/search.tera)
+unchanged. The [publishing fixture](../themes/notebook/shared/pages/search.tera)
 contains a minimal integration.
 
 The website renderer writes these files in the same output transaction:
@@ -23,14 +23,14 @@ with the index so browsers do not retain search results from an earlier build.
 
 ## Scope
 
-The index is derived from `WebsiteAssembly` after document mappings and draft
+The index is derived from the explicit `SiteSpec.add_search(selection)` entry after document mappings and draft
 exclusion. It includes published notes and guides: titles, tags, section headings,
 prose, lists, tables, code and captions. It never serializes provenance, source
 paths, component properties, or raw HTML. Authored text already visible in a
 published document remains public, including code. The index is not a secret
 store and must never be built from a private authoring collection.
 
-Saved-reading entries retain their separate Reading-page filter. About pages,
+Selected external resources contribute public metadata and original destinations; no fetched article text is indexed. Reading components also offer their own local filter. About pages,
 template-only copy, text embedded in images and arbitrary HTML are not indexed.
 
 ## Matching and navigation

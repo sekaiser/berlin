@@ -8,18 +8,6 @@ fn production_fixture(base: &str) -> tempfile::TempDir {
         PIPELINE.replace("https://example.com", base),
     )
     .unwrap();
-    for name in [
-        "index.tera",
-        "notes.tera",
-        "feed.tera",
-        "about.tera",
-        "tags/base.tera",
-        "notes/[slug].tera",
-    ] {
-        let path = root.path().join("pages").join(name);
-        let source = fs::read_to_string(&path).unwrap();
-        fs::write(path, format!("<link rel='canonical' href='{{{{config_site_url | safe}}}}{{{{page_path | safe}}}}'><link rel='stylesheet' href='/static/style.css'>{source}")).unwrap();
-    }
     fs::write(
         root.path().join("static/style.css"),
         "body { background: url(image.png); }",
@@ -42,7 +30,7 @@ fn equations_survive_production_and_affect_revisions_without_partial_publication
     let root = production_fixture("https://example.com");
     fs::write(
         root.path().join("pages/search.tera"),
-        "<link rel='canonical' href='{{config_site_url | safe}}{{page_path | safe}}'>Search",
+        "<link rel='canonical' href='{{config_site_url}}{{page_path}}'>Search",
     )
     .unwrap();
     note(

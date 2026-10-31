@@ -311,6 +311,17 @@ fn register_helpers(engine: &mut Engine) {
                     rhai::Map::from_iter([("items".into(), Dynamic::from(cards))]),
                 )?));
             }
+            if children.is_empty() {
+                children.push(Dynamic::from(make_view(
+                    &context,
+                    "berlin.introduction@1".into(),
+                    rhai::Map::from_iter([(
+                        "text".into(),
+                        Dynamic::from("No published entries yet."),
+                    )]),
+                    rhai::Map::new(),
+                )?));
+            }
             let root = make_view(
                 &context,
                 "berlin.portfolio@1".into(),

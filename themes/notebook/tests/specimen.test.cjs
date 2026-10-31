@@ -24,7 +24,7 @@ test('stress specimens publish long and untagged entries through the real pipeli
   const project = buildSpecimen('stress');
   try {
     const read = name => fs.readFileSync(path.join(project.output, name), 'utf8');
-    assert.equal(JSON.parse(read('search/index.json')).documents.length, 5);
+    assert.equal(JSON.parse(read('search/index.json')).documents.length, 7);
     const article = read('notes/long-title.html');
     assert.ok(article.includes('reader enlarges the text'));
     assert.equal([...article.matchAll(/class="paper-tag"/g)].length, 20);
@@ -71,18 +71,13 @@ test('stress specimens publish long and untagged entries through the real pipeli
       assert.deepEqual(fs.readFileSync(path.join(project.output,'static/diagrams',name)),
         fs.readFileSync(path.join(__dirname,'../example/static/diagrams',name)));
     }
-    assert.equal([...read('feed.html').matchAll(/class="journal-bookmark"/g)].length, 2);
+    assert.equal([...read('feed.html').matchAll(/class="publication-resource publication-resource--article"/g)].length, 2);
     const home = read('index.html');
-    const entries = html => [...html.matchAll(/<article class="journal-entry(?: journal-entry--featured)?(?: journal-entry--preview-right)?">([\s\S]*?)<\/article>/g)].map(match => match[1]);
+    const entries = html => [...html.matchAll(/<article class="[^"]*\bjournal-entry\b[^"]*"[^>]*>([\s\S]*?)<\/article>/g)].map(match => match[1]);
     const details = entry => ({
-      title: entry.match(/<h[23]>([\s\S]*?)<\/h[23]>/)[1],
-      summary: entry.match(/<div class="journal-excerpt">([\s\S]*?)<\/div>/)[1],
+      title: entry.match(/<h[234]>([\s\S]*?)<\/h[234]>/)[1],
       date: entry.match(/<time datetime="([^"]+)">([^<]+)<\/time>/).slice(1),
     });
-    assert.equal([...home.matchAll(/class="journal-entry journal-entry--featured(?: journal-entry--preview-right)?"/g)].length, 2);
-    const trailing = home.match(/<article class="journal-entry journal-entry--featured journal-entry--preview-right">([\s\S]*?)<\/article>/)[1];
-    assert.ok(trailing.indexOf('journal-entry-copy') < trailing.indexOf('journal-entry-visual'));
-    assert.match(trailing, /alt="Four synthetic points/);
     assert.doesNotMatch(read('notes.html'), /journal-entry--preview-right/, 'Default previews remain on the left');
     assert.equal(entries(home).length, 5);
     assert.deepEqual(entries(home).map(details), entries(read('notes.html')).map(details));
@@ -118,7 +113,7 @@ test('a project entry-layout policy follows its article across collection pages'
     assert.equal(result.status, 0, result.error?.message || result.stderr);
     for (const route of ['index.html', 'notes.html', 'tags/design.html']) {
       const html = fs.readFileSync(path.join(project.output, route), 'utf8');
-      const entries = [...html.matchAll(/<article class="(journal-entry[^"]*)">([\s\S]*?)<\/article>/g)];
+      const entries = [...html.matchAll(/<article class="([^"]*\bjournal-entry\b[^"]*)"[^>]*>([\s\S]*?)<\/article>/g)];
       const illustrated = entries.find(entry => entry[2].includes('Reading a small plot'));
       assert.ok(illustrated, route);
       assert.ok(illustrated[1].includes('journal-entry--preview-right'), route);

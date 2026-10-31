@@ -15,21 +15,72 @@ use rhai::FnPtr;
 use rhai::ImmutableString;
 use std::sync::Arc;
 
+// Rhai counts script instructions, not the cost of cloning native graph values.
+// Charge cumulative materialization before copy-on-write or configuration expansion.
+#[derive(Clone, Default)]
+struct GraphBudget(Arc<std::sync::atomic::AtomicUsize>);
+impl GraphBudget {
+    const MAX_BYTES: usize = 64 * 1024 * 1024;
+    fn charge(&self, value: &impl serde::Serialize) -> Result<(), Box<rhai::EvalAltResult>> {
+        let bytes = berlin_publication::encoded_size(value, Self::MAX_BYTES).map_err(|_| {
+            Box::<rhai::EvalAltResult>::from("ResourceLimit: native graph byte budget exceeded")
+        })?;
+        self.0
+            .fetch_update(
+                std::sync::atomic::Ordering::Relaxed,
+                std::sync::atomic::Ordering::Relaxed,
+                |used| {
+                    used.checked_add(bytes)
+                        .filter(|next| *next <= Self::MAX_BYTES)
+                },
+            )
+            .map_err(|_| {
+                Box::<rhai::EvalAltResult>::from(
+                    "ResourceLimit: cumulative native graph byte budget exceeded",
+                )
+            })?;
+        Ok(())
+    }
+}
+#[derive(Clone)]
+struct HtmlConfig(Arc<WebsiteConfig>);
+#[derive(Clone)]
+struct CatalogConfig(Arc<berlin_publication::PublicationOptions>);
+#[derive(Clone)]
+struct TextConfig(Arc<berlin_publication::TextConfig>);
+
 #[derive(Clone)]
 struct Fragment {
+    budget: GraphBudget,
     nodes: Arc<Vec<PipelineNode>>,
     output: NodeId,
 }
 
 impl Fragment {
-    fn source(id: &str, operation: Operation) -> Self {
-        Self {
+    fn source(
+        id: &str,
+        operation: Operation,
+        budget: GraphBudget,
+    ) -> Result<Self, Box<rhai::EvalAltResult>> {
+        budget.charge(&operation)?;
+        Ok(Self {
+            budget,
             nodes: Arc::new(vec![PipelineNode::new(id, operation)]),
             output: id.into(),
-        }
+        })
     }
 
-    fn transform(self, id: &str, operation: Operation, output: Option<&str>) -> Self {
+    fn transform(
+        self,
+        id: &str,
+        operation: Operation,
+        output: Option<&str>,
+    ) -> Result<Self, Box<rhai::EvalAltResult>> {
+        if self.nodes.len() >= 10_000 {
+            return Err("ResourceLimit: graph node count exceeded".into());
+        }
+        self.budget
+            .charge(&(&self.nodes.as_ref(), &operation, output))?;
         let node = {
             let mut node = PipelineNode::new(id, operation).depends_on(self.output);
             if let Some(path) = output {
@@ -44,13 +95,29 @@ impl Fragment {
             nodes
         };
 
-        Self {
+        Ok(Self {
+            budget: self.budget,
             nodes,
             output: id.into(),
-        }
+        })
     }
 
-    fn join(self, other: Self, id: &str, operation: Operation, output: Option<&str>) -> Self {
+    fn join(
+        self,
+        other: Self,
+        id: &str,
+        operation: Operation,
+        output: Option<&str>,
+    ) -> Result<Self, Box<rhai::EvalAltResult>> {
+        if self.nodes.len().saturating_add(other.nodes.len()) >= 10_000 {
+            return Err("ResourceLimit: graph node count exceeded".into());
+        }
+        self.budget.charge(&(
+            self.nodes.as_ref(),
+            other.nodes.as_ref(),
+            &operation,
+            output,
+        ))?;
         let node = {
             let mut node = PipelineNode::new(id, operation)
                 .depends_on(self.output)
@@ -68,13 +135,15 @@ impl Fragment {
             nodes
         };
 
-        Self {
+        Ok(Self {
+            budget: self.budget,
             nodes,
             output: id.into(),
-        }
+        })
     }
 
-    fn named(mut self, id: &str) -> Self {
+    fn named(mut self, id: &str) -> Result<Self, Box<rhai::EvalAltResult>> {
+        self.budget.charge(&(self.nodes.as_ref(), id))?;
         let output = NodeId::new(id);
         let node = Arc::make_mut(&mut self.nodes)
             .iter_mut()
@@ -82,7 +151,7 @@ impl Fragment {
             .expect("a fragment output always refers to one of its nodes");
         node.id = output.clone();
         self.output = output;
-        self
+        Ok(self)
     }
 }
 
@@ -99,7 +168,7 @@ macro_rules! artifact {
                             .into(),
                     );
                 }
-                Ok(Self(self.0.named(id.as_str())))
+                Ok(Self(self.0.named(id.as_str())?))
             }
         }
     };
@@ -113,14 +182,10 @@ artifact!(DataSources);
 artifact!(ExternalResources);
 artifact!(Catalog);
 artifact!(Composed);
-artifact!(Feed);
-artifact!(WebsiteAssembly);
 artifact!(CssSources);
 artifact!(Stylesheets);
 artifact!(StaticAssets);
 artifact!(Website);
-artifact!(LinkedInDrafts);
-artifact!(PublicationAssembly);
 artifact!(PublicationText);
 
 #[derive(Clone)]
@@ -137,9 +202,6 @@ impl PipelineTarget {
         if value.is::<Website>() {
             return value.try_cast().map(|value: Website| Self(value.0));
         }
-        if value.is::<LinkedInDrafts>() {
-            return value.try_cast().map(|value: LinkedInDrafts| Self(value.0));
-        }
         if value.is::<Stylesheets>() {
             return value.try_cast().map(|value: Stylesheets| Self(value.0));
         }
@@ -149,40 +211,67 @@ impl PipelineTarget {
         None
     }
 
-    pub(super) fn into_nodes(self) -> Vec<PipelineNode> {
-        Arc::try_unwrap(self.0.nodes).unwrap_or_else(|nodes| nodes.as_ref().clone())
+    pub(super) fn into_nodes(self) -> Result<Vec<PipelineNode>, Box<rhai::EvalAltResult>> {
+        self.0.budget.charge(self.0.nodes.as_ref())?;
+        Ok(Arc::try_unwrap(self.0.nodes).unwrap_or_else(|nodes| nodes.as_ref().clone()))
     }
 }
 
 pub(super) fn register_operations(engine: &mut Engine) {
+    let budget = GraphBudget::default();
     engine.register_fn("catalog", |parts: rhai::Array| {
-        catalog(parts, berlin_publication::PublicationOptions::default())
+        catalog(parts, CatalogConfig(Arc::default()))
     });
     engine.register_fn("catalog", catalog);
     engine.register_fn("compose", compose);
     engine.register_fn("render_html", render_html);
     engine.register_fn("render_text", render_text);
     engine.register_fn("with_assets", with_assets);
-    engine.register_fn("html_config", website_config);
+    let html_budget = budget.clone();
+    engine.register_fn(
+        "html_config",
+        move |settings: rhai::Map| -> Result<HtmlConfig, Box<rhai::EvalAltResult>> {
+            let config: WebsiteConfig = rhai::serde::from_dynamic(&Dynamic::from(settings))?;
+            html_budget.charge(&config)?;
+            Ok(HtmlConfig(Arc::new(config)))
+        },
+    );
     engine.register_fn("documents", parse_markdown);
     engine.register_fn("documents", parse_documents);
     engine.register_fn("named", Catalog::named);
     engine.register_fn("named", Composed::named);
-    engine.register_type_with_name::<berlin_publication::PublicationOptions>("PublicationOptions");
-    engine.register_fn("publication_options",|settings:rhai::Map|->Result<berlin_publication::PublicationOptions,Box<rhai::EvalAltResult>>{let options:berlin_publication::PublicationOptions=rhai::serde::from_dynamic(&Dynamic::from(settings))?;options.limits.validate().map_err(|e|Box::<rhai::EvalAltResult>::from(e.to_string()))?;Ok(options)});
-    engine.register_type_with_name::<berlin_publication::TextConfig>("TextConfig");
+    engine.register_type_with_name::<CatalogConfig>("CatalogConfig");
+    let catalog_budget = budget.clone();
     engine.register_fn(
-        "text_config",
-        |settings: rhai::Map| -> Result<berlin_publication::TextConfig, Box<rhai::EvalAltResult>> {
-            rhai::serde::from_dynamic(&Dynamic::from(settings))
+        "publication_options",
+        move |settings: rhai::Map| -> Result<CatalogConfig, Box<rhai::EvalAltResult>> {
+            let config: berlin_publication::PublicationOptions =
+                rhai::serde::from_dynamic(&Dynamic::from(settings))?;
+            config.limits.validate().map_err(|e| e.to_string())?;
+            config
+                .resource_limits
+                .validate()
+                .map_err(|e| e.to_string())?;
+            catalog_budget.charge(&config)?;
+            Ok(CatalogConfig(Arc::new(config)))
         },
     );
-    engine.register_fn("compose_publication", compose_publication);
-    engine.register_fn("render_publication_website", render_publication_website);
-    engine.register_fn("render_publication_text", render_publication_text);
-    engine.register_fn("named", PublicationAssembly::named);
+    engine.register_type_with_name::<TextConfig>("TextConfig");
+    let text_budget = budget.clone();
+    engine.register_fn(
+        "text_config",
+        move |settings: rhai::Map| -> Result<TextConfig, Box<rhai::EvalAltResult>> {
+            let config: berlin_publication::TextConfig =
+                rhai::serde::from_dynamic(&Dynamic::from(settings))?;
+            text_budget.charge(&config)?;
+            Ok(TextConfig(Arc::new(config)))
+        },
+    );
     engine.register_fn("named", PublicationText::named);
-    engine.register_fn("load_latex", load_latex);
+    let source_budget = budget.clone();
+    engine.register_fn("load_latex", move |pattern: ImmutableString| {
+        load_latex(pattern, source_budget.clone())
+    });
     engine.register_fn(
         "compile_papers",
         |sources: LatexSources, output: ImmutableString| {
@@ -197,30 +286,38 @@ pub(super) fn register_operations(engine: &mut Engine) {
             compile_diagrams(source, inputs, output, "pdflatex".into())
         },
     );
-    engine.register_fn("load_org", load_org);
+    let source_budget = budget.clone();
+    engine.register_fn("load_org", move |pattern: ImmutableString| {
+        load_org(pattern, source_budget.clone())
+    });
     engine.register_fn("export_org", export_org);
-    engine.register_fn("load_markdown", load_markdown);
-    engine.register_fn("parse_markdown", parse_markdown);
-    engine.register_fn("parse_documents", parse_documents);
+    let source_budget = budget.clone();
+    engine.register_fn("load_markdown", move |pattern: ImmutableString| {
+        load_markdown(pattern, source_budget.clone())
+    });
     engine.register_fn("merge_documents", merge_documents);
     engine.register_fn("map_documents", map_documents);
-    engine.register_fn("load_data", load_data);
+    let source_budget = budget.clone();
+    engine.register_fn("load_data", move |pattern: ImmutableString| {
+        load_data(pattern, source_budget.clone())
+    });
     engine.register_fn("resources", |source: DataSources| {
         resources(source, "resources".into())
     });
     engine.register_fn("resources", resources);
-    engine.register_fn("parse_feed", parse_feed);
-    engine.register_fn("assemble_website", assemble_website);
-    engine.register_type_with_name::<WebsiteConfig>("WebsiteConfig");
-    engine.register_fn("website_config", website_config);
-    engine.register_fn("render_website", render_website);
+    engine.register_type_with_name::<HtmlConfig>("HtmlConfig");
     engine.register_type_with_name::<berlin_core::DeploymentTarget>("DeploymentTarget");
     engine.register_fn("github_pages", github_pages);
     engine.register_fn("deploy_to", deploy_website_to);
-    engine.register_fn("render_linkedin", render_linkedin);
-    engine.register_fn("load_css", load_css);
+    let source_budget = budget.clone();
+    engine.register_fn("load_css", move |pattern: ImmutableString| {
+        load_css(pattern, source_budget.clone())
+    });
     engine.register_fn("compile_css", compile_css);
-    engine.register_fn("load_assets", load_assets);
+    let source_budget = budget.clone();
+    engine.register_fn("load_assets", move |pattern: ImmutableString| {
+        load_assets(pattern, source_budget.clone())
+    });
     engine.register_fn("copy_assets", copy_assets);
 
     engine.register_fn("named", OrgSources::named);
@@ -229,24 +326,22 @@ pub(super) fn register_operations(engine: &mut Engine) {
     engine.register_fn("named", Documents::named);
     engine.register_fn("named", DataSources::named);
     engine.register_fn("named", ExternalResources::named);
-    engine.register_fn("named", Feed::named);
-    engine.register_fn("named", WebsiteAssembly::named);
     engine.register_fn("named", CssSources::named);
     engine.register_fn("named", Stylesheets::named);
     engine.register_fn("named", StaticAssets::named);
     engine.register_fn("named", Website::named);
-    engine.register_fn("named", LinkedInDrafts::named);
 }
 
 fn catalog(
     parts: rhai::Array,
-    options: berlin_publication::PublicationOptions,
+    options: CatalogConfig,
 ) -> Result<Catalog, Box<rhai::EvalAltResult>> {
     if parts.is_empty() || parts.len() > 64 {
         return Err("catalog requires 1..64 typed document/resource inputs".into());
     }
-    options.limits.validate().map_err(|e| e.to_string())?;
+    options.0.limits.validate().map_err(|e| e.to_string())?;
     options
+        .0
         .resource_limits
         .validate()
         .map_err(|e| e.to_string())?;
@@ -282,6 +377,11 @@ fn catalog(
         dependencies.push(fragment.output.clone());
         fragments.push(fragment);
     }
+    let budget = fragments[0].budget.clone();
+    budget.charge(options.0.as_ref())?;
+    for fragment in &fragments {
+        budget.charge(fragment.nodes.as_ref())?;
+    }
     let mut nodes = Vec::with_capacity(node_count + 1);
     for fragment in fragments {
         nodes.extend(fragment.nodes.iter().cloned());
@@ -290,12 +390,13 @@ fn catalog(
         "catalog",
         Operation::AssembleCatalog {
             parts: kinds,
-            options: Box::new(options),
+            options: Box::new(options.0.as_ref().clone()),
         },
     );
     node.dependencies = dependencies;
     nodes.push(node);
     Ok(Catalog(Fragment {
+        budget,
         nodes: Arc::new(nodes),
         output: "catalog".into(),
     }))
@@ -310,17 +411,22 @@ fn compose(catalog: Catalog, composer: FnPtr) -> Result<Composed, Box<rhai::Eval
             composer: FunctionRef::new(composer.fn_name()),
         },
         None,
-    )))
+    )?))
 }
-fn render_html(composed: Composed, output: ImmutableString, config: WebsiteConfig) -> Website {
-    Website(composed.0.transform(
+fn render_html(
+    composed: Composed,
+    output: ImmutableString,
+    config: HtmlConfig,
+) -> Result<Website, Box<rhai::EvalAltResult>> {
+    composed.0.budget.charge(config.0.as_ref())?;
+    Ok(Website(composed.0.transform(
         "html",
         Operation::RenderHtml {
-            config: Box::new(config),
+            config: Box::new(config.0.as_ref().clone()),
             asset_mounts: vec![],
         },
         Some(&output),
-    ))
+    )?))
 }
 fn with_assets(
     mut website: Website,
@@ -340,6 +446,11 @@ fn with_assets(
     {
         return Err("asset mount must be a confined relative path".into());
     }
+    website.0.budget.charge(&(
+        website.0.nodes.as_ref(),
+        assets.0.nodes.as_ref(),
+        mount.as_str(),
+    ))?;
     let output = website.0.output.clone();
     let nodes = Arc::make_mut(&mut website.0.nodes);
     let node = nodes
@@ -366,58 +477,22 @@ fn with_assets(
 fn render_text(
     composed: Composed,
     output: ImmutableString,
-    config: berlin_publication::TextConfig,
-) -> PublicationText {
-    PublicationText(
-        composed
-            .0
-            .transform("text", Operation::RenderText { config }, Some(&output)),
-    )
+    config: TextConfig,
+) -> Result<PublicationText, Box<rhai::EvalAltResult>> {
+    composed.0.budget.charge(config.0.as_ref())?;
+    Ok(PublicationText(composed.0.transform(
+        "text",
+        Operation::RenderText {
+            config: config.0.as_ref().clone(),
+        },
+        Some(&output),
+    )?))
 }
 
-fn compose_publication(
-    documents: Documents,
-    composer: FnPtr,
-    options: berlin_publication::PublicationOptions,
-) -> Result<PublicationAssembly, Box<rhai::EvalAltResult>> {
-    if composer.is_curried() || composer.is_anonymous() {
-        return Err("publication composers must be named, uncurried one-argument functions".into());
-    }
-    Ok(PublicationAssembly(documents.0.transform(
-        "publication_assembly",
-        Operation::ComposePublication {
-            composer: FunctionRef::new(composer.fn_name()),
-            options: Box::new(options),
-        },
-        None,
-    )))
-}
-fn render_publication_website(
-    assembly: PublicationAssembly,
-    output: ImmutableString,
-    config: WebsiteConfig,
-) -> Website {
-    Website(assembly.0.transform(
-        "publication_website",
-        Operation::RenderPublicationWebsite {
-            config: Box::new(config),
-        },
-        Some(output.as_str()),
-    ))
-}
-fn render_publication_text(
-    assembly: PublicationAssembly,
-    output: ImmutableString,
-    config: berlin_publication::TextConfig,
-) -> PublicationText {
-    PublicationText(assembly.0.transform(
-        "publication_text",
-        Operation::RenderPublicationText { config },
-        Some(output.as_str()),
-    ))
-}
-
-fn load_org(pattern: ImmutableString) -> Result<OrgSources, Box<rhai::EvalAltResult>> {
+fn load_org(
+    pattern: ImmutableString,
+    budget: GraphBudget,
+) -> Result<OrgSources, Box<rhai::EvalAltResult>> {
     if pattern.len() > 4096 || pattern.contains('\0') {
         return Err("source pattern exceeds its byte limit or contains NUL".into());
     }
@@ -426,10 +501,14 @@ fn load_org(pattern: ImmutableString) -> Result<OrgSources, Box<rhai::EvalAltRes
         Operation::LoadOrg {
             pattern: pattern.into(),
         },
-    )))
+        budget,
+    )?))
 }
 
-fn load_latex(pattern: ImmutableString) -> Result<LatexSources, Box<rhai::EvalAltResult>> {
+fn load_latex(
+    pattern: ImmutableString,
+    budget: GraphBudget,
+) -> Result<LatexSources, Box<rhai::EvalAltResult>> {
     if pattern.len() > 4096 || pattern.contains('\0') {
         return Err("source pattern exceeds its byte limit or contains NUL".into());
     }
@@ -438,21 +517,22 @@ fn load_latex(pattern: ImmutableString) -> Result<LatexSources, Box<rhai::EvalAl
         Operation::LoadLatex {
             pattern: pattern.into(),
         },
-    )))
+        budget,
+    )?))
 }
 
 fn compile_papers(
     source: LatexSources,
     output: ImmutableString,
     url_prefix: ImmutableString,
-) -> Documents {
-    Documents(source.0.transform(
+) -> Result<Documents, Box<rhai::EvalAltResult>> {
+    Ok(Documents(source.0.transform(
         "paper_documents",
         Operation::CompilePapers {
             url_prefix: url_prefix.into(),
         },
         Some(output.as_str()),
-    ))
+    )?))
 }
 
 fn export_org(
@@ -460,18 +540,21 @@ fn export_org(
     backend: ImmutableString,
     output: ImmutableString,
     section: ImmutableString,
-) -> MarkdownSources {
-    MarkdownSources(source.0.transform(
+) -> Result<MarkdownSources, Box<rhai::EvalAltResult>> {
+    Ok(MarkdownSources(source.0.transform(
         "exported_markdown",
         Operation::ExportOrg {
             backend: backend.into(),
             section: section.into(),
         },
         Some(output.as_str()),
-    ))
+    )?))
 }
 
-fn load_markdown(pattern: ImmutableString) -> Result<MarkdownSources, Box<rhai::EvalAltResult>> {
+fn load_markdown(
+    pattern: ImmutableString,
+    budget: GraphBudget,
+) -> Result<MarkdownSources, Box<rhai::EvalAltResult>> {
     if pattern.len() > 4096 || pattern.contains('\0') {
         return Err("source pattern exceeds its byte limit or contains NUL".into());
     }
@@ -480,25 +563,26 @@ fn load_markdown(pattern: ImmutableString) -> Result<MarkdownSources, Box<rhai::
         Operation::LoadMarkdown {
             pattern: pattern.into(),
         },
-    )))
+        budget,
+    )?))
 }
 
-fn parse_markdown(source: MarkdownSources) -> Documents {
-    Documents(
-        source
-            .0
-            .transform("parsed_documents", Operation::ParseMarkdown, None),
-    )
+fn parse_markdown(source: MarkdownSources) -> Result<Documents, Box<rhai::EvalAltResult>> {
+    Ok(Documents(source.0.transform(
+        "parsed_documents",
+        Operation::ParseMarkdown,
+        None,
+    )?))
 }
 
-fn map_documents(source: Documents, mapper: FnPtr) -> Documents {
-    Documents(source.0.transform(
+fn map_documents(source: Documents, mapper: FnPtr) -> Result<Documents, Box<rhai::EvalAltResult>> {
+    Ok(Documents(source.0.transform(
         "documents",
         Operation::MapDocuments {
             mapper: FunctionRef::new(mapper.fn_name()),
         },
         None,
-    ))
+    )?))
 }
 
 fn compile_diagrams(
@@ -516,10 +600,13 @@ fn compile_diagrams(
         "diagrams",
         Operation::CompileDiagrams { engine },
         Some(output.as_str()),
-    )))
+    )?))
 }
 
-fn load_data(pattern: ImmutableString) -> Result<DataSources, Box<rhai::EvalAltResult>> {
+fn load_data(
+    pattern: ImmutableString,
+    budget: GraphBudget,
+) -> Result<DataSources, Box<rhai::EvalAltResult>> {
     if pattern.len() > 4096 || pattern.contains('\0') {
         return Err("source pattern exceeds its byte limit or contains NUL".into());
     }
@@ -528,70 +615,41 @@ fn load_data(pattern: ImmutableString) -> Result<DataSources, Box<rhai::EvalAltR
         Operation::LoadData {
             pattern: pattern.into(),
         },
-    )))
+        budget,
+    )?))
 }
 
-fn parse_feed(source: DataSources) -> Feed {
-    Feed(source.0.transform("feed", Operation::ParseFeed, None))
-}
-
-fn resources(source: DataSources, namespace: ImmutableString) -> ExternalResources {
-    ExternalResources(source.0.transform(
+fn resources(
+    source: DataSources,
+    namespace: ImmutableString,
+) -> Result<ExternalResources, Box<rhai::EvalAltResult>> {
+    Ok(ExternalResources(source.0.transform(
         "resources",
         Operation::ParseResources {
             namespace: namespace.into(),
         },
         None,
-    ))
+    )?))
 }
 
-fn parse_documents(source: DataSources) -> Documents {
-    Documents(
-        source
-            .0
-            .transform("imported_documents", Operation::ParseDocuments, None),
-    )
+fn parse_documents(source: DataSources) -> Result<Documents, Box<rhai::EvalAltResult>> {
+    Ok(Documents(source.0.transform(
+        "imported_documents",
+        Operation::ParseDocuments,
+        None,
+    )?))
 }
 
-fn merge_documents(left: Documents, right: Documents) -> Documents {
-    Documents(
-        left.0
-            .join(right.0, "merged_documents", Operation::MergeDocuments, None),
-    )
-}
-
-fn assemble_website(documents: Documents, feed: Feed) -> WebsiteAssembly {
-    WebsiteAssembly(
-        documents
-            .0
-            .join(feed.0, "website_assembly", Operation::AssembleWebsite, None),
-    )
-}
-
-fn website_config(settings: rhai::Map) -> Result<WebsiteConfig, Box<rhai::EvalAltResult>> {
-    rhai::serde::from_dynamic(&Dynamic::from(settings))
-}
-
-fn render_website(
-    assembly: WebsiteAssembly,
-    output: ImmutableString,
-    config: WebsiteConfig,
-) -> Website {
-    Website(assembly.0.transform(
-        "website",
-        Operation::RenderWebsite {
-            config: Box::new(config),
-        },
-        Some(output.as_str()),
-    ))
-}
-
-fn render_linkedin(documents: Documents, output: ImmutableString) -> LinkedInDrafts {
-    LinkedInDrafts(documents.0.transform(
-        "linkedin_drafts",
-        Operation::RenderLinkedIn,
-        Some(output.as_str()),
-    ))
+fn merge_documents(
+    left: Documents,
+    right: Documents,
+) -> Result<Documents, Box<rhai::EvalAltResult>> {
+    Ok(Documents(left.0.join(
+        right.0,
+        "merged_documents",
+        Operation::MergeDocuments,
+        None,
+    )?))
 }
 
 fn github_pages(
@@ -610,6 +668,10 @@ fn deploy_website_to(
     mut website: Website,
     target: berlin_core::DeploymentTarget,
 ) -> Result<Website, Box<rhai::EvalAltResult>> {
+    website
+        .0
+        .budget
+        .charge(&(website.0.nodes.as_ref(), &target))?;
     let output = Arc::make_mut(&mut website.0.nodes)
         .iter_mut()
         .find(|node| node.id == website.0.output)
@@ -621,7 +683,10 @@ fn deploy_website_to(
     Ok(website)
 }
 
-fn load_css(pattern: ImmutableString) -> Result<CssSources, Box<rhai::EvalAltResult>> {
+fn load_css(
+    pattern: ImmutableString,
+    budget: GraphBudget,
+) -> Result<CssSources, Box<rhai::EvalAltResult>> {
     if pattern.len() > 4096 || pattern.contains('\0') {
         return Err("source pattern exceeds its byte limit or contains NUL".into());
     }
@@ -630,18 +695,25 @@ fn load_css(pattern: ImmutableString) -> Result<CssSources, Box<rhai::EvalAltRes
         Operation::LoadCss {
             pattern: pattern.into(),
         },
-    )))
+        budget,
+    )?))
 }
 
-fn compile_css(source: CssSources, output: ImmutableString) -> Stylesheets {
-    Stylesheets(
-        source
-            .0
-            .transform("stylesheets", Operation::CompileCss, Some(output.as_str())),
-    )
+fn compile_css(
+    source: CssSources,
+    output: ImmutableString,
+) -> Result<Stylesheets, Box<rhai::EvalAltResult>> {
+    Ok(Stylesheets(source.0.transform(
+        "stylesheets",
+        Operation::CompileCss,
+        Some(output.as_str()),
+    )?))
 }
 
-fn load_assets(pattern: ImmutableString) -> Result<StaticAssets, Box<rhai::EvalAltResult>> {
+fn load_assets(
+    pattern: ImmutableString,
+    budget: GraphBudget,
+) -> Result<StaticAssets, Box<rhai::EvalAltResult>> {
     if pattern.len() > 4096 || pattern.contains('\0') {
         return Err("source pattern exceeds its byte limit or contains NUL".into());
     }
@@ -650,13 +722,57 @@ fn load_assets(pattern: ImmutableString) -> Result<StaticAssets, Box<rhai::EvalA
         Operation::LoadAssets {
             pattern: pattern.into(),
         },
-    )))
+        budget,
+    )?))
 }
 
-fn copy_assets(source: StaticAssets, output: ImmutableString) -> StaticAssets {
-    StaticAssets(source.0.transform(
+fn copy_assets(
+    source: StaticAssets,
+    output: ImmutableString,
+) -> Result<StaticAssets, Box<rhai::EvalAltResult>> {
+    Ok(StaticAssets(source.0.transform(
         "static_assets",
         Operation::CopyAssets,
         Some(output.as_str()),
-    ))
+    )?))
+}
+
+#[cfg(test)]
+mod allocation_tests {
+    use super::*;
+
+    #[test]
+    fn native_graph_budget_accepts_exact_boundary_and_refuses_before_cow() {
+        let budget = GraphBudget::default();
+        let mut fragment = load_markdown("article.md".into(), budget.clone())
+            .unwrap()
+            .0;
+        let retained = fragment.clone();
+        let charge = berlin_publication::encoded_size(
+            &(fragment.nodes.as_ref(), "renamed"),
+            GraphBudget::MAX_BYTES,
+        )
+        .unwrap();
+        budget.0.store(
+            GraphBudget::MAX_BYTES - charge,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        fragment = fragment.named("renamed").unwrap();
+        assert_eq!(fragment.output.as_str(), "renamed");
+        assert_eq!(retained.output.as_str(), "markdown_sources");
+        let before = retained.nodes.clone();
+        assert!(retained.named("overflow").is_err());
+        assert_eq!(before[0].id.as_str(), "markdown_sources");
+        assert_eq!(
+            budget.0.load(std::sync::atomic::Ordering::Relaxed),
+            GraphBudget::MAX_BYTES
+        );
+    }
+
+    #[test]
+    fn repeated_native_configuration_values_share_the_payload() {
+        let config = HtmlConfig(Arc::new(WebsiteConfig::default()));
+        let clones = vec![config.clone(); 10_000];
+        assert!(clones.iter().all(|c| Arc::ptr_eq(&c.0, &config.0)));
+    }
 }

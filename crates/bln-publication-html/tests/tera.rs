@@ -7,6 +7,14 @@ use std::collections::BTreeMap;
 fn templates() -> BTreeMap<String, String> {
     [
         (
+            "partials/engineering-desk.tera",
+            include_str!("../../../themes/notebook/shared/pages/partials/engineering-desk.tera"),
+        ),
+        (
+            "macros/notebook_entry_layout.tera",
+            include_str!("../../../themes/notebook/shared/pages/macros/notebook_entry_layout.tera"),
+        ),
+        (
             "publications/page.tera",
             include_str!("../../../themes/notebook/shared/pages/publications/page.tera"),
         ),

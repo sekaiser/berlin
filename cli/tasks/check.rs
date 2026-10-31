@@ -46,10 +46,7 @@ pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<Report, Error
         &node.id == document_root
             && matches!(
                 node.operation,
-                Operation::RenderPublicationWebsite { .. }
-                    | Operation::RenderPublicationText { .. }
-                    | Operation::RenderHtml { .. }
-                    | Operation::RenderText { .. }
+                Operation::RenderHtml { .. } | Operation::RenderText { .. }
             )
     });
     let required = document_branch(&plan, document_root)?;
@@ -81,10 +78,7 @@ pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<Report, Error
         let Some(artifact) = artifact else {
             if matches!(
                 node.operation,
-                Operation::RenderPublicationWebsite { .. }
-                    | Operation::RenderPublicationText { .. }
-                    | Operation::RenderHtml { .. }
-                    | Operation::RenderText { .. }
+                Operation::RenderHtml { .. } | Operation::RenderText { .. }
             ) {
                 continue;
             }
@@ -136,28 +130,9 @@ pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<Report, Error
             authoring: Some(authoring_report(project, composed.catalog())?),
         });
     }
-    if let Some(RuntimeArtifact::PublicationAssembly(assembly)) = artifacts
-        .values()
-        .find(|artifact| matches!(artifact, RuntimeArtifact::PublicationAssembly(_)))
-    {
-        return Ok(Report::Publication {
-            kind: "publication",
-            schema_version: 1,
-            publication: assembly.spec().metadata.id.0.clone(),
-            placements: assembly.placements().len(),
-            sources: assembly.sources().len(),
-            composition_fingerprint: assembly.composition_fingerprint().into(),
-            diagnostics,
-            authoring: Some(authoring_report(project, assembly.catalog())?),
-        });
-    }
-    let Some(RuntimeArtifact::Documents(documents)) = artifacts.get(document_root) else {
-        bail!("Website input '{document_root}' did not produce documents");
-    };
-    let mut report = AuthoringReport::analyze(documents)?;
-    super::origins::enrich(project, documents, &mut report);
-    Ok(Report::Authoring(report))
+    bail!("publication branch did not produce composed content")
 }
+
 fn authoring_report(
     project: &Project,
     catalog: &berlin_publication::PublicationCatalog,
@@ -175,36 +150,17 @@ fn publication_documents(plan: &PipelinePlan) -> Result<&NodeId, Error> {
         .filter(|node| {
             matches!(
                 node.operation,
-                Operation::RenderWebsite { .. }
-                    | Operation::RenderPublicationWebsite { .. }
-                    | Operation::RenderPublicationText { .. }
-                    | Operation::RenderHtml { .. }
-                    | Operation::RenderText { .. }
+                Operation::RenderHtml { .. } | Operation::RenderText { .. }
             )
         })
         .collect();
     let [website] = outputs.as_slice() else {
         bail!(
-            "check requires exactly one website output; found {}. Select a website pipeline with --pipeline (export Org separately).",
+            "check requires exactly one publication output; found {}. Select a publication pipeline with --pipeline (export Org separately).",
             outputs.len()
         );
     };
-    if !matches!(website.operation, Operation::RenderWebsite { .. }) {
-        return Ok(&website.id);
-    }
-    let assembly_id = website
-        .dependencies
-        .first()
-        .context("Website has no assembly input")?;
-    let assembly = plan
-        .nodes()
-        .iter()
-        .find(|node| &node.id == assembly_id)
-        .context("Website assembly node is missing")?;
-    assembly
-        .dependencies
-        .first()
-        .context("Website assembly has no documents input")
+    Ok(&website.id)
 }
 
 fn document_branch(plan: &PipelinePlan, root: &NodeId) -> Result<HashSet<NodeId>, Error> {
@@ -231,9 +187,6 @@ fn document_branch(plan: &PipelinePlan, root: &NodeId) -> Result<HashSet<NodeId>
             | Operation::Compose { .. }
             | Operation::RenderHtml { .. }
             | Operation::RenderText { .. } => {}
-            Operation::ComposePublication { .. }
-            | Operation::RenderPublicationWebsite { .. }
-            | Operation::RenderPublicationText { .. } => {}
             _ => bail!(
                 "check cannot execute document input '{}' ({:?}); it only reads Markdown/semantic documents, merges collections and applies mappings. Export Org or import papers explicitly first.",
                 node.id,

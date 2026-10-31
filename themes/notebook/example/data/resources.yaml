@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "resources": [
+    {
+      "id": "reference-1",
+      "kind": "article",
+      "title": "An example about small interfaces",
+      "url": "https://example.com/interfaces",
+      "added": "2026-09-01",
+      "topics": [
+        "design",
+        "systems"
+      ]
+    },
+    {
+      "id": "reference-2",
+      "kind": "article",
+      "title": "An example about readable programs",
+      "url": "https://example.com/programs",
+      "added": "2026-09-02",
+      "topics": [
+        "systems"
+      ]
+    },
+    {
+      "id": "reference-3",
+      "kind": "article",
+      "title": "An example about page composition",
+      "url": "https://example.com/composition",
+      "added": "2026-09-03",
+      "topics": [
+        "design"
+      ]
+    }
+  ]
+}

@@ -26,15 +26,27 @@ struct Export {
     published_path: PathBuf,
 }
 
+pub(super) struct ExportOptions<'a> {
+    pub backend: &'a str,
+    pub section: &'a str,
+    pub dry_run: bool,
+    pub captured: Option<&'a [SourceFile]>,
+}
+
 pub(super) fn export(
     project: &crate::project::Project,
     output_root: &Path,
     sources: &[PathBuf],
-    backend: &str,
     output_directory: &Path,
-    section: &str,
-    dry_run: bool,
+    options: ExportOptions<'_>,
+    consumed: &mut Vec<super::receipt::ConsumedInput>,
 ) -> Result<Vec<SourceFile>, Error> {
+    let ExportOptions {
+        backend,
+        section,
+        dry_run,
+        captured,
+    } = options;
     let project_root = project.root();
     if backend != "ox-hugo" {
         bail!("Unsupported Org export backend '{backend}'");
@@ -53,7 +65,7 @@ pub(super) fn export(
         return Ok(Vec::new());
     }
 
-    run_ox_hugo(project, &workspace, section, &exports)?;
+    run_ox_hugo(project, &workspace, section, &exports, captured, consumed)?;
     read_exported_sources(exports)
 }
 
@@ -118,28 +130,45 @@ fn run_ox_hugo(
     output_root: &Path,
     section: &str,
     exports: &[Export],
+    captured: Option<&[SourceFile]>,
+    consumed: &mut Vec<super::receipt::ConsumedInput>,
 ) -> Result<(), Error> {
     std::fs::create_dir_all(output_root.join("content").join(section))?;
     std::fs::create_dir_all(output_root.join("static"))?;
 
     let emacs = std::env::var("BERLIN_EMACS").unwrap_or_else(|_| "emacs".into());
     let bundled = tempfile::tempdir()?;
-    let script = match exporter_override(project.root()) {
-        Some(path) => path,
-        None => {
-            let script = bundled.path().join("export.el");
-            std::fs::write(&script, DEFAULT_EXPORTER)?;
-            std::fs::write(
-                bundled.path().join("references.el"),
-                include_str!("../../support/ox-hugo/references.el"),
-            )?;
-            std::fs::write(
-                bundled.path().join("code-results.el"),
-                include_str!("../../support/ox-hugo/code-results.el"),
-            )?;
-            script
+    let script = bundled.path().join("export.el");
+    if let Some(override_path) = exporter_override(project.root()) {
+        let parent = override_path.parent().context("exporter has no parent")?;
+        for name in ["export.el", "references.el", "code-results.el"] {
+            let source = parent.join(name);
+            if source.is_file() {
+                let bytes = std::fs::read(&source)?;
+                std::fs::write(bundled.path().join(name), &bytes)?;
+                consumed.push(super::receipt::ConsumedInput::new(
+                    source,
+                    format!("org-exporter/{name}"),
+                    &bytes,
+                ));
+            }
         }
-    };
+    } else {
+        std::fs::write(&script, DEFAULT_EXPORTER)?;
+        std::fs::write(
+            bundled.path().join("references.el"),
+            include_str!("../../support/ox-hugo/references.el"),
+        )?;
+        std::fs::write(
+            bundled.path().join("code-results.el"),
+            include_str!("../../support/ox-hugo/code-results.el"),
+        )?;
+    }
+    let input_snapshot = bundled.path().join("inputs.json");
+    if let Some(captured) = captured {
+        let inputs=captured.iter().map(|source|Ok((source.path.canonicalize()?.to_string_lossy().into_owned(),serde_json::json!({"text":source.text,"sha256":origins::digest(source.text.as_bytes())})))).collect::<Result<std::collections::BTreeMap<_,_>,Error>>()?;
+        std::fs::write(&input_snapshot, serde_json::to_vec(&inputs)?)?;
+    }
     let source_map = tempfile::NamedTempFile::new()?;
     let mut command = Command::new(&emacs);
     command
@@ -150,6 +179,9 @@ fn run_ox_hugo(
         .arg("--berlin-export-org")
         .arg(output_root)
         .arg(section);
+    if captured.is_some() {
+        command.env("BERLIN_ORG_INPUT_SNAPSHOT", &input_snapshot);
+    }
     command.args(exports.iter().map(|export| &export.source));
 
     let status = command
@@ -157,6 +189,21 @@ fn run_ox_hugo(
         .with_context(|| format!("Failed to start Emacs using '{emacs}'"))?;
     if !status.success() {
         bail!("Ox-Hugo export failed with {status}");
+    }
+    if let Some(captured) = captured {
+        let emitted: origins::ExportOrigins =
+            serde_json::from_slice(&std::fs::read(source_map.path())?)
+                .context("Org exporter must report consumed source snapshots")?;
+        for source in captured {
+            let emitted = emitted
+                .documents
+                .iter()
+                .find(|origin| origin.source.canonicalize().ok() == source.path.canonicalize().ok())
+                .context("Org exporter omitted a captured source")?;
+            if emitted.source_hash != origins::digest(source.text.as_bytes()) {
+                bail!("Org exporter did not consume the captured source snapshot");
+            }
+        }
     }
     // Navigation is optional and local. A missing/old adapter must not prevent
     // publication; exact export hashes keep a failed transaction's maps inert.
@@ -274,10 +321,14 @@ mod tests {
             &crate::project::Project::new("/project".into(), vec![]),
             Path::new("/staging"),
             &sources,
-            "ox-hugo",
             Path::new("content/notes"),
-            "notes",
-            true,
+            ExportOptions {
+                backend: "ox-hugo",
+                section: "notes",
+                dry_run: true,
+                captured: None,
+            },
+            &mut vec![],
         )
         .unwrap();
 
@@ -351,10 +402,14 @@ mod tests {
                 &crate::project::Project::new("/project".into(), vec![]),
                 Path::new("/staging"),
                 &[PathBuf::from("/project/data/article.org")],
-                "ox-hugo",
                 Path::new(".berlin/generated/org"),
-                section,
-                true,
+                ExportOptions {
+                    backend: "ox-hugo",
+                    section,
+                    dry_run: true,
+                    captured: None,
+                },
+                &mut vec![],
             )
             .unwrap_err();
 
@@ -376,10 +431,14 @@ mod tests {
             &crate::project::Project::new("/project".into(), vec![]),
             Path::new("/staging"),
             &sources,
-            "ox-hugo",
             Path::new("content/notes"),
-            "notes",
-            true,
+            ExportOptions {
+                backend: "ox-hugo",
+                section: "notes",
+                dry_run: true,
+                captured: None,
+            },
+            &mut vec![],
         )
         .unwrap_err();
 

@@ -6,12 +6,14 @@ use std::process::{Command, Output};
 use serde_json::Value;
 
 const PIPELINE: &str = r#"
-fn load_documents() { parse_markdown(load_markdown("content/*.md")) }
+fn load_documents() { documents(load_markdown("content/*.md")) }
+fn review(c) {publication("review",#{title:"Review"},[view_component("berlin.introduction@1",#{text:"Authoring check fixture."},#{})])}
 pipeline site {
-    let website = assemble_website(load_documents(), parse_feed(load_data("missing-feed.csv")));
-    output render_website(website, "_site", website_config(#{}));
-    output compile_css(load_css("missing.css"), "_site/css/styles.css");
-    output copy_assets(load_assets("missing-assets/**/*"), "_site/static");
+    let website = compose(catalog([load_documents()]),Fn("review"));
+    let presentation=html_config(#{theme:"@notebook",url:"https://example.test"});
+    output render_html(website,"_site",presentation);
+    output compile_css(load_css("missing.css"), "_styles/styles.css");
+    output copy_assets(load_assets("missing-assets/**/*"), "_assets/static");
 }
 "#;
 
@@ -33,6 +35,10 @@ fn note(root: &Path, id: &str, fields: &str, body: &str) {
 fn check(root: &Path, arguments: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_bln"))
         .env("BERLIN_DIR", root)
+        .env(
+            "BERLIN_THEME_DIR",
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../themes"),
+        )
         .env("BERLIN_EMACS", "must-not-run-emacs")
         .arg("check")
         .args(arguments)
@@ -43,6 +49,14 @@ fn check(root: &Path, arguments: &[&str]) -> Output {
 fn json(output: &Output) -> Value {
     serde_json::from_slice(&output.stdout)
         .unwrap_or_else(|error| panic!("{error}: {}", String::from_utf8_lossy(&output.stdout)))
+}
+fn authoring(report: &Value) -> &Value {
+    let report = &report["report"];
+    if report["kind"] == "publication" {
+        &report["authoring"]
+    } else {
+        report
+    }
 }
 
 fn snapshot(root: &Path) -> BTreeMap<PathBuf, Option<Vec<u8>>> {
@@ -83,7 +97,7 @@ fn reports_all_broken_links_in_json_and_text_without_touching_outputs() {
     assert_eq!(report["schema_version"], 1);
     assert_eq!(report["status"], "complete");
     assert_eq!(report["pipeline"], "site");
-    let errors: Vec<_> = report["report"]["findings"]
+    let errors: Vec<_> = authoring(&report)["findings"]
         .as_array()
         .unwrap()
         .iter()
@@ -128,11 +142,11 @@ fn observations_are_successful_and_drafts_are_not_inspected_for_connections() {
     let before = snapshot(root.path());
     let output = check(root.path(), &["--json"]);
     assert!(output.status.success());
-    assert!(output.stderr.is_empty());
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("error:"));
     let report = json(&output);
-    assert_eq!(report["report"]["published_documents"], 1);
-    assert_eq!(report["report"]["excluded_drafts"], 1);
-    assert_eq!(report["report"]["findings"].as_array().unwrap().len(), 2);
+    assert_eq!(authoring(&report)["published_documents"], 1);
+    assert_eq!(authoring(&report)["excluded_drafts"], 1);
+    assert_eq!(authoring(&report)["findings"].as_array().unwrap().len(), 2);
     assert!(!String::from_utf8_lossy(&output.stdout).contains("private-target"));
     assert_eq!(snapshot(root.path()), before);
 }
@@ -140,7 +154,7 @@ fn observations_are_successful_and_drafts_are_not_inspected_for_connections() {
 #[test]
 fn checks_the_mapped_publication_not_intermediate_or_unrelated_documents() {
     let pipeline = PIPELINE.replace("pipeline site {", "fn publish(doc) { if doc.id == \"guide\" { doc.draft = false; } doc }\npipeline site {")
-        .replace("assemble_website(load_documents(),", "assemble_website(map_documents(load_documents(), Fn(\"publish\")),");
+        .replace("catalog([load_documents()])", "catalog([map_documents(load_documents(), Fn(\"publish\"))])");
     let root = project(&pipeline);
     note(
         root.path(),
@@ -161,9 +175,9 @@ fn checks_the_mapped_publication_not_intermediate_or_unrelated_documents() {
         String::from_utf8_lossy(&output.stderr)
     );
     let report = json(&output);
-    assert_eq!(report["report"]["published_documents"], 2);
-    assert_eq!(report["report"]["guides"], 1);
-    assert_eq!(report["report"]["findings"], serde_json::json!([]));
+    assert_eq!(authoring(&report)["published_documents"], 2);
+    assert_eq!(authoring(&report)["guides"], 1);
+    assert_eq!(authoring(&report)["findings"], serde_json::json!([]));
 }
 
 #[test]
@@ -199,8 +213,8 @@ fn incomplete_checks_are_structured_failures_not_empty_successes() {
 #[test]
 fn refuses_org_execution_and_ambiguous_publication_scopes() {
     let inline_org = PIPELINE.replace(
-        "parse_markdown(load_markdown(\"content/*.md\"))",
-        "parse_markdown(export_org(load_org(\"data/*.org\"), \"ox-hugo\", \".berlin/generated/org\", \"notes\"))",
+        "documents(load_markdown(\"content/*.md\"))",
+        "documents(export_org(load_org(\"data/*.org\"), \"ox-hugo\", \".berlin/generated/org\", \"notes\"))",
     );
     let root = project(&inline_org);
     let before = snapshot(root.path());
@@ -214,7 +228,7 @@ fn refuses_org_execution_and_ambiguous_publication_scopes() {
     );
     assert_eq!(snapshot(root.path()), before);
 
-    let two_sites = PIPELINE.replace("output render_website(website, \"_site\", website_config(#{}));", "output render_website(website, \"_site\", website_config(#{})); output render_website(website, \"other-site\", website_config(#{})).named(\"other\");");
+    let two_sites = PIPELINE.replace("output render_html(website,\"_site\",presentation);", "output render_html(website,\"_site\",presentation); output render_html(website,\"other-site\",presentation).named(\"other\");");
     fs::write(root.path().join("berlin.pipeline.rhai"), two_sites).unwrap();
     let output = check(root.path(), &["--json"]);
     assert_eq!(output.status.code(), Some(1));

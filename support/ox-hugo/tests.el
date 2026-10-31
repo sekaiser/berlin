@@ -8,6 +8,37 @@
 (defconst berlin-math-fixture
   (expand-file-name "../fixtures/mathematics/article.org" (file-name-directory load-file-name)))
 
+(ert-deftest berlin-export-consumes-captured-org-without-rewriting-the-source ()
+  (let* ((directory (make-temp-file "berlin-org-snapshot-" t))
+         (source (expand-file-name "source.org" directory))
+         (snapshot (expand-file-name "inputs.json" directory))
+         (origins (expand-file-name "origins.json" directory))
+         (original ":PROPERTIES:\n:ID: captured-note\n:END:\n#+TITLE: Captured note\n\nCaptured body.\n")
+         (changed ":PROPERTIES:\n:ID: changed-note\n:END:\n#+TITLE: Changed note\n\nLater body.\n")
+         (process-environment (copy-sequence process-environment)))
+    (unwind-protect
+        (progn
+          (with-temp-file source (insert original))
+          (let ((hash (berlin-file-sha256 source)))
+            (with-temp-file snapshot
+              (insert (json-encode `((,(file-truename source) . ((text . ,original) (sha256 . ,hash)))))))
+            (with-temp-file source (insert changed))
+            (setenv "BERLIN_ORG_INPUT_SNAPSHOT" snapshot)
+            (setenv "BERLIN_ORG_SOURCE_MAP" origins)
+            (let ((command-line-args-left (list directory "notes" source)))
+              (berlin-ox-hugo-command nil))
+            (with-temp-buffer
+              (insert-file-contents (expand-file-name "content/notes/source.md" directory))
+              (should (search-forward "Captured body." nil t))
+              (should-not (search-forward "Later body." nil t)))
+            (should (equal (with-temp-buffer (insert-file-contents source) (buffer-string)) changed))
+            (let* ((json-object-type 'alist)
+                   (document (elt (alist-get 'documents (json-read-file origins)) 0)))
+              (should (equal (alist-get 'source_hash document) hash)))))
+      (when-let* ((buffer (get-file-buffer source)))
+        (with-current-buffer buffer (set-buffer-modified-p nil)) (kill-buffer buffer))
+      (delete-directory directory t))))
+
 (ert-deftest berlin-native-citations-and-equation-references ()
   (let* ((directory (make-temp-file "berlin-citations-" t))
          (source (expand-file-name "source.org" directory)))
@@ -28,7 +59,7 @@
           (when-let* ((binary (getenv "BERLIN_TEST_BINARY")))
             (with-temp-file (expand-file-name "berlin.pipeline.rhai" directory)
               (insert "pipeline org { output export_org(load_org(\"*.org\"), \"ox-hugo\", \".berlin/generated/org\", \"notes\"); }\n"
-                      "pipeline test { output render_linkedin(parse_markdown(load_markdown(\".berlin/generated/org/content/notes/*.md\")), \"drafts\"); }"))
+                      "fn draft(c) { let entries=[]; for r in c.select(#{origins_any:[\"local\"]}) { entries.push(view_component(\"berlin.excerpt@1\",#{source:document_excerpt(c,r.id)},#{})); } publication(\"draft\",#{title:\"Exported document\"},entries) } pipeline test { output render_text(compose(catalog([documents(load_markdown(\".berlin/generated/org/content/notes/*.md\"))]),Fn(\"draft\")),\"drafts\",text_config(#{})); }"))
             (let ((default-directory directory) (process-environment (copy-sequence process-environment)))
               (setenv "BERLIN_DIR" directory)
               (dolist (pipeline '("org" "test"))
@@ -67,7 +98,7 @@
           ;; Feed the real export through Berlin's parser, without a theme or TeX engine.
           (when-let* ((binary (getenv "BERLIN_TEST_BINARY")))
             (with-temp-file (expand-file-name "berlin.pipeline.rhai" directory)
-              (insert "pipeline test { output render_linkedin(parse_markdown(load_markdown(\"content/notes/*.md\")), \"drafts\"); }"))
+              (insert "fn draft(c) { let entries=[]; for r in c.select(#{origins_any:[\"local\"]}) { entries.push(view_component(\"berlin.excerpt@1\",#{source:document_excerpt(c,r.id)},#{})); } publication(\"draft\",#{title:\"Exported document\"},entries) } pipeline test { output render_text(compose(catalog([documents(load_markdown(\"content/notes/*.md\"))]),Fn(\"draft\")),\"drafts\",text_config(#{})); }"))
             (let ((default-directory directory)
                   (process-environment (copy-sequence process-environment)))
               (setenv "BERLIN_DIR" directory)

@@ -1,6 +1,7 @@
 {% extends "_notebook.tera" %}
 {% block page_styles %}
+  <script defer src="{{ config_site_url }}/static/js/reading.js"></script>
   {{ super() }}
   {% for stylesheet in site.stylesheets %}<link rel="stylesheet" href="{{ stylesheet }}">{% endfor %}
 {% endblock page_styles %}
-{% block content %}<div class="publication-page"><div class="publication-site-content">{{ render_slot(owner=view.id, name="body") }}</div></div>{% endblock content %}
+{% block content %}<div class="publication-page notebook-page{% if page_path == "/" %} notebook-home{% endif %}"><div class="publication-site-content">{{ render_slot(owner=view.id, name="body") }}</div></div>{% endblock content %}
