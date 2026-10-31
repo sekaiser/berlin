@@ -93,7 +93,7 @@ where
     let (event_tx, mut events) = DebouncedReceiver::new_with_sender();
     let mut watcher = new_watcher(event_tx, ignore_path)?;
     let mut watched_paths = HashSet::new();
-    add_paths_to_watcher(&mut watcher, &paths_to_watch()?, &mut watched_paths)?;
+    sync_paths_to_watcher(&mut watcher, &paths_to_watch()?, &mut watched_paths)?;
     let mut changed_paths: Option<Vec<PathBuf>> = None;
 
     info!(
@@ -106,7 +106,7 @@ where
         // Refresh theme dependencies after configuration edits. Keep previous
         // watches on invalid edits so fixing the pipeline still triggers a build.
         match paths_to_watch() {
-            Ok(paths) => add_paths_to_watcher(&mut watcher, &paths, &mut watched_paths)?,
+            Ok(paths) => sync_paths_to_watcher(&mut watcher, &paths, &mut watched_paths)?,
             Err(error) => log::warn!("Unable to refresh watch paths: {error}"),
         }
         if let Some(paths) = &changed_paths {
@@ -193,19 +193,35 @@ fn changes_source(kind: EventKind) -> bool {
     )
 }
 
-fn add_paths_to_watcher(
+fn sync_paths_to_watcher(
     watcher: &mut RecommendedWatcher,
     paths: &[PathBuf],
     watched_paths: &mut HashSet<PathBuf>,
 ) -> Result<(), Error> {
-    for path in paths {
-        if watched_paths.insert(path.clone()) {
-            watcher
-                .watch(path, RecursiveMode::Recursive)
-                .map_err(Error::from)
-                .with_context(|| format!("Unable to watch {}", path.display()))?;
+    let desired = paths.iter().cloned().collect::<HashSet<_>>();
+    // Add replacements before retiring prior subscriptions. A failed new watch
+    // must not discard the paths that let the user repair invalid configuration.
+    for path in desired.difference(watched_paths) {
+        watcher
+            .watch(path, RecursiveMode::Recursive)
+            .map_err(Error::from)
+            .with_context(|| format!("Unable to watch {}", path.display()))?;
+    }
+    let obsolete = watched_paths
+        .difference(&desired)
+        .cloned()
+        .collect::<Vec<_>>();
+    for path in obsolete {
+        match watcher.unwatch(&path) {
+            Ok(()) => {}
+            Err(error) if matches!(error.kind, notify::ErrorKind::WatchNotFound) => {}
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("Unable to stop watching {}", path.display()));
+            }
         }
     }
+    *watched_paths = desired;
     log::debug!("Watching paths: {:?}", watched_paths);
     Ok(())
 }

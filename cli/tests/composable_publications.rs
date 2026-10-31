@@ -600,3 +600,114 @@ fn p07_dry_run_is_write_free_and_rejects_broken_presentations() {
     );
     assert_eq!(before, snapshot(root));
 }
+
+#[test]
+fn preview_replaces_named_source_root_subscriptions_after_configuration_changes() {
+    use std::io::{Read, Write};
+    use std::net::{TcpListener, TcpStream};
+    use std::time::{Duration, Instant};
+    struct Server(std::process::Child);
+    impl Drop for Server {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let workspace = tempfile::tempdir().unwrap();
+    let root = workspace.path().join("site");
+    fs::create_dir(&root).unwrap();
+    let resource = |directory: &str, title: &str| {
+        let directory = workspace.path().join(directory);
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("resources.yaml"),format!(
+            "schema_version: 1\nresources:\n  - id: reference\n    kind: paper\n    url: https://example.test/paper\n    title: {title}\n"
+        )).unwrap();
+    };
+    resource("original", "Original root reference");
+    resource("replacement", "Replacement root reference");
+    let program = r#"
+const SOURCE_ROOTS = #{data:"../original"};
+fn references(c) {
+    publication("references",#{title:"References"},[
+        reading_list("Reading",c.select(#{origins_any:["external"]}).map_cards())
+    ])
+}
+pipeline site {
+    output render_html(compose(catalog([resources(load_data("@data/resources.yaml"))]),Fn("references")),"_site",html_config(#{theme:"@notebook",url:"https://example.test/notebook",author:"Example Author"}));
+}
+"#;
+    let script = root.join("berlin.pipeline.rhai");
+    fs::write(&script, program).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    let server_log = tempfile::NamedTempFile::new().unwrap();
+    let mut server = Server(
+        Command::new(env!("CARGO_BIN_EXE_bln"))
+            .env("BERLIN_DIR", &root)
+            .env("BERLIN_THEME_DIR", repository().join("themes"))
+            .args([
+                "serve",
+                "--pipeline",
+                "site",
+                "--watch",
+                "--port",
+                &port.to_string(),
+            ])
+            .stdout(server_log.reopen().unwrap())
+            .stderr(server_log.reopen().unwrap())
+            .spawn()
+            .unwrap(),
+    );
+    let get = |path: &str| -> String {
+        let Ok(mut connection) = TcpStream::connect(("127.0.0.1", port)) else {
+            return String::new();
+        };
+        connection
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        if write!(connection, "GET {path} HTTP/1.0\r\nHost: localhost\r\n\r\n").is_err() {
+            return String::new();
+        }
+        let mut bytes = String::new();
+        let _ = connection.read_to_string(&mut bytes);
+        bytes
+    };
+    let wait = |expected: &str| {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !get("/").contains(expected) {
+            assert!(
+                Instant::now() < deadline,
+                "preview did not show {expected}: {}",
+                fs::read_to_string(server_log.path()).unwrap()
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    };
+    wait("Original root reference");
+    fs::write(&script, program.replace("../original", "../replacement")).unwrap();
+    wait("Replacement root reference");
+    resource("replacement", "Replacement edit observed");
+    wait("Replacement edit observed");
+    std::thread::sleep(Duration::from_secs(3));
+    let revision = || {
+        get("/__berlin/revision")
+            .split_once("\r\n\r\n")
+            .map(|(_, body)| body.to_owned())
+            .unwrap_or_default()
+    };
+    let before = revision();
+    resource("original", "Inactive root edit");
+    std::thread::sleep(Duration::from_secs(3));
+    assert_eq!(
+        before,
+        revision(),
+        "inactive source root still triggers rebuilds: {}",
+        fs::read_to_string(server_log.path()).unwrap()
+    );
+    fs::write(&script, program).unwrap();
+    wait("Inactive root edit");
+    resource("original", "Reattached root edit observed");
+    wait("Reattached root edit observed");
+    assert!(server.0.try_wait().unwrap().is_none());
+}
