@@ -514,7 +514,7 @@ fn paper_cache_reuses_verified_results_and_invalidates_dependencies() {
     assert_eq!(cached_release, rebuilt_release);
 
     // Unrelated presentation edits do not recompile the paper.
-    let template = root.path().join("pages/notes/[slug].tera");
+    let template = root.path().join("pages/publications/document.tera");
     let original = fs::read_to_string(&template).unwrap();
     fs::write(
         &template,
@@ -535,12 +535,26 @@ fn paper_cache_reuses_verified_results_and_invalidates_dependencies() {
 
     // Corruption is a miss and gets replaced only by a successful computation.
     let cache = root.path().join(".berlin/cache/artifacts-v1");
-    let entry = fs::read_dir(&cache)
+    // Theme CSS now shares the cache. Select the paper artifact explicitly;
+    // directory enumeration order must not decide which operation is corrupted.
+    let entries = fs::read_dir(&cache)
         .unwrap()
-        .next()
-        .unwrap()
-        .unwrap()
-        .path();
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| {
+            let bytes = fs::read(path).unwrap();
+            let Some(end) = bytes.iter().position(|byte| *byte == b'\n') else {
+                return false;
+            };
+            let header: serde_json::Value = serde_json::from_slice(&bytes[..end]).unwrap();
+            header["value"]["document"]["id"] == "synthetic-paper"
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        entries.len(),
+        1,
+        "expected one paper artifact, got {entries:?}"
+    );
+    let entry = entries[0].clone();
     fs::write(&entry, b"interrupted write").unwrap();
     assert!(build(&[]).contains("Compiling paper"));
     assert!(build(&[]).contains("Reusing paper"));
@@ -773,6 +787,10 @@ fn watch_rebuilds_saved_sources_and_bibliographies_without_feedback_loops() {
         Command::new(env!("CARGO_BIN_EXE_bln"))
             .current_dir(root.path())
             .env("BERLIN_DIR", root.path())
+            .env(
+                "BERLIN_THEME_DIR",
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("../themes"),
+            )
             .args([
                 "serve",
                 "--watch",

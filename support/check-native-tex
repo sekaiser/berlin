@@ -3,7 +3,6 @@
 # This script installs nothing, fetches nothing and uses synthetic fixtures only.
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
-repository=$PWD
 case "${1:-}" in
   ""|--preflight) ;;
   *) echo 'Usage: support/check-native-tex [--preflight]' >&2; exit 2 ;;
