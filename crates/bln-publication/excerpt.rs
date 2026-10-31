@@ -211,7 +211,9 @@ pub(crate) fn resolve_excerpt(
             } = b
             {
                 registry.validate_semantic_component(name, properties, blocks)?;
-                semantic_components.insert(name.parse()?);
+                if name != "bibliography-entry" {
+                    semantic_components.insert(name.parse()?);
+                }
             }
             if let Block::Figure(figure) = b {
                 resolve_source_url(&figure.source, &original_url, source_mount.as_ref())?;

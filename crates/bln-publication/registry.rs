@@ -349,6 +349,19 @@ impl ComponentRegistry {
         properties: &BTreeMap<String, berlin_document::PropertyValue>,
         blocks: &[berlin_document::Block],
     ) -> Result<()> {
+        // Parser-generated bibliographies are semantic prose containers, not
+        // arbitrary registered presentation components. Their children still
+        // undergo the normal portable-content validation.
+        if name == "bibliography-entry" {
+            if !properties.is_empty() || blocks.is_empty() {
+                return Err(Diagnostic::new(
+                    Code::InvalidProperty,
+                    Stage::Construction,
+                    "bibliography entries require child blocks and no properties",
+                ));
+            }
+            return Ok(());
+        }
         if name != "berlin.callout@1" {
             return Err(Diagnostic::new(
                 Code::UnsupportedChannelComponent,

@@ -972,6 +972,19 @@ impl SemanticComponentPresenter for Presenter<'_> {
         children: Html,
     ) -> std::result::Result<String, String> {
         let run = || {
+            if name == "bibliography-entry" {
+                if !properties.is_empty() {
+                    return Err(error(
+                        Code::InvalidProperty,
+                        "bibliography entries have no properties",
+                    ));
+                }
+                return Ok(format!(
+                    "<div id=\"{}\" data-component=\"bibliography-entry\">{}</div>",
+                    html_escape::encode_double_quoted_attribute(&id.0),
+                    children.into_string()
+                ));
+            }
             if name != "berlin.callout@1" {
                 return Err(error(
                     Code::UnsupportedChannelComponent,

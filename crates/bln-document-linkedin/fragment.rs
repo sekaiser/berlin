@@ -46,6 +46,15 @@ pub fn write_blocks(
                 blocks,
                 ..
             } => {
+                if name == "bibliography-entry" {
+                    if !properties.is_empty() || blocks.is_empty() {
+                        return Err(io::Error::other(
+                            "InvalidProperty: invalid bibliography entry",
+                        ));
+                    }
+                    write_blocks(blocks, context, output)?;
+                    continue;
+                }
                 if name != "berlin.callout@1" {
                     return Err(io::Error::other(format!(
                         "UnsupportedChannelComponent: {name}"

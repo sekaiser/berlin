@@ -523,3 +523,86 @@ fn p05_nested_source_callout_renders_through_the_same_session_slots() {
             .contains("https://source.example/notebook/notes/source.html")
     );
 }
+
+#[test]
+fn bibliography_excerpt_preserves_namespaced_citation_target_and_escaped_prose() {
+    use berlin_document::{Block, ComponentId, Inline};
+    let doc = Document {
+        id: ContentId("bibliography".into()),
+        kind: DocumentKind::Article,
+        metadata: Metadata {
+            title: Some("References".into()),
+            ..Default::default()
+        },
+        blocks: vec![
+            Block::Paragraph {
+                content: vec![Inline::CrossReference {
+                    target: ComponentId("ref-example".into()),
+                    content: vec![Inline::Text {
+                        value: "[1]".into(),
+                    }],
+                }],
+            },
+            Block::Component {
+                id: ComponentId("ref-example".into()),
+                name: "bibliography-entry".into(),
+                properties: BTreeMap::new(),
+                blocks: vec![Block::Paragraph {
+                    content: vec![Inline::Text {
+                        value: "[1] Example <source> & author.".into(),
+                    }],
+                }],
+            },
+        ],
+        relations: vec![],
+        provenance: Provenance {
+            source: "memory:bibliography".into(),
+            source_format: SourceFormat::Markdown,
+            source_hash: "a".repeat(64),
+        },
+    };
+    let c = PublicationCatalog::new(
+        DocumentCollection::new(vec![doc]),
+        PublicationOptions {
+            source_site_url: Some("https://example.test/originals".parse().unwrap()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let spec = PublicationSpec {
+        schema_version: 1,
+        queries: Default::default(),
+        metadata: PublicationMetadata {
+            id: PublicationId("references".into()),
+            title: "References".into(),
+            description: None,
+        },
+        root: Portfolio {}.into_call().with_body(ViewFragment(vec![
+            Excerpt {
+                source: c.document_excerpt("bibliography").unwrap(),
+                annotation: None,
+            }
+            .into_call(),
+        ])),
+    };
+    let registry = ComponentRegistry::builtins();
+    let a = PublicationAssembly::resolve(&spec, c, &registry).unwrap();
+    let html = PublicationHtmlRenderer::new(templates(), HtmlBindings::builtins())
+        .unwrap()
+        .render(&a, &registry, &site())
+        .unwrap()
+        .html;
+    assert!(html.contains("[1] Example &lt;source&gt; &amp; author."));
+    let target = html
+        .split("data-component=\"bibliography-entry\"")
+        .next()
+        .unwrap()
+        .rsplit("id=\"")
+        .next()
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap();
+    assert!(target.ends_with("ref-example"));
+    assert!(html.contains(&format!("href=\"#{target}\"")));
+}

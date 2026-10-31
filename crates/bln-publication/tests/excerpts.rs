@@ -284,3 +284,28 @@ fn b11_portable_excerpts_reject_raw_html_and_unregistered_components() {
     }])]);
     prepare(valid).unwrap();
 }
+
+#[test]
+fn parser_bibliography_entries_are_portable_but_unknown_properties_still_fail() {
+    let bibliography = |properties| Block::Component {
+        id: ComponentId("ref-example".into()),
+        name: "bibliography-entry".into(),
+        properties,
+        blocks: vec![paragraph(vec![Inline::Text {
+            value: "[1] Example source.".into(),
+        }])],
+    };
+    let assembly = prepare(source(vec![section(vec![bibliography(BTreeMap::new())])])).unwrap();
+    assert!(
+        assembly
+            .components()
+            .iter()
+            .all(|key| key.to_string() != "bibliography-entry")
+    );
+    assert!(
+        prepare(source(vec![section(vec![bibliography(BTreeMap::from([
+            ("unsafe".into(), PropertyValue::Text("value".into()))
+        ]))])]))
+        .is_err()
+    );
+}
