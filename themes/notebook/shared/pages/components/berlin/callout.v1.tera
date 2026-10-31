@@ -1,0 +1,4 @@
+<aside class="publication-callout publication-callout--{{ props.kind }}" id="{{ view.anchor }}">
+  <p><strong>{{ props.kind | capitalize }}{% if props.title %}: {{ props.title }}{% endif %}</strong></p>
+  {{ render_slot(owner=view.id, name="body") }}
+</aside>

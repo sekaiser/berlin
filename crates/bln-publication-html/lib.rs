@@ -1,6 +1,10 @@
 //! HTML adapter boundary. Receives effective immutable presentation inputs from
 //! orchestration; it must not discover source roots or perform deployment.
 
+mod audit;
+mod renderer;
+pub use renderer::*;
+
 use berlin_document_html::FragmentContext;
 use berlin_publication::{OccurrenceId, ResolvedExcerpt, Result, visit_block_inlines, walk_blocks};
 use std::collections::HashMap;

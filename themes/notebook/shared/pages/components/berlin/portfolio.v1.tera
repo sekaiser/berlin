@@ -1,0 +1,7 @@
+<article class="publication-portfolio" id="{{ view.anchor }}">
+  <header class="publication-opening">
+    <h1>{{ publication.title }}</h1>
+    {% if publication.description %}<p>{{ publication.description }}</p>{% endif %}
+  </header>
+  {{ render_slot(owner=view.id, name="body") }}
+</article>

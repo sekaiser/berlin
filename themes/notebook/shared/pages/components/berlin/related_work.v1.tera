@@ -1,0 +1,4 @@
+<aside class="publication-related" id="{{ view.anchor }}">
+  {% if props.title %}<h{{ view.heading_level }}>{{ props.title }}</h{{ view.heading_level }}>{% endif %}
+  <ul>{% for source in props.sources %}<li><a href="{{ source.url }}">{{ source.title }}</a></li>{% endfor %}</ul>
+</aside>

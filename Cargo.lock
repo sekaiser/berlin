@@ -175,6 +175,8 @@ dependencies = [
  "berlin_document_linkedin",
  "berlin_paper",
  "berlin_pipeline_dsl",
+ "berlin_publication",
+ "berlin_publication_html",
  "clap",
  "csv",
  "env_logger",
@@ -299,9 +301,13 @@ dependencies = [
  "berlin_document",
  "berlin_document_html",
  "berlin_publication",
+ "html-escape",
+ "lol_html",
+ "markdown",
  "serde",
  "serde_json",
  "tera",
+ "url",
 ]
 
 [[package]]

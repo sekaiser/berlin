@@ -76,6 +76,21 @@ impl PublicationAssembly {
                 let entry = catalog
                     .resolve(source)
                     .map_err(|e| e.at(publication, &occurrence.path))?;
+                if entry
+                    .document()
+                    .metadata
+                    .title
+                    .as_deref()
+                    .is_none_or(|title| title.trim().is_empty())
+                {
+                    return Err(crate::Diagnostic::new(
+                        crate::Code::InvalidSource,
+                        crate::Stage::Resolution,
+                        "selected source requires a title",
+                    )
+                    .source(&source.id.0, None)
+                    .at(publication, &occurrence.path));
+                }
                 revisions
                     .entry(source.id.0.clone())
                     .or_insert_with(|| SourceRevision {
@@ -178,10 +193,13 @@ impl PublicationAssembly {
             }
         }
         let sources: Vec<_> = sources.into_values().collect();
-        let components: BTreeSet<_> = placements
+        let mut components: BTreeSet<_> = placements
             .iter()
             .map(|p| p.occurrence.component.clone())
             .collect();
+        for excerpt in excerpts.values() {
+            components.extend(excerpt.semantic_components.iter().cloned());
+        }
         let schemas = components
             .iter()
             .map(|key| registry.schema(key))
@@ -224,6 +242,9 @@ impl PublicationAssembly {
     }
     pub fn composition_fingerprint(&self) -> &str {
         &self.composition_fingerprint
+    }
+    pub fn components(&self) -> &BTreeSet<ComponentKey> {
+        &self.components
     }
 
     /// Exact immutable render inputs must be supplied by the consuming adapter.

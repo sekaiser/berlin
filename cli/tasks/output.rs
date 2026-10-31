@@ -403,6 +403,84 @@ mod tests {
     }
 
     #[test]
+    fn publication_template_failure_discards_staging_without_installing_partial_files() {
+        use berlin_publication::{
+            Component, ComponentRegistry, Introduction, Portfolio, PublicationAssembly,
+            PublicationCatalog, PublicationId, PublicationMetadata, PublicationOptions,
+            PublicationSpec,
+        };
+        use berlin_publication_html::{HtmlBindings, PublicationHtmlRenderer, PublicationSite};
+        let project = tempfile::tempdir().unwrap();
+        let old = project.path().join("_portfolio");
+        fs::create_dir(&old).unwrap();
+        fs::write(old.join("index.html"), "previous successful output").unwrap();
+        let registry = ComponentRegistry::builtins();
+        let catalog = PublicationCatalog::new(
+            berlin_content::DocumentCollection::default(),
+            PublicationOptions::default(),
+        )
+        .unwrap();
+        let spec = PublicationSpec {
+            schema_version: 1,
+            metadata: PublicationMetadata {
+                id: PublicationId("example".into()),
+                title: "Example".into(),
+                description: None,
+            },
+            root: Portfolio {}.into_call().with_body(
+                Introduction {
+                    text: "Example opening".into(),
+                }
+                .into_call(),
+            ),
+        };
+        let assembly = PublicationAssembly::resolve(&spec, catalog, &registry).unwrap();
+        let renderer = PublicationHtmlRenderer::new(
+            std::collections::BTreeMap::from([
+                (
+                    "publications/page.tera".into(),
+                    "{{render_slot(owner=view.id,name=\"body\")}}".into(),
+                ),
+                (
+                    "components/berlin/portfolio.v1.tera".into(),
+                    "<h1>{{publication.title}}</h1>{{render_slot(owner=view.id,name=\"body\")}}"
+                        .into(),
+                ),
+                (
+                    "components/berlin/introduction.v1.tera".into(),
+                    "{{ props.missing_required_context }}".into(),
+                ),
+            ]),
+            HtmlBindings::builtins(),
+        )
+        .unwrap();
+        let transaction =
+            OutputTransaction::new(project.path(), [Path::new("_portfolio")]).unwrap();
+        let staged = transaction.staging_root().join("_portfolio");
+        fs::create_dir_all(&staged).unwrap();
+        fs::write(staged.join("partial.txt"), "earlier staged work").unwrap();
+        let result = (|| -> Result<(), anyhow::Error> {
+            let rendered = renderer.render(
+                &assembly,
+                &registry,
+                &PublicationSite {
+                    url: "https://example.test/portfolio".into(),
+                    ..Default::default()
+                },
+            )?;
+            fs::write(staged.join("index.html"), rendered.html)?;
+            transaction.commit()
+        })();
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read_to_string(old.join("index.html")).unwrap(),
+            "previous successful output"
+        );
+        assert!(!old.join("partial.txt").exists());
+        assert!(!staged.exists());
+    }
+
+    #[test]
     fn installation_failure_restores_previous_output() {
         let project = tempfile::tempdir().unwrap();
         let transaction = replacement_transaction(project.path());

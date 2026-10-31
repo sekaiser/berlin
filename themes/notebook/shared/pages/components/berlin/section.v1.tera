@@ -1,0 +1,4 @@
+<section class="publication-section" id="{{ view.anchor }}">
+  <h{{ view.heading_level }}>{{ props.title }}</h{{ view.heading_level }}>
+  {{ render_slot(owner=view.id, name="body") }}
+</section>

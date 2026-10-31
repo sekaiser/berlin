@@ -1,0 +1,3 @@
+<div class="publication-introduction" id="{{ view.anchor }}">
+  {% for paragraph in props.paragraphs %}<p>{{ paragraph }}</p>{% endfor %}
+</div>

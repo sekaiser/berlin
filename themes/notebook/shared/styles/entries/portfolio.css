@@ -1,0 +1,15 @@
+@import "../tokens.css";
+@import "../components/code.css";
+.publication-page { margin: 0; color: var(--ink); background: var(--canvas); font-family: var(--font-reading); line-height: 1.7; }
+.publication-page main { box-sizing: border-box; max-width: 1040px; margin: 3rem auto; padding: clamp(1.5rem, 5vw, 4rem); background: var(--paper); }
+.publication-page h1, .publication-page h2, .publication-page h3 { font-family: var(--font-display); line-height: 1.2; }
+.publication-page h1 { font-size: clamp(2.5rem, 5vw, 4.5rem); }
+.publication-opening { margin-bottom: 3rem; }
+.publication-section { margin-block: 3rem; }
+.publication-work, .publication-excerpt { margin-block: 2rem; padding-block: 1.5rem; border-top: 1px solid var(--rule); }
+.publication-page a { color: var(--ink); text-decoration-color: var(--accent-rule); text-underline-offset: .2em; }
+.publication-annotation, .publication-attribution, .publication-tags, .publication-work time { font-family: var(--font-interface); font-size: .9rem; }
+.publication-tags { display: flex; flex-wrap: wrap; gap: .5rem 1rem; list-style: none; padding: 0; }
+.publication-callout { border-left: 3px solid var(--accent-rule); padding: .5rem 1.5rem; margin-block: 2rem; }
+.publication-page img { max-width: 100%; height: auto; }
+@media (max-width: 600px) { .publication-page main { margin: 0; } }

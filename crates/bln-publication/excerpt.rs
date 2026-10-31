@@ -22,6 +22,7 @@ pub struct ResolvedExcerpt {
     pub source_mount: Option<Url>,
     pub dependency_names: Vec<String>,
     pub linked_sources: BTreeSet<String>,
+    pub semantic_components: BTreeSet<crate::ComponentKey>,
     pub nodes_visited: usize,
 }
 
@@ -180,6 +181,7 @@ pub(crate) fn resolve_excerpt(
         let source_anchors = entry.anchors.clone();
         let mut local_anchors = BTreeSet::new();
         let mut linked_sources = BTreeSet::new();
+        let mut semantic_components = BTreeSet::new();
         walk_blocks(&blocks, &mut |b| {
             collect_anchors(b, &mut local_anchors);
             if let Block::Html { .. } = b {
@@ -195,6 +197,7 @@ pub(crate) fn resolve_excerpt(
             } = b
             {
                 registry.validate_semantic_component(name, properties, blocks)?;
+                semantic_components.insert(name.parse()?);
             }
             if let Block::Figure(figure) = b {
                 resolve_source_url(&figure.source, &original_url, source_mount.as_ref())?;
@@ -259,6 +262,7 @@ pub(crate) fn resolve_excerpt(
             source_mount,
             dependency_names,
             linked_sources,
+            semantic_components,
             nodes_visited: nodes,
         })
     };
