@@ -7,6 +7,7 @@ use anyhow::Error;
 pub struct Project {
     root: PathBuf,
     pipeline_files: Vec<PathBuf>,
+    captured_source_roots: Option<std::collections::BTreeMap<String, String>>,
 }
 
 impl Project {
@@ -27,7 +28,25 @@ impl Project {
         Self {
             root,
             pipeline_files,
+            captured_source_roots: None,
         }
+    }
+
+    /// Bind resolution to the program snapshot used by this execution/check.
+    /// A fresh build captures a new mapping; helpers must not reload it mid-run.
+    pub(crate) fn with_captured_source_roots(
+        &self,
+        roots: &std::collections::BTreeMap<String, String>,
+    ) -> Self {
+        let mut captured = self.clone();
+        captured.captured_source_roots = Some(roots.clone());
+        captured
+    }
+
+    pub(crate) fn captured_source_roots(
+        &self,
+    ) -> Option<&std::collections::BTreeMap<String, String>> {
+        self.captured_source_roots.as_ref()
     }
 
     pub fn pipeline_files(&self) -> &[PathBuf] {

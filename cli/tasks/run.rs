@@ -28,6 +28,7 @@ pub(super) struct PipelineRun<'a> {
 }
 
 struct PreparedPipeline {
+    project: Project,
     program: RhaiPipelineLoader,
     plan: PipelinePlan,
 }
@@ -71,7 +72,7 @@ impl<'a> PipelineRun<'a> {
         self.execute(&prepared)?;
         // Seal the complete staged site; never install over the preview output.
         super::release::seal(
-            self.project,
+            &prepared.project,
             self.pipeline,
             &prepared.plan,
             &self.output_root,
@@ -104,7 +105,14 @@ impl<'a> PipelineRun<'a> {
             super::production::validate_plan(&plan)?;
         }
         self.prepare_outputs(&plan)?;
-        Ok(PreparedPipeline { program, plan })
+        let project = self
+            .project
+            .with_captured_source_roots(program.source_roots());
+        Ok(PreparedPipeline {
+            project,
+            program,
+            plan,
+        })
     }
 
     fn prepare_outputs(&mut self, plan: &PipelinePlan) -> Result<(), Error> {
@@ -140,7 +148,7 @@ impl<'a> PipelineRun<'a> {
         for node in prepared.plan.topological_order()? {
             let artifact = NodeExecutor {
                 consumed_inputs: &mut self.consumed_inputs,
-                project: self.project,
+                project: &prepared.project,
                 artifacts: &self.artifacts,
                 program: &prepared.program,
                 options: self.options,
@@ -249,7 +257,7 @@ impl<'a> PipelineRun<'a> {
         let error_message = outcome.as_ref().err().map(ToString::to_string);
         if let Err(receipt_error) = receipt::write(receipt::ReceiptContext {
             consumed_inputs: &self.consumed_inputs,
-            project: self.project,
+            project: &prepared.project,
             pipeline: self.pipeline,
             started_at: self.started_at,
             duration: self.timer.elapsed(),
@@ -261,5 +269,93 @@ impl<'a> PipelineRun<'a> {
         }) {
             log::warn!("Unable to write build receipt: {receipt_error}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn execution_uses_source_roots_from_the_captured_pipeline_program() {
+        let workspace = tempfile::tempdir().unwrap();
+        let root = workspace.path().join("site");
+        std::fs::create_dir(&root).unwrap();
+        for (directory, title) in [
+            ("original", "Captured reference"),
+            ("changed", "Uncaptured reference"),
+        ] {
+            let directory = workspace.path().join(directory);
+            std::fs::create_dir(&directory).unwrap();
+            std::fs::write(directory.join("resources.yaml"), format!(
+                "schema_version: 1\nresources:\n  - id: paper\n    kind: paper\n    url: https://example.test/paper\n    title: {title}\n"
+            )).unwrap();
+        }
+        let program = r#"
+const SOURCE_ROOTS = #{data:"../original"};
+fn references(c) {
+    publication("references",#{title:"References"},[
+        reading_list("Reading",c.select(#{origins_any:["external"]}).map_cards())
+    ])
+}
+pipeline text {
+    output render_text(compose(catalog([resources(load_data("@data/resources.yaml"))]),Fn("references")),"_text",text_config(#{}));
+}
+"#;
+        let script = root.join("berlin.pipeline.rhai");
+        std::fs::write(&script, program).unwrap();
+        let project = Project::new(root.clone(), vec![]);
+        let mut run = PipelineRun::new(&project, "text", ExecutionOptions::default());
+        let prepared = run.prepare().unwrap();
+        std::fs::write(&script, program.replace("../original", "../changed")).unwrap();
+        let result = run.execute_and_commit(&prepared);
+        run.record_receipt(&prepared, &result);
+        result.unwrap();
+        let output = std::fs::read_to_string(root.join("_text/publication.txt")).unwrap();
+        assert!(output.contains("Captured reference"), "{output}");
+        assert!(!output.contains("Uncaptured reference"));
+        let receipt: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(root.join(".berlin/receipts/text.json")).unwrap(),
+        )
+        .unwrap();
+        let input = receipt["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|input| input["path"] == "berlin.pipeline.rhai")
+            .unwrap();
+        assert_eq!(
+            input["sha256"],
+            berlin_publication::input_digest(program.as_bytes())
+        );
+        assert!(
+            std::fs::read_to_string(&script)
+                .unwrap()
+                .contains("../changed")
+        );
+        drop(run);
+        // A later build captures the new configuration instead of caching the
+        // first build's roots for the lifetime of the original Project handle.
+        PipelineRun::new(&project, "text", ExecutionOptions::default())
+            .run()
+            .unwrap();
+        let next = std::fs::read_to_string(root.join("_text/publication.txt")).unwrap();
+        assert!(next.contains("Uncaptured reference"));
+        let receipt: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(root.join(".berlin/receipts/text.json")).unwrap(),
+        )
+        .unwrap();
+        let input = receipt["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|input| input["path"] == "berlin.pipeline.rhai")
+            .unwrap();
+        assert_eq!(
+            input["sha256"],
+            berlin_publication::input_digest(
+                program.replace("../original", "../changed").as_bytes()
+            )
+        );
     }
 }

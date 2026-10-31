@@ -31,6 +31,21 @@ pub fn load_files(project: &Project, pattern: &str) -> Result<Vec<PathBuf>, Erro
     Ok(files)
 }
 
+fn source_roots(
+    project: &Project,
+) -> Result<std::borrow::Cow<'_, std::collections::BTreeMap<String, String>>, Error> {
+    if let Some(roots) = project.captured_source_roots() {
+        return Ok(std::borrow::Cow::Borrowed(roots));
+    }
+    // Standalone navigation/watch callers may deliberately load current
+    // configuration. Build and check contexts always supply captured roots.
+    Ok(std::borrow::Cow::Owned(
+        crate::pipeline::load_pipeline_program(project)?
+            .source_roots()
+            .clone(),
+    ))
+}
+
 /// Resolves an explicitly named input root, never an output destination.
 pub fn source_location(project: &Project, pattern: &str) -> Result<(PathBuf, PathBuf), Error> {
     let cwd = project.root();
@@ -47,9 +62,8 @@ pub fn source_location(project: &Project, pattern: &str) -> Result<(PathBuf, Pat
     {
         bail!("Named source path must remain inside its configured root");
     }
-    let program = crate::pipeline::load_pipeline_program(project)?;
-    let directory = program
-        .source_roots()
+    let roots = source_roots(project)?;
+    let directory = roots
         .get(name)
         .with_context(|| format!("Unknown source root '{name}'"))?;
     Ok((cwd.join(directory), relative.into()))
@@ -77,8 +91,7 @@ pub fn source_reference(project: &Project, source: &Path) -> Result<PathBuf, Err
     if let Ok(relative) = source.strip_prefix(cwd.canonicalize()?) {
         return Ok(relative.to_owned());
     }
-    let program = crate::pipeline::load_pipeline_program(project)?;
-    for (name, directory) in program.source_roots() {
+    for (name, directory) in source_roots(project)?.iter() {
         if let Ok(root) = cwd.join(directory).canonicalize()
             && let Ok(relative) = source.strip_prefix(root)
         {

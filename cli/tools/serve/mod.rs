@@ -162,6 +162,8 @@ fn watch_paths_for(project: &Project, pipeline: &str) -> Result<Vec<std::path::P
     // Generated roots remain excluded by ignored_watch_path.
     paths.push(root.to_owned());
     let program = crate::pipeline::load_pipeline_program(project)?;
+    let captured_project = project.with_captured_source_roots(program.source_roots());
+    let project = &captured_project;
     for directory in program.source_roots().values() {
         paths.push(root.join(directory).canonicalize()?);
     }

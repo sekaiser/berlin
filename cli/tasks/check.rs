@@ -37,6 +37,8 @@ impl Report {
 
 pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<Report, Error> {
     let program = crate::pipeline::load_pipeline_program(project)?;
+    let captured_project = project.with_captured_source_roots(program.source_roots());
+    let project = &captured_project;
     let plan = program
         .load(pipeline)
         .map_err(|error| anyhow::anyhow!(error.to_string()))?;
