@@ -1,7 +1,7 @@
 [
   {"name":"unknown-component","pipeline":"portfolio","from":"berlin.introduction@1","to":"example.unknown@1"},
   {"name":"unknown-slot","pipeline":"portfolio","from":"#{body: entries}","to":"#{unknown: entries}"},
-  {"name":"missing-source","pipeline":"curated","from":"ids: [\"queues\", \"storage\"]","to":"ids: [\"missing\"]"},
+  {"name":"missing-source","pipeline":"curated","from":"ids: [\"local:queues\", \"local:storage\"]","to":"ids: [\"local:missing\"]"},
   {"name":"unsafe-source-url","pipeline":"portfolio","from":"https://example.test/notebook","to":"javascript:alert(1)"},
   {"name":"over-limit","pipeline":"portfolio","from":"publication_options(#{source_site_url:","to":"publication_options(#{limits: #{occurrences: 2}, source_site_url:"},
   {"name":"raw-html","pipeline":"excerpts","source":"content/storage.md","from":"Publish the position after synchronization.","to":"<div>Portable raw HTML is deliberately unsupported.</div>\n\nPublish the position after synchronization."}

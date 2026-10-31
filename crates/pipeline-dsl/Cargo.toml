@@ -13,3 +13,6 @@ berlin_core.workspace = true
 berlin_document.workspace = true
 rhai.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

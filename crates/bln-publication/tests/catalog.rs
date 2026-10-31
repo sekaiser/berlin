@@ -62,7 +62,7 @@ fn f17_selected_source_budget_has_an_exact_boundary() {
     )
     .unwrap();
     assert_eq!(
-        c.select(&WorkQuery {
+        c.select(&ResourceQuery {
             limit: Some(2),
             ..Default::default()
         })
@@ -71,29 +71,34 @@ fn f17_selected_source_budget_has_an_exact_boundary() {
         2
     );
     assert!(
-        c.select(&WorkQuery {
+        c.select(&ResourceQuery {
             limit: Some(3),
             ..Default::default()
         })
         .is_err()
     );
-    assert!(c.select(&WorkQuery::default()).is_err());
+    assert!(c.select(&ResourceQuery::default()).is_err());
 }
-fn ids(catalog: &PublicationCatalog, query: WorkQuery) -> Vec<String> {
+fn ids(catalog: &PublicationCatalog, query: ResourceQuery) -> Vec<String> {
     catalog
         .select(&query)
         .unwrap()
         .into_iter()
-        .map(|r| r.id.0)
+        .map(|r| r.id.leaf().to_owned())
         .collect()
 }
 
 #[test]
 fn a05_explicit_curation_preserves_order_and_rejects_invalid_sources() {
     let c = catalog(documents());
-    let query = |names: &[&str]| WorkQuery {
-        ids: Some(names.iter().map(|n| (*n).into()).collect()),
-        order: WorkOrder::Curated,
+    let query = |names: &[&str]| ResourceQuery {
+        ids: Some(
+            names
+                .iter()
+                .map(|n| ResourceId::local(n).unwrap())
+                .collect(),
+        ),
+        order: ResourceOrder::Curated,
         ..Default::default()
     };
     assert_eq!(ids(&c, query(&["b", "old", "a"])), ["b", "old", "a"]);
@@ -107,24 +112,24 @@ fn a05_explicit_curation_preserves_order_and_rejects_invalid_sources() {
 fn a06_a07_a08_filters_dates_ties_undated_and_limits() {
     let c = catalog(documents());
     assert_eq!(
-        ids(&c, WorkQuery::default()),
+        ids(&c, ResourceQuery::default()),
         ["a", "b", "guide", "old", "undated"]
     );
     assert_eq!(
         ids(
             &c,
-            WorkQuery {
-                order: WorkOrder::PublishedAsc,
+            ResourceQuery {
+                order: ResourceOrder::IdAsc,
                 ..Default::default()
             }
         ),
-        ["old", "guide", "a", "b", "undated"]
+        ["a", "b", "guide", "old", "undated"]
     );
     assert_eq!(
         ids(
             &c,
-            WorkQuery {
-                tags_all: vec!["systems".into(), "storage".into()],
+            ResourceQuery {
+                topics_all: vec!["systems".into(), "storage".into()],
                 ..Default::default()
             }
         ),
@@ -133,8 +138,8 @@ fn a06_a07_a08_filters_dates_ties_undated_and_limits() {
     assert_eq!(
         ids(
             &c,
-            WorkQuery {
-                tags_any: vec!["storage".into()],
+            ResourceQuery {
+                topics_any: Some(vec!["storage".into()]),
                 ..Default::default()
             }
         ),
@@ -143,8 +148,8 @@ fn a06_a07_a08_filters_dates_ties_undated_and_limits() {
     assert_eq!(
         ids(
             &c,
-            WorkQuery {
-                kinds: vec!["guide".into()],
+            ResourceQuery {
+                kinds_any: Some(vec!["guide".parse().unwrap()]),
                 ..Default::default()
             }
         ),
@@ -153,7 +158,7 @@ fn a06_a07_a08_filters_dates_ties_undated_and_limits() {
     assert_eq!(
         ids(
             &c,
-            WorkQuery {
+            ResourceQuery {
                 published_from: Some("2026-01-01".parse().unwrap()),
                 published_to: Some("2026-01-01".parse().unwrap()),
                 ..Default::default()
@@ -164,46 +169,34 @@ fn a06_a07_a08_filters_dates_ties_undated_and_limits() {
     assert_eq!(
         ids(
             &c,
-            WorkQuery {
-                tags_any: vec!["storage".into()],
+            ResourceQuery {
+                topics_any: Some(vec!["storage".into()]),
                 limit: Some(1),
                 ..Default::default()
             }
         ),
         ["a"]
     );
-    let empty = WorkQuery {
-        tags_all: vec!["Systems".into()],
+    let empty = ResourceQuery {
+        topics_all: vec!["does-not-exist".into()],
         ..Default::default()
     };
-    assert!(c.select(&empty).is_err());
-    assert_eq!(
-        ids(
-            &c,
-            WorkQuery {
-                allow_empty: true,
-                ..empty
-            }
-        ),
-        Vec::<String>::new()
-    );
+    assert!(c.select(&empty).unwrap().is_empty());
+    assert_eq!(ids(&c, ResourceQuery { ..empty }), Vec::<String>::new());
     for kind in ["unknown", "custom:"] {
         assert!(
-            c.select(&WorkQuery {
-                kinds: vec![kind.into()],
-                ..Default::default()
-            })
-            .is_err()
+            serde_json::from_value::<ResourceQuery>(serde_json::json!({"kinds_any":[kind]}))
+                .is_err()
         );
     }
     assert!(
-        c.select(&WorkQuery {
+        c.select(&ResourceQuery {
             limit: Some(0),
             ..Default::default()
         })
         .is_err()
     );
-    assert!(serde_json::from_str::<WorkQuery>(r#"{"unknown":1}"#).is_err());
+    assert!(serde_json::from_str::<ResourceQuery>(r#"{"unknown":1}"#).is_err());
 }
 
 #[test]
@@ -216,8 +209,8 @@ fn a07_title_ties_and_unicode_order_are_not_locale_dependent() {
     assert_eq!(
         ids(
             &c,
-            WorkQuery {
-                order: WorkOrder::TitleAsc,
+            ResourceQuery {
+                order: ResourceOrder::TitleAsc,
                 ..Default::default()
             }
         ),
@@ -228,16 +221,22 @@ fn a07_title_ties_and_unicode_order_are_not_locale_dependent() {
 #[test]
 fn a09_a11_queries_evolve_while_curation_and_order_remain_explicit() {
     let c = catalog(documents());
-    let curated = WorkQuery {
-        ids: Some(vec!["b".into(), "a".into()]),
-        order: WorkOrder::Curated,
+    let curated = ResourceQuery {
+        ids: Some(vec![
+            ResourceId::local("b").unwrap(),
+            ResourceId::local("a").unwrap(),
+        ]),
+        order: ResourceOrder::Curated,
         ..Default::default()
     };
     let mut newer = documents();
     newer.push(document("new", Some("2026-10-30"), &["systems"]));
     newer.reverse();
     let d = catalog(newer);
-    assert_ne!(ids(&c, WorkQuery::default()), ids(&d, WorkQuery::default()));
+    assert_ne!(
+        ids(&c, ResourceQuery::default()),
+        ids(&d, ResourceQuery::default())
+    );
     assert_eq!(ids(&c, curated.clone()), ids(&d, curated));
 }
 

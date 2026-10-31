@@ -90,8 +90,19 @@ impl RhaiPipelineLoader {
     ) -> Result<berlin_publication::PublicationAssembly, CompileError> {
         let catalog =
             berlin_publication::PublicationCatalog::new(documents.clone(), options.clone())?;
-        let state =
-            publication_api::ComposerState::new(options.limits.clone(), self.components.clone());
+        self.compose_catalog(composer, catalog)
+    }
+
+    pub fn compose_catalog(
+        &self,
+        composer: &FunctionRef,
+        catalog: berlin_publication::PublicationCatalog,
+    ) -> Result<berlin_publication::PublicationAssembly, CompileError> {
+        let state = publication_api::ComposerState::new(
+            catalog.limits().clone(),
+            catalog.options().resource_limits.clone(),
+            self.components.clone(),
+        );
         let spec = self
             .engine
             .call_fn_with_options::<berlin_publication::PublicationSpec>(

@@ -1,7 +1,7 @@
 // Synthetic, offline composition. No author content or deployment credentials.
 fn system_design(catalog) {
-    let selected = select_work(catalog, #{
-        tags_any: ["system-design", "storage"],
+    let selected = catalog.select( #{
+        topics_any: ["system-design", "storage"],
         published_from: "2025-01-01",
         order: "published_desc",
         limit: 8
@@ -18,7 +18,7 @@ fn system_design(catalog) {
 }
 
 fn curated(catalog) {
-    let ordered = select_work(catalog, #{ids: ["queues", "storage"], order: "curated"});
+    let ordered = catalog.select( #{ids: ["local:queues", "local:storage"], order: "curated"});
     let entries = [];
     for source in ordered {
         entries.push(view_component("berlin.featured_work@1", #{source: source, annotation: "An editorial annotation for this publication."}, #{}));
@@ -28,13 +28,13 @@ fn curated(catalog) {
 }
 
 fn excerpt_publication(catalog) {
-    let excerpt = section_ref(catalog, "storage", "handoff");
+    let excerpt = section_ref(catalog, "local:storage", "handoff");
     publication(#{id: "handoffs", title: "The Handoff Contract"},
         view_component("berlin.portfolio@1", #{}, #{body: [
             view_component("berlin.introduction@1", #{text: "One source section, reused with two distinct editorial placements."}, #{}),
             view_component("berlin.excerpt@1", #{source: excerpt, key: "first", annotation: "Read the invariant first."}, #{}),
             view_component("berlin.excerpt@1", #{source: excerpt, key: "second", annotation: "The same section can support another discussion."}, #{}),
-            view_component("berlin.related_work@1", #{sources: [work_ref(catalog, "queues")], title: "Continue with queue admission"}, #{})
+            view_component("berlin.related_work@1", #{sources: [resource_ref(catalog, "local:queues")], title: "Continue with queue admission"}, #{})
         ]}))
 }
 

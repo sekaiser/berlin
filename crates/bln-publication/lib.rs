@@ -11,6 +11,7 @@ mod diagnostic;
 mod excerpt;
 mod limits;
 mod model;
+mod query;
 mod registry;
 mod resources;
 
@@ -22,6 +23,7 @@ pub use diagnostic::{Code, Diagnostic, Result, Stage};
 pub use excerpt::*;
 pub use limits::{BoundedWriter, PublicationLimits};
 pub use model::*;
+pub use query::*;
 pub use registry::*;
 pub use resources::*;
 

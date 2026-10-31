@@ -6,7 +6,7 @@ use berlin_publication::*;
 
 const COMPOSER: &str = r#"
 fn portfolio(catalog) {
-    let selected=select_work(catalog,#{tags_all:["systems"],order:"published_desc"});
+    let selected=catalog.select(#{topics_all:["systems"],order:"published_desc"});
     let entries=[];
     for source in selected { entries.push(view_component("berlin.featured_work@1",#{source:source},#{})); }
     let root=view_component("berlin.portfolio@1",#{},#{body:[view_component("berlin.introduction@1",#{text:"Selected work."},#{}),view_component("berlin.section@1",#{title:"Systems"},#{body:entries})]});
@@ -77,6 +77,106 @@ fn documents() -> DocumentCollection {
             source_hash: "a".repeat(64),
         },
     }])
+}
+
+#[test]
+fn unified_d11_rust_and_rhai_queries_share_order_and_both_digests() {
+    let external=ExternalResourceCollection::new(vec![(serde_json::from_value(serde_json::json!({
+        "id":"repository","kind":"repository","url":"https://example.test/repository?x=1&y=2#Section",
+        "title":"Repository <notes>","topics":["storage"]
+    })).unwrap(),ResourceSource{namespace:"reading".into(),logical_name:"resources.yaml".into(),sha256:"b".repeat(64),record:1})],&ResourceLimits::default(),&PublicationLimits::default()).unwrap();
+    let catalog =
+        PublicationCatalog::with_resources(documents(), external, PublicationOptions::default())
+            .unwrap();
+    let selected=catalog.select(&serde_json::from_value::<ResourceQuery>(serde_json::json!({
+        "topics_any":["Storage","SYSTEMS"],"origins_any":["external","local"],"order":"id_asc"
+    })).unwrap()).unwrap();
+    let source = r#"fn probe(catalog) {
+        let selected=catalog.select(#{topics_any:["systems","storage"],origins_any:["local","external"],order:"id_asc"});
+        let text=selected.query_digest+"|"+selected.selection_digest;
+        for item in selected { text+="|"+item.id+"|"+catalog.describe(item).title; }
+        publication(#{id:"probe",title:"Query parity"},view_component("berlin.introduction@1",#{text:text},#{}))
+    }"#;
+    let loader = RhaiPipelineLoader::new(source).unwrap();
+    let result = loader
+        .compose_catalog(&FunctionRef::new("probe"), catalog.clone())
+        .unwrap();
+    let mut expected = format!(
+        "{}|{}",
+        selected.query_digest(),
+        selected.selection_digest()
+    );
+    for entry in selected.iter() {
+        expected += &format!("|{}|{}", entry.descriptor().id, entry.descriptor().title);
+    }
+    assert_eq!(
+        result.spec().root.properties["text"],
+        Property::Text(expected)
+    );
+    assert_eq!(catalog.len(), 2);
+    assert_eq!(catalog.index_builds(), 1);
+}
+
+#[test]
+fn unified_queries_preflight_arrays_and_charge_cumulative_native_work() {
+    let once = r#"fn probe(c) {
+        let selected=c.select(#{});
+        publication(#{id:"p",title:"P"},view_component("berlin.introduction@1",#{text:"OK"},#{}))
+    }"#;
+    let mut options = PublicationOptions::default();
+    options.resource_limits.query_work = 1;
+    let catalog = PublicationCatalog::new(documents(), options).unwrap();
+    assert!(
+        RhaiPipelineLoader::new(once)
+            .unwrap()
+            .compose_catalog(&FunctionRef::new("probe"), catalog.clone())
+            .is_ok()
+    );
+    let twice = once.replace(
+        "let selected=c.select(#{});",
+        "let selected=c.select(#{}); let another=c.select(#{});",
+    );
+    assert!(
+        RhaiPipelineLoader::new(&twice)
+            .unwrap()
+            .compose_catalog(&FunctionRef::new("probe"), catalog)
+            .unwrap_err()
+            .to_string()
+            .contains("ResourceLimit")
+    );
+    let mut options = PublicationOptions::default();
+    options.limits.occurrences = 2;
+    let catalog = PublicationCatalog::new(documents(), options).unwrap();
+    assert!(
+        RhaiPipelineLoader::new(&twice)
+            .unwrap()
+            .compose_catalog(&FunctionRef::new("probe"), catalog.clone())
+            .is_ok()
+    );
+    let triple = twice.replace(
+        "let another=c.select(#{});",
+        "let another=c.select(#{});let third=c.select(#{});",
+    );
+    assert!(
+        RhaiPipelineLoader::new(&triple)
+            .unwrap()
+            .compose_catalog(&FunctionRef::new("probe"), catalog)
+            .unwrap_err()
+            .to_string()
+            .contains("ResourceLimit")
+    );
+    let excessive=once.replace("let selected=c.select(#{});","let values=[];for i in 0..65 {values.push(\"storage\");}let selected=c.select(#{topics_any:values});");
+    assert!(
+        RhaiPipelineLoader::new(&excessive)
+            .unwrap()
+            .compose_catalog(
+                &FunctionRef::new("probe"),
+                PublicationCatalog::new(documents(), PublicationOptions::default()).unwrap()
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("ResourceLimit")
+    );
 }
 #[test]
 fn d05_d08_rust_and_runtime_rhai_use_the_same_normalized_contract() {
@@ -160,8 +260,8 @@ fn d05_d08_rust_and_runtime_rhai_use_the_same_normalized_contract() {
 #[test]
 fn d07_plan_checks_arity_without_loading_documents_or_executing_composers() {
     let source = COMPOSER.replace(
-        "let selected=select_work(catalog,",
-        "throw(\"must not run during planning\"); let selected=select_work(catalog,",
+        "let selected=catalog.select(",
+        "throw(\"must not run during planning\"); let selected=catalog.select(",
     );
     let loader = RhaiPipelineLoader::new(&source).unwrap();
     loader.load("html").unwrap().validate().unwrap();

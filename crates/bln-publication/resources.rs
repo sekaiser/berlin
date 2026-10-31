@@ -114,6 +114,11 @@ impl ResourceKind {
             DocumentKind::Guide => "guide".parse(),
             DocumentKind::Note => "note".parse(),
             DocumentKind::SocialPost => "social_post".parse(),
+            DocumentKind::Custom(name) if name.len() > 128 => Err(Diagnostic::new(
+                Code::UnknownResourceKind,
+                Stage::Resolution,
+                "custom resource kind exceeds its byte limit",
+            )),
             DocumentKind::Custom(name) if name.contains(':') => name.parse(),
             DocumentKind::Custom(name) => format!("custom:{name}").parse(),
         }
@@ -179,6 +184,7 @@ pub struct ResourceLimits {
     pub topics_per_resource: usize,
     pub authors_per_resource: usize,
     pub query_terms: usize,
+    pub query_work: usize,
 }
 impl Default for ResourceLimits {
     fn default() -> Self {
@@ -191,6 +197,7 @@ impl Default for ResourceLimits {
             topics_per_resource: 64,
             authors_per_resource: 64,
             query_terms: 64,
+            query_work: 10_000_000,
         }
     }
 }
@@ -206,6 +213,7 @@ impl ResourceLimits {
             (self.topics_per_resource, max.topics_per_resource),
             (self.authors_per_resource, max.authors_per_resource),
             (self.query_terms, max.query_terms),
+            (self.query_work, max.query_work),
         ] {
             if actual == 0 || actual > ceiling {
                 return Err(limit(

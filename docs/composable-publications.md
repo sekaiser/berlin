@@ -37,8 +37,8 @@ sentinels. No personal content or credentials are needed.
 
 ```rhai
 fn selected_work(catalog) {
-    let selected = select_work(catalog, #{
-        tags_all: ["storage"],
+    let selected = catalog.select(#{
+        topics_all: ["storage"],
         order: "published_desc",
         limit: 8
     });
@@ -77,21 +77,26 @@ another output operation inside that directory.
 
 ## Select and reference work
 
-`select_work` accepts `ids`, `kinds`, `tags_any`, `tags_all`, `published_from`,
-`published_to`, `order`, `limit` and `allow_empty`. Dates are inclusive
-`YYYY-MM-DD` bounds. Orders are `published_desc`, `published_asc`, `title_asc` and
-`curated`. Missing dates sort last; content IDs break ties. Limits apply after
-selection and sorting. An empty result fails unless explicitly allowed.
+`catalog.select` uses the shared `ResourceQuery`: optional tagged `ids`,
+`origins_any`, `kinds_any`, `topics_any`, plus `topics_all`, `topics_none`,
+`author_text`, `source_namespace`, `capabilities_all`, inclusive published/added
+date bounds, `order` and `limit`. Different fields are ANDed; each `any` field
+uses OR. Explicit empty `any` filters and duplicate terms fail. Tag keys use ASCII
+case-folding for ASCII tags and exact Unicode comparison otherwise. Orders are
+`published_desc`, `added_desc`, `title_asc`, `id_asc` and `curated`. Missing dates
+sort last; tagged resource IDs break ties. Limits apply after filtering/sorting.
+An empty selection is valid; a required nonempty receiving slot may still fail.
 
-For a curated list use `#{ids: ["queues", "storage"], order: "curated"}`.
+For a curated list use `#{ids: ["local:queues", "local:storage"], order: "curated"}`.
 Written order is preserved; missing, duplicate or draft IDs fail. Query selection
-always excludes drafts. `work_ref(catalog, "storage")` creates one reference;
-`pinned_work_ref(catalog, "storage", #{source_sha256: "..."})` additionally checks
-the expected source revision. `document_digest` pins the prepared semantic
-document, including mappings. Digests detect mismatches; they do not retrieve
-historical content.
+always excludes drafts. `resource_ref(catalog, "local:storage")` creates a
+reference; `pinned_resource_ref(catalog, "local:storage", #{record_revision: "..."})`
+checks its normalized revision. `external:` references use the same query and
+lookup contract but do not contain semantic document bodies. Selection values
+expose `query_digest` and `selection_digest`; `catalog.describe(ref)` exposes
+only public metadata. Digests detect mismatches; they do not retrieve history.
 
-`section_ref(catalog, "storage", "handoff")` selects a structural section by its
+`section_ref(catalog, "local:storage", "handoff")` selects a structural section by its
 explicit stable ID. A selected section includes nested content and required
 footnotes. Missing dependencies, raw HTML and unregistered semantic components
 fail rather than silently losing content. Local anchors, footnotes and code-line

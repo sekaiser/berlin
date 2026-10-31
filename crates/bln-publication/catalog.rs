@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use berlin_content::DocumentCollection;
-use berlin_document::{Document, DocumentKind, PublicationDate};
+use berlin_document::Document;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -19,30 +19,6 @@ pub struct PublicationOptions {
     pub source_site_url: Option<Url>,
     pub limits: PublicationLimits,
     pub resource_limits: ResourceLimits,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkOrder {
-    #[default]
-    PublishedDesc,
-    PublishedAsc,
-    TitleAsc,
-    Curated,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct WorkQuery {
-    pub ids: Option<Vec<String>>,
-    pub kinds: Vec<String>,
-    pub tags_any: Vec<String>,
-    pub tags_all: Vec<String>,
-    pub published_from: Option<PublicationDate>,
-    pub published_to: Option<PublicationDate>,
-    pub order: WorkOrder,
-    pub limit: Option<usize>,
-    pub allow_empty: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -539,6 +515,15 @@ impl PublicationCatalog {
     pub fn by_kind(&self, kind: &ResourceKind) -> impl Iterator<Item = &ResourceId> {
         self.snapshot.kinds.get(kind).into_iter().flatten()
     }
+    pub(crate) fn kind_index(&self, kind: &ResourceKind) -> Option<&BTreeSet<ResourceId>> {
+        self.snapshot.kinds.get(kind)
+    }
+    pub(crate) fn origin_index(&self, origin: ResourceOrigin) -> Option<&BTreeSet<ResourceId>> {
+        self.snapshot.origins.get(&origin)
+    }
+    pub(crate) fn topic_index(&self, topic: &str) -> Option<&BTreeSet<ResourceId>> {
+        self.snapshot.topics.get(topic)
+    }
     pub fn by_origin(&self, origin: ResourceOrigin) -> impl Iterator<Item = &ResourceId> {
         self.snapshot.origins.get(&origin).into_iter().flatten()
     }
@@ -598,129 +583,6 @@ impl PublicationCatalog {
         }
         Ok(entry)
     }
-
-    pub fn select(&self, query: &WorkQuery) -> Result<Vec<ContentRef>> {
-        if query.limit == Some(0) || query.limit.is_some_and(|n| n > self.limits().query_sources) {
-            return Err(Diagnostic::new(
-                Code::ResourceLimit,
-                Stage::Resolution,
-                "query limit must be positive and within query_sources budget",
-            ));
-        }
-        if let (Some(from), Some(to)) = (&query.published_from, &query.published_to)
-            && from > to
-        {
-            return Err(Diagnostic::new(
-                Code::InvalidProperty,
-                Stage::Resolution,
-                "published_from is after published_to",
-            ));
-        }
-        let kinds = query
-            .kinds
-            .iter()
-            .map(|name| parse_kind(name))
-            .collect::<Result<Vec<_>>>()?;
-        let mut candidates = if let Some(ids) = &query.ids {
-            let mut seen = BTreeSet::new();
-            ids.iter()
-                .map(|id| {
-                    if !seen.insert(id) {
-                        return Err(Diagnostic::new(
-                            Code::InvalidSource,
-                            Stage::Resolution,
-                            "duplicate explicit source in curated list",
-                        )
-                        .source(id, None));
-                    }
-                    self.entry(id)
-                })
-                .collect::<Result<Vec<_>>>()?
-        } else {
-            if query.order == WorkOrder::Curated {
-                return Err(Diagnostic::new(
-                    Code::InvalidProperty,
-                    Stage::Resolution,
-                    "curated order requires explicit ids",
-                ));
-            }
-            self.snapshot
-                .entries
-                .values()
-                .filter_map(|entry| match &entry.handle {
-                    ResourceHandle::Local(local) => Some(local.as_ref()),
-                    _ => None,
-                })
-                .collect()
-        };
-        candidates.retain(|entry| {
-            let d = entry.document();
-            (kinds.is_empty() || kinds.contains(&d.kind))
-                && (query.tags_any.is_empty()
-                    || query
-                        .tags_any
-                        .iter()
-                        .any(|tag| d.metadata.tags.contains(tag)))
-                && query
-                    .tags_all
-                    .iter()
-                    .all(|tag| d.metadata.tags.contains(tag))
-                && (query.published_from.is_none() && query.published_to.is_none()
-                    || d.metadata.published.as_ref().is_some_and(|date| {
-                        query
-                            .published_from
-                            .as_ref()
-                            .is_none_or(|from| date >= from)
-                            && query.published_to.as_ref().is_none_or(|to| date <= to)
-                    }))
-        });
-        if query.order != WorkOrder::Curated {
-            candidates.sort_by(|a, b| {
-                let a = a.document();
-                let b = b.document();
-                let compare = match query.order {
-                    WorkOrder::TitleAsc => a.metadata.title.cmp(&b.metadata.title),
-                    WorkOrder::PublishedAsc | WorkOrder::PublishedDesc => {
-                        match (&a.metadata.published, &b.metadata.published) {
-                            (Some(a), Some(b)) => {
-                                if query.order == WorkOrder::PublishedAsc {
-                                    a.cmp(b)
-                                } else {
-                                    b.cmp(a)
-                                }
-                            }
-                            (None, Some(_)) => std::cmp::Ordering::Greater,
-                            (Some(_), None) => std::cmp::Ordering::Less,
-                            (None, None) => std::cmp::Ordering::Equal,
-                        }
-                    }
-                    WorkOrder::Curated => std::cmp::Ordering::Equal,
-                };
-                compare.then_with(|| a.id.0.cmp(&b.id.0))
-            });
-        }
-        if let Some(limit) = query.limit {
-            candidates.truncate(limit);
-        }
-        if candidates.len() > self.limits().query_sources {
-            return Err(Diagnostic::new(
-                Code::ResourceLimit,
-                Stage::Resolution,
-                "query selection exceeds query_sources; use an explicit limit",
-            ));
-        }
-        if candidates.is_empty() && !query.allow_empty {
-            return Err(Diagnostic::new(
-                Code::InvalidSource,
-                Stage::Resolution,
-                "query matched no eligible work; set allow_empty explicitly if intended",
-            ));
-        }
-        Ok(candidates
-            .into_iter()
-            .map(|entry| ContentRef::new(&entry.document().id.0))
-            .collect())
-    }
 }
 
 fn charge_descriptor(
@@ -753,25 +615,6 @@ fn charge_catalog(
         ));
     }
     Ok(())
-}
-
-fn parse_kind(name: &str) -> Result<DocumentKind> {
-    Ok(match name {
-        "article" => DocumentKind::Article,
-        "guide" => DocumentKind::Guide,
-        "note" => DocumentKind::Note,
-        "social_post" => DocumentKind::SocialPost,
-        custom if custom.starts_with("custom:") && custom.len() > 7 => {
-            DocumentKind::Custom(custom[7..].into())
-        }
-        _ => {
-            return Err(Diagnostic::new(
-                Code::InvalidProperty,
-                Stage::Resolution,
-                format!("unknown document kind '{name}'"),
-            ));
-        }
-    })
 }
 
 pub fn validate_public_url(url: &Url) -> Result<()> {
