@@ -63,10 +63,11 @@ fn allocations(stop_before_conversion: bool, limits: PublicationLimits) -> (usiz
     LARGE_BYTES.with(|bytes| bytes.set(Some(0)));
     let result = loader.compose_artifact(&FunctionRef::new("p"), catalog);
     let allocated = LARGE_BYTES.with(|bytes| bytes.replace(None).unwrap());
-    (
-        allocated,
-        result.err().expect("fixture must fail").to_string(),
-    )
+    let error = match result {
+        Err(error) => error.to_string(),
+        Ok(_) => panic!("fixture must fail"),
+    };
+    (allocated, error)
 }
 
 #[test]
