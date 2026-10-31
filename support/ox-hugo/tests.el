@@ -59,7 +59,7 @@
           (when-let* ((binary (getenv "BERLIN_TEST_BINARY")))
             (with-temp-file (expand-file-name "berlin.pipeline.rhai" directory)
               (insert "pipeline org { output export_org(load_org(\"*.org\"), \"ox-hugo\", \".berlin/generated/org\", \"notes\"); }\n"
-                      "fn draft(c) { let entries=[]; for r in c.select(#{origins_any:[\"local\"]}) { entries.push(view_component(\"berlin.excerpt@1\",#{source:document_excerpt(c,r.id)},#{})); } publication(\"draft\",#{title:\"Exported document\"},entries) } pipeline test { output render_text(compose(catalog([documents(load_markdown(\".berlin/generated/org/content/notes/*.md\"))]),Fn(\"draft\")),\"drafts\",text_config(#{})); }"))
+                      "fn draft(c) { let entries=[]; for r in c.select(#{origins_any:[\"local\"]}) { entries.push(view_component(\"berlin.excerpt@1\",#{source:document_excerpt(c,r.id)},#{})); } publication(\"draft\",#{title:\"Exported document\"},entries) } pipeline test { output render_text(compose(catalog([documents(load_markdown(\".berlin/generated/org/content/notes/*.md\"))],publication_options(#{source_site_url:\"https://example.test\"})),Fn(\"draft\")),\"drafts\",text_config(#{})); }"))
             (let ((default-directory directory) (process-environment (copy-sequence process-environment)))
               (setenv "BERLIN_DIR" directory)
               (dolist (pipeline '("org" "test"))
@@ -98,7 +98,7 @@
           ;; Feed the real export through Berlin's parser, without a theme or TeX engine.
           (when-let* ((binary (getenv "BERLIN_TEST_BINARY")))
             (with-temp-file (expand-file-name "berlin.pipeline.rhai" directory)
-              (insert "fn draft(c) { let entries=[]; for r in c.select(#{origins_any:[\"local\"]}) { entries.push(view_component(\"berlin.excerpt@1\",#{source:document_excerpt(c,r.id)},#{})); } publication(\"draft\",#{title:\"Exported document\"},entries) } pipeline test { output render_text(compose(catalog([documents(load_markdown(\"content/notes/*.md\"))]),Fn(\"draft\")),\"drafts\",text_config(#{})); }"))
+              (insert "fn draft(c) { let entries=[]; for r in c.select(#{origins_any:[\"local\"]}) { entries.push(view_component(\"berlin.excerpt@1\",#{source:document_excerpt(c,r.id)},#{})); } publication(\"draft\",#{title:\"Exported document\"},entries) } pipeline test { output render_text(compose(catalog([documents(load_markdown(\"content/notes/*.md\"))],publication_options(#{source_site_url:\"https://example.test\"})),Fn(\"draft\")),\"drafts\",text_config(#{})); }"))
             (let ((default-directory directory)
                   (process-environment (copy-sequence process-environment)))
               (setenv "BERLIN_DIR" directory)

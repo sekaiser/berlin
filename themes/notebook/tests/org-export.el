@@ -43,7 +43,7 @@ ASSETS maps theme-relative fixture paths to local source filenames."
                       "let sources=catalog([documents(load_markdown(\"content/notes/*.md\"))],publication_options(#{source_site_url:\"https://notebook.example\"}));\n"
                       "output render_html(compose(sources,Fn(\"notebook\")),\"_site\",html_config(#{theme: "
                       (prin1-to-string notebook-test-theme)
-                      ", url: \"https://notebook.example\", title: \"Example\", author: \"Example Author\", description: \"Synthetic theme specimen\"}));\n}\n"))
+                      ", url: \"https://notebook.example\", title: \"Example\", author: \"Example Author\", description: \"Synthetic theme specimen\"})).with_assets(load_assets(\"static/attachments/**/*\"),\"attachments\");\n}\n"))
             (let ((default-directory directory) (process-environment (copy-sequence process-environment)))
               (setenv "BERLIN_DIR" directory)
               (with-temp-buffer
