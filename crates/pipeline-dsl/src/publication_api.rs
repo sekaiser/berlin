@@ -559,6 +559,93 @@ fn preflight_query(query: &rhai::Map, catalog: &PublicationCatalog) -> ScriptRes
     Ok(())
 }
 
+// Inspect borrowed Rhai values before converting shared strings to owned properties.
+// This enforces downward and remaining budgets before native payload allocation;
+// normalized ComponentCall accounting remains authoritative afterward.
+struct PropertyPreflight<'a> {
+    limits: &'a PublicationLimits,
+    remaining: usize,
+}
+impl PropertyPreflight<'_> {
+    fn bytes(&mut self, bytes: usize) -> ScriptResult<()> {
+        self.remaining = self.remaining.checked_sub(bytes).ok_or_else(|| {
+            failure("ResourceLimit: native property byte budget exceeded before decoding")
+        })?;
+        Ok(())
+    }
+    fn string(&mut self, value: &str) -> ScriptResult<()> {
+        if value.len() > self.limits.string_bytes {
+            return Err(failure(
+                "ResourceLimit: native property string budget exceeded before decoding",
+            ));
+        }
+        self.bytes(value.len())
+    }
+    fn source(&mut self, source: &ContentRef) -> ScriptResult<()> {
+        self.string(&source.id.0)?;
+        for hash in [
+            &source.expected_source_hash,
+            &source.expected_document_digest,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            self.string(hash)?;
+        }
+        Ok(())
+    }
+    fn value(&mut self, value: &Dynamic, depth: usize) -> ScriptResult<()> {
+        if depth > self.limits.depth {
+            return Err(failure(
+                "ResourceLimit: native property nesting exceeded before decoding",
+            ));
+        }
+        if let Some(text) = value.read_lock::<ImmutableString>() {
+            return self.string(&text);
+        }
+        if let Some(source) = value.read_lock::<ContentRef>() {
+            return self.source(&source);
+        }
+        if let Some(reference) = value.read_lock::<ResourceRef>() {
+            self.string(reference.id.as_str())?;
+            for hash in [
+                &reference.expected_revision,
+                &reference.expected_source_hash,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                self.string(hash)?;
+            }
+            return Ok(());
+        }
+        if let Some(excerpt) = value.read_lock::<ExcerptRef>() {
+            self.source(&excerpt.source)?;
+            if let Some(section) = &excerpt.section {
+                self.string(section)?;
+            }
+            return Ok(());
+        }
+        if let Some(values) = value.read_lock::<rhai::Array>() {
+            if values.len() > self.limits.query_sources {
+                return Err(failure(
+                    "ResourceLimit: native property list budget exceeded before decoding",
+                ));
+            }
+            for value in values.iter() {
+                self.value(value, depth + 1)?;
+            }
+            return Ok(());
+        }
+        if value.is::<bool>() || value.is::<rhai::INT>() || value.is_unit() {
+            return self.bytes(8);
+        }
+        Err(failure(
+            "InvalidProperty: unsupported native property value",
+        ))
+    }
+}
+
 fn decode(value: Dynamic, depth: usize) -> ScriptResult<Property> {
     if depth > 32 {
         return Err(failure("ResourceLimit: native property nesting exceeded"));
@@ -612,6 +699,20 @@ fn make_view(
     slots: rhai::Map,
 ) -> ScriptResult<ScriptFragment> {
     let state = state(context)?;
+    let limits = state.0.borrow().limits.clone();
+    let mut preflight = PropertyPreflight {
+        limits: &limits,
+        remaining: limits.property_bytes.saturating_sub(state.0.borrow().bytes),
+    };
+    for (name, value) in &props {
+        if name != "key" {
+            preflight.string(name)?;
+        }
+        preflight.value(value, 1)?;
+    }
+    for name in slots.keys() {
+        preflight.string(name)?;
+    }
     let mut call = ComponentCall::new(key.as_str().parse().map_err(failure)?);
     for (name, value) in props {
         if name == "key" {
@@ -623,7 +724,6 @@ fn make_view(
             call.properties.insert(name.into(), decode(value, 1)?);
         }
     }
-    let limits = state.0.borrow().limits.clone();
     let mut expanded_nodes = 1usize;
     let mut expanded_bytes = 0usize;
     let mut depth = 1usize;

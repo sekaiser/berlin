@@ -606,3 +606,62 @@ fn bibliography_excerpt_preserves_namespaced_citation_target_and_escaped_prose()
     assert!(target.ends_with("ref-example"));
     assert!(html.contains(&format!("href=\"#{target}\"")));
 }
+
+#[test]
+fn native_bindings_and_includes_escape_text_regardless_of_filename_suffix() {
+    #[derive(Component)]
+    #[component(key = "test.escaped@1", channels(html, text))]
+    struct Escaped {
+        text: String,
+    }
+    let mut builder = RegistryBuilder::default();
+    builder.register::<Escaped>().unwrap();
+    builder.register::<Portfolio>().unwrap();
+    let registry = builder.finish();
+    let spec = PublicationSpec::new(
+        PublicationMetadata {
+            id: PublicationId("escaped".into()),
+            title: "Escaped".into(),
+            description: None,
+        },
+        Portfolio {}.into_call().with_body(
+            Escaped {
+                text: "<script>window.injected=true</script> & text".into(),
+            }
+            .into_call(),
+        ),
+    )
+    .unwrap();
+    let assembly = PublicationAssembly::resolve(
+        &spec,
+        PublicationCatalog::new(DocumentCollection::default(), PublicationOptions::default())
+            .unwrap(),
+        &registry,
+    )
+    .unwrap();
+    for name in ["custom.tera", "custom.html", "custom.txt", "custom"] {
+        let mut sources = templates();
+        sources.insert(
+            name.into(),
+            "<h2>{{ props.text }}</h2>{% include \"partial.txt\" %}".into(),
+        );
+        sources.insert("partial.txt".into(), "<p>{{ props.text }}</p>".into());
+        let mut bindings = HtmlBindings::builtins();
+        bindings
+            .register(
+                "test.escaped@1".parse().unwrap(),
+                HtmlBinding {
+                    template: name.into(),
+                    stylesheets: Default::default(),
+                },
+            )
+            .unwrap();
+        let result = PublicationHtmlRenderer::new(sources, bindings)
+            .unwrap()
+            .render(&assembly, &registry, &site())
+            .unwrap();
+        assert!(!result.html.contains("<script>window.injected"), "{name}");
+        assert_eq!(result.html.matches("&lt;script&gt;").count(), 2, "{name}");
+        assert!(!result.html.contains("&amp;lt;script"), "{name}");
+    }
+}

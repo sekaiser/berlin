@@ -116,7 +116,9 @@ impl PublicationHtmlRenderer {
             input_digests.insert(format!("pages/{name}"), input_digest(source.as_bytes()));
         }
         let mut tera = Tera::default();
-        tera.autoescape_on(vec![".tera"]);
+        // Every template in this renderer produces HTML, including native
+        // extension bindings and includes whose logical names lack .tera.
+        tera.autoescape_on(vec![""]);
         tera.add_raw_templates(sources).map_err(|e| {
             error(
                 Code::TemplateContextFailure,
