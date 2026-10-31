@@ -17,6 +17,7 @@ use slugify::slugify;
 use crate::project::Project;
 use crate::templates::Templates;
 
+mod links;
 mod search;
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -411,6 +412,7 @@ struct RenderSession<'a> {
     base: tera::Context,
     website: &'a WebsiteAssembly,
     output_root: &'a Path,
+    external_link_origin: Option<url::Url>,
 }
 
 impl<'a> RenderSession<'a> {
@@ -420,6 +422,18 @@ impl<'a> RenderSession<'a> {
         output_root: &'a Path,
         mut templates: Templates,
     ) -> Result<Self, Error> {
+        let external_link_origin = if config.external_links_new_tab {
+            let url = config
+                .url
+                .as_ref()
+                .context("external_links_new_tab requires a website URL")?;
+            if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+                anyhow::bail!("external_links_new_tab requires an HTTP(S) website URL");
+            }
+            Some(url.clone())
+        } else {
+            None
+        };
         let mut base = base_context(config);
         let site_url = base
             .get("config_site_url")
@@ -443,6 +457,7 @@ impl<'a> RenderSession<'a> {
             base,
             website,
             output_root,
+            external_link_origin,
         })
     }
 
@@ -483,7 +498,7 @@ impl<'a> RenderSession<'a> {
             let contents = self
                 .templates
                 .render("notes/[slug].tera", document, &context)?;
-            write_page(self.output_root, Path::new(&path), contents)?;
+            self.write_html_page(Path::new(&path), contents)?;
         }
         Ok(())
     }
@@ -521,7 +536,7 @@ impl<'a> RenderSession<'a> {
             context.insert("title", &document.metadata.title);
             let html = tera::Tera::one_off(include_str!("website/redirect.tera"), &context, true)?;
             for path in paths {
-                write_page(self.output_root, Path::new(&path), html.clone())?;
+                self.write_html_page(Path::new(&path), html.clone())?;
             }
         }
         Ok(())
@@ -564,6 +579,14 @@ impl<'a> RenderSession<'a> {
         let mut context = context.clone();
         insert_page_path(&mut context, path)?;
         let contents = self.templates.render_template(template, &context)?;
+        self.write_html_page(path, contents)
+    }
+
+    fn write_html_page(&self, path: &Path, contents: String) -> Result<(), Error> {
+        let contents = match &self.external_link_origin {
+            Some(site_url) => links::open_external_in_new_tabs(&contents, site_url)?,
+            None => contents,
+        };
         write_page(self.output_root, path, contents)
     }
 }
@@ -890,6 +913,7 @@ mod tests {
             base,
             website: &website,
             output_root: output.path(),
+            external_link_origin: None,
         };
 
         session.render_index().unwrap();
@@ -931,6 +955,40 @@ mod tests {
         assert!(!output.path().join("photostream.html").exists());
         assert!(project.path().join("garage.tera").exists());
         assert!(project.path().join("photostream.tera").exists());
+    }
+
+    #[test]
+    fn external_link_behavior_is_an_opt_in_render_setting() {
+        let output = tempfile::tempdir().unwrap();
+        let website = WebsiteAssembly::new(
+            berlin_content::DocumentCollection::default(),
+            berlin_content::Feed::default(),
+        )
+        .unwrap();
+        let source = r#"<a href="https://other.example/">Other</a><a href="https://notebook.example/notes.html">Notes</a>"#;
+        for enabled in [false, true] {
+            let config = WebsiteConfig {
+                url: Some("https://notebook.example".parse().unwrap()),
+                external_links_new_tab: enabled,
+                ..Default::default()
+            };
+            let templates =
+                Templates::from_sources([("index.tera".into(), source.into())]).unwrap();
+            let session = RenderSession::new(&website, &config, output.path(), templates).unwrap();
+            session.render_index().unwrap();
+            let html = std::fs::read_to_string(output.path().join("index.html")).unwrap();
+            assert_eq!(html.contains(r#"target="_blank""#), enabled);
+            assert!(html.ends_with(r#"<a href="https://notebook.example/notes.html">Notes</a>"#));
+            if !enabled {
+                assert_eq!(html, source);
+            }
+        }
+        let config = WebsiteConfig {
+            external_links_new_tab: true,
+            ..Default::default()
+        };
+        let templates = Templates::from_sources([("index.tera".into(), source.into())]).unwrap();
+        assert!(RenderSession::new(&website, &config, output.path(), templates).is_err());
     }
 
     #[test]
@@ -998,6 +1056,7 @@ mod tests {
             base: tera::Context::new(),
             website: &website,
             output_root: output.path(),
+            external_link_origin: None,
         };
         session.render_index().unwrap();
         session.render_notes_index().unwrap();

@@ -1,7 +1,46 @@
 const assert = require('node:assert/strict');
 const {contrast} = require('./contrast.cjs');
 
+async function inspectOrdinaryFigures(page) {
+  // Exercise small and oversized images without altering the authored example.
+  await page.evaluate(() => {
+    const source = document.querySelector('.notebook-diagram img');
+    for (const width of [160, 1600]) {
+      const figure = document.createElement('figure');
+      figure.dataset.figureTest = String(width);
+      const image = source.cloneNode();
+      image.style.width = `${width}px`;
+      const caption = document.createElement('figcaption');
+      caption.textContent = 'A long caption describes the image and wraps within its displayed width, rather than spanning the entire reading column. '.repeat(3);
+      figure.append(image, caption);
+      document.querySelector('.study-prose').append(figure);
+    }
+  });
+  for (const figure of await page.locator('[data-figure-test]').all()) {
+    await figure.locator('img').evaluate(el => el.decode());
+    const geometry = await figure.evaluate(el => {
+      const image = el.querySelector('img');
+      const caption = el.querySelector('figcaption');
+      return {
+        image: image.getBoundingClientRect(),
+        caption: caption.getBoundingClientRect(),
+        column: el.parentElement.getBoundingClientRect(),
+        ratio: image.naturalWidth / image.naturalHeight,
+        lineHeight: parseFloat(getComputedStyle(caption).lineHeight),
+      };
+    });
+    const {image, caption, column, ratio, lineHeight} = geometry;
+    assert.ok(Math.abs(image.left + image.right - column.left - column.right) < 2, 'Figure must be column-centered');
+    assert.ok(Math.abs(caption.left - image.left) < 1 && Math.abs(caption.right - image.right) < 1, 'Caption must follow image edges');
+    assert.ok(caption.height > lineHeight, 'Long captions must wrap');
+    assert.ok(image.width <= column.width && Math.abs(image.width / image.height - ratio) < .01);
+  }
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.locator('[data-figure-test]').evaluateAll(nodes => nodes.forEach(el => el.remove()));
+}
+
 async function inspectDiagram(page, screenshot, print, enlarged) {
+  await inspectOrdinaryFigures(page);
   const plate=page.locator('.notebook-diagram');
   assert.equal(await plate.count(),1);
   const image=plate.locator('figure > img');

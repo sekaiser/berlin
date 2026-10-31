@@ -1,9 +1,11 @@
 {% import "macros/tag.tera" as tags %}
 {% import "macros/notebook_preview.tera" as previews %}
-{% macro entry(title, description, date, target, topics, preview=false, heading_level=3, kind="article", featured=false) %}
-<article class="journal-entry{% if featured %} journal-entry--featured{% endif %}">
+{% import "macros/notebook_entry_layout.tera" as layout %}
+{% macro entry(title, description, date, target, topics, preview=false, heading_level=3, kind="article", featured=false, preview_side="auto") %}
+{% if preview_side == "auto" %}{% set preview_side = layout::preview_side(target=target) | trim %}{% endif %}
+<article class="journal-entry{% if featured %} journal-entry--featured{% endif %}{% if preview and preview_side == "right" %} journal-entry--preview-right{% endif %}">
   {% set artwork = previews::image(preview=preview) | trim %}
-  {% if artwork %}<a class="journal-entry-visual" href="{{config_site_url}}{{target}}">{{artwork | safe}}</a>{% endif %}
+  {% if artwork and preview_side != "right" %}<a class="journal-entry-visual" href="{{config_site_url}}{{target}}">{{artwork | safe}}</a>{% endif %}
   <div class="journal-entry-copy">
     {% if featured %}<p class="journal-entry-label">Selected note</p>{% endif %}
     <p class="journal-date">{% if kind == "guide" %}<span class="journal-kind">Guide</span>{% endif %}<span>Published</span><time datetime="{{date}}">{{date | date(format="%d %b %Y")}}</time></p>
@@ -17,5 +19,6 @@
       <div class="journal-topics">{% for tag in topics %}{{ tags::tag(label=tag.name, target=tag.target) }}{% endfor %}</div>
     {% endif %}
   </div>
+  {% if artwork and preview_side == "right" %}<a class="journal-entry-visual" href="{{config_site_url}}{{target}}">{{artwork | safe}}</a>{% endif %}
 </article>
 {% endmacro entry %}

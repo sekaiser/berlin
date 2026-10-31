@@ -22,6 +22,12 @@ async function inspectReference(page, screenshot, width, javaScriptEnabled) {
   const headings = await page.locator('.study-prose > h2 > a[id]').evaluateAll(nodes => nodes.map(el => `#${el.id}`));
   assert.equal(headings.length, 9);
   assert.deepEqual(await contents.locator('a').evaluateAll(nodes => nodes.map(el => el.getAttribute('href'))), headings);
+  const proseWidth = await page.locator('.study-prose').evaluate(el => {
+    const column = el.getBoundingClientRect();
+    const paragraph = el.querySelector(':scope > p').getBoundingClientRect();
+    return {column:column.width, paragraph:paragraph.width};
+  });
+  assert.ok(Math.abs(proseWidth.column - proseWidth.paragraph) < 1, 'Prose must use the full reading column');
   await page.locator('#choose').evaluate(el => scrollTo(0, el.getBoundingClientRect().top + scrollY - 32));
   await screenshot('component-reference');
   const link = contents.getByRole('link', {name:'Authored observations', exact:true});

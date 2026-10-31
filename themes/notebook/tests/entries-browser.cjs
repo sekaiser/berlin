@@ -28,8 +28,14 @@ async function inspectEntries(page, screenshot, width, print, enlarged) {
         ratio: el.naturalWidth / el.naturalHeight,
       }));
       assert.ok(Math.abs(geometry.image.width / geometry.image.height - geometry.ratio) < .01);
-      if (width <= 600) assert.ok(geometry.image.bottom <= geometry.copy.top);
-      else assert.ok(geometry.image.right < geometry.copy.left);
+      const trailing = await entry.evaluate(el => el.classList.contains('journal-entry--preview-right'));
+      if (width <= 600) {
+        assert.ok(trailing ? geometry.copy.bottom <= geometry.image.top : geometry.image.bottom <= geometry.copy.top);
+      } else {
+        assert.ok(trailing ? geometry.copy.right < geometry.image.left : geometry.image.right < geometry.copy.left);
+      }
+      assert.equal(await entry.evaluate(el => el.firstElementChild.classList.contains('journal-entry-copy')), trailing,
+        'Source order must follow visual order');
     }
     await entry.evaluate(el => scrollTo(0, el.getBoundingClientRect().top + scrollY - 32));
     await screenshot(illustrated ? 'featured-illustrated' : 'featured-text');

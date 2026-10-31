@@ -20,5 +20,6 @@
     <ol id="notebook-results" data-search-results></ol>
   </section>
   <a class="journal-link journal-more" href="{{config_site_url}}/notes.html">Browse all notes and guides</a>
+  <script src="{{config_site_url}}/static/js/tag-colors.js" defer></script>
   <script src="{{config_site_url}}/search/client.js" defer></script>
 {% endblock overview_body %}

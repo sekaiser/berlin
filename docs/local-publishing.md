@@ -75,6 +75,17 @@ versioning when the project becomes its own repository. Optional GitHub Pages
 destinations are declared in the pipeline, but publication requires the separate
 [release and publish commands](website-releases.md).
 
+### External link behavior
+
+To open external web resources in a new tab, set
+`external_links_new_tab: true` in `website_config(#{...})`, together with the
+site's `url`. This is opt-in; the default leaves authored link behavior unchanged.
+Berlin applies the setting to rendered HTML from both documents and templates,
+including raw HTML, so it also works without JavaScript. Off-origin HTTP(S)
+anchors receive `target="_blank"` and `rel="noopener"`; existing relationship
+tokens such as `nofollow` are retained. Same-origin links (including absolute
+URLs), fragments, local downloads, email and telephone links are not changed.
+
 If you use those commands, `.berlin/releases` and `.berlin/publications` are
 durable state, not disposable build caches. Keep them together in backups and
 use one authoritative publishing machine or persisted CI workspace.

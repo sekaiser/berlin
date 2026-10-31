@@ -15,7 +15,7 @@
     {# Two selected entries intentionally exercise illustrated and text-only states. #}
     {% for a in articles %}
       {% set selected = a.target == "/notes/long-title.html" or a.target == "/notes/illustrated-entry.html" %}
-      {{notes::entry(title=a.title, description=a.description, date=a.date, target=a.target, topics=a.tags, kind=a.kind, preview=a.preview, featured=selected)}}
+      {{notes::entry(title=a.title, description=a.description, date=a.date, target=a.target, topics=a.tags, kind=a.kind, preview=a.preview, featured=selected, preview_side="right")}}
     {% endfor %}
     <a class="journal-link journal-more" href="{{config_site_url}}/notes.html">All notes</a></section>
     <aside class="journal-margin">{% include "partials/guides.tera" %}

@@ -109,6 +109,7 @@ body:has(.study-page, .notebook-page) .site-footer {
   letter-spacing: -.035em; margin: 2.7em 0 .85em; color: var(--ink);
 }
 .study-prose h3 { font: 600 1.25rem/1.35 var(--font-interface); margin-top: 2.8em; }
+.study-page .section-num { margin-inline-end: .3em; }
 .study-prose strong { font-weight: 700; }
 .study-prose a { text-decoration-color: #c5a889; }
 .study-prose :not(pre) > code { background: #f0ecdf; border-radius: 0; }
@@ -133,7 +134,7 @@ body:has(.study-page, .notebook-page) .site-footer {
   text-underline-offset: .3em;
 }
 
-.study-prose > figure:not(.code-listing) { margin: 2.5em 0; }
+.study-prose > figure:not(.code-listing) { margin-block: 2.5em; }
 .study-prose > figure:not(.code-listing) img { display: block; border: 1px solid #e6e2d6; }
 .study-prose figcaption { color: var(--caption-ink); }
 .study-end { margin-top: 70px; padding-top: 26px; border-top: 1px solid var(--rule); }

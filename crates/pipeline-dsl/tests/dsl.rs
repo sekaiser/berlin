@@ -121,7 +121,7 @@ fn website_settings_are_typed_and_scoped_to_render_nodes() {
     let plans = compile(r#"
         pipeline first {
             let website = assemble_website(parse_markdown(load_markdown("*.md")), parse_feed(load_data("feed.csv")));
-            output render_website(website, "_first", website_config(#{title: "First", theme: "../themes/notebook", url: "https://first.example", profiles: #{github: "https://github.com/first"}}));
+            output render_website(website, "_first", website_config(#{title: "First", theme: "../themes/notebook", url: "https://first.example", external_links_new_tab: true, profiles: #{github: "https://github.com/first"}}));
         }
         pipeline second {
             let website = assemble_website(parse_markdown(load_markdown("*.md")), parse_feed(load_data("feed.csv")));
@@ -141,6 +141,7 @@ fn website_settings_are_typed_and_scoped_to_render_nodes() {
             })
             .unwrap();
         assert_eq!(config.title.as_deref(), Some(title));
+        assert_eq!(config.external_links_new_tab, name == "first");
         if name == "first" {
             assert_eq!(
                 config.theme.as_deref(),
@@ -174,6 +175,7 @@ fn website_settings_reject_unknown_fields_wrong_types_and_invalid_urls() {
         "#{titel: \"Typo\"}",
         "#{title: 42}",
         "#{theme: 42}",
+        "#{external_links_new_tab: \"true\"}",
         "#{url: \"not an absolute URL\"}",
         "#{profiles: #{gitub: \"https://github.com/example\"}}",
         "#{profiles: #{github: \"not a URL\"}}",

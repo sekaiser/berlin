@@ -50,7 +50,79 @@ These swatches use the actual theme tokens. Values are documented in the theme's
 <li style="--swatch: var(--sky)">Sky tag</li>
 <li style="--swatch: var(--apricot)">Apricot tag</li>
 <li style="--swatch: var(--lavender)">Lavender tag</li>
+<li style="--swatch: var(--ochre)">Ochre tag</li>
+<li style="--swatch: var(--rose)">Rose tag</li>
 </ul>
+
+The tag palette has 64 fixed slots. These are palette specimens, not topic links;
+actual tags receive stable colors from their labels.
+
+<p aria-label="64 tag color specimens">
+<span class="paper-tag" data-tag-color="0"><span>coral 1</span></span>
+<span class="paper-tag" data-tag-color="1"><span>coral 2</span></span>
+<span class="paper-tag" data-tag-color="2"><span>brick 1</span></span>
+<span class="paper-tag" data-tag-color="3"><span>brick 2</span></span>
+<span class="paper-tag" data-tag-color="4"><span>copper 1</span></span>
+<span class="paper-tag" data-tag-color="5"><span>copper 2</span></span>
+<span class="paper-tag" data-tag-color="6"><span>peach 1</span></span>
+<span class="paper-tag" data-tag-color="7"><span>peach 2</span></span>
+<span class="paper-tag" data-tag-color="8"><span>amber 1</span></span>
+<span class="paper-tag" data-tag-color="9"><span>amber 2</span></span>
+<span class="paper-tag" data-tag-color="10"><span>sand 1</span></span>
+<span class="paper-tag" data-tag-color="11"><span>sand 2</span></span>
+<span class="paper-tag" data-tag-color="12"><span>lemon 1</span></span>
+<span class="paper-tag" data-tag-color="13"><span>lemon 2</span></span>
+<span class="paper-tag" data-tag-color="14"><span>olive 1</span></span>
+<span class="paper-tag" data-tag-color="15"><span>olive 2</span></span>
+<span class="paper-tag" data-tag-color="16"><span>lime 1</span></span>
+<span class="paper-tag" data-tag-color="17"><span>lime 2</span></span>
+<span class="paper-tag" data-tag-color="18"><span>moss 1</span></span>
+<span class="paper-tag" data-tag-color="19"><span>moss 2</span></span>
+<span class="paper-tag" data-tag-color="20"><span>fern 1</span></span>
+<span class="paper-tag" data-tag-color="21"><span>fern 2</span></span>
+<span class="paper-tag" data-tag-color="22"><span>mint 1</span></span>
+<span class="paper-tag" data-tag-color="23"><span>mint 2</span></span>
+<span class="paper-tag" data-tag-color="24"><span>jade 1</span></span>
+<span class="paper-tag" data-tag-color="25"><span>jade 2</span></span>
+<span class="paper-tag" data-tag-color="26"><span>seafoam 1</span></span>
+<span class="paper-tag" data-tag-color="27"><span>seafoam 2</span></span>
+<span class="paper-tag" data-tag-color="28"><span>turquoise 1</span></span>
+<span class="paper-tag" data-tag-color="29"><span>turquoise 2</span></span>
+<span class="paper-tag" data-tag-color="30"><span>petrol 1</span></span>
+<span class="paper-tag" data-tag-color="31"><span>petrol 2</span></span>
+<span class="paper-tag" data-tag-color="32"><span>cyan 1</span></span>
+<span class="paper-tag" data-tag-color="33"><span>cyan 2</span></span>
+<span class="paper-tag" data-tag-color="34"><span>sky 1</span></span>
+<span class="paper-tag" data-tag-color="35"><span>sky 2</span></span>
+<span class="paper-tag" data-tag-color="36"><span>azure 1</span></span>
+<span class="paper-tag" data-tag-color="37"><span>azure 2</span></span>
+<span class="paper-tag" data-tag-color="38"><span>cobalt 1</span></span>
+<span class="paper-tag" data-tag-color="39"><span>cobalt 2</span></span>
+<span class="paper-tag" data-tag-color="40"><span>denim 1</span></span>
+<span class="paper-tag" data-tag-color="41"><span>denim 2</span></span>
+<span class="paper-tag" data-tag-color="42"><span>indigo 1</span></span>
+<span class="paper-tag" data-tag-color="43"><span>indigo 2</span></span>
+<span class="paper-tag" data-tag-color="44"><span>periwinkle 1</span></span>
+<span class="paper-tag" data-tag-color="45"><span>periwinkle 2</span></span>
+<span class="paper-tag" data-tag-color="46"><span>violet 1</span></span>
+<span class="paper-tag" data-tag-color="47"><span>violet 2</span></span>
+<span class="paper-tag" data-tag-color="48"><span>plum 1</span></span>
+<span class="paper-tag" data-tag-color="49"><span>plum 2</span></span>
+<span class="paper-tag" data-tag-color="50"><span>orchid 1</span></span>
+<span class="paper-tag" data-tag-color="51"><span>orchid 2</span></span>
+<span class="paper-tag" data-tag-color="52"><span>raspberry 1</span></span>
+<span class="paper-tag" data-tag-color="53"><span>raspberry 2</span></span>
+<span class="paper-tag" data-tag-color="54"><span>rose 1</span></span>
+<span class="paper-tag" data-tag-color="55"><span>rose 2</span></span>
+<span class="paper-tag" data-tag-color="56"><span>cocoa 1</span></span>
+<span class="paper-tag" data-tag-color="57"><span>cocoa 2</span></span>
+<span class="paper-tag" data-tag-color="58"><span>taupe 1</span></span>
+<span class="paper-tag" data-tag-color="59"><span>taupe 2</span></span>
+<span class="paper-tag" data-tag-color="60"><span>stone 1</span></span>
+<span class="paper-tag" data-tag-color="61"><span>stone 2</span></span>
+<span class="paper-tag" data-tag-color="62"><span>graphite 1</span></span>
+<span class="paper-tag" data-tag-color="63"><span>graphite 2</span></span>
+</p>
 
 ## Prose and tables {#prose}
 

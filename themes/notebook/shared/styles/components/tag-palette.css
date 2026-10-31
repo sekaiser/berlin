@@ -1,0 +1,196 @@
+/* 64 fixed slots: 32 color bases × 2 tones. Keep slot IDs stable. */
+:root {
+  /* coral 1 */
+  --tag-0-paper: #f1c0bc; --tag-0-ink: #532622; --tag-0-edge: #79433e;
+  /* coral 2 */
+  --tag-1-paper: #f6d8d5; --tag-1-ink: #532622; --tag-1-edge: #79433e;
+  /* brick 1 */
+  --tag-2-paper: #dcadb1; --tag-2-ink: #522327; --tag-2-edge: #793e43;
+  /* brick 2 */
+  --tag-3-paper: #e5c2c5; --tag-3-ink: #522327; --tag-3-edge: #793e43;
+  /* copper 1 */
+  --tag-4-paper: #e1bda8; --tag-4-ink: #533422; --tag-4-edge: #79543e;
+  /* copper 2 */
+  --tag-5-paper: #e8cebf; --tag-5-ink: #533422; --tag-5-edge: #79543e;
+  /* peach 1 */
+  --tag-6-paper: #f7d9c5; --tag-6-ink: #533622; --tag-6-edge: #79563e;
+  /* peach 2 */
+  --tag-7-paper: #fbeae0; --tag-7-ink: #533622; --tag-7-edge: #79563e;
+  /* amber 1 */
+  --tag-8-paper: #f2d4a1; --tag-8-ink: #534122; --tag-8-edge: #79643e;
+  /* amber 2 */
+  --tag-9-paper: #f6e1bc; --tag-9-ink: #534122; --tag-9-edge: #79643e;
+  /* sand 1 */
+  --tag-10-paper: #e4dbc8; --tag-10-ink: #4f4126; --tag-10-edge: #79663e;
+  /* sand 2 */
+  --tag-11-paper: #eee8dd; --tag-11-ink: #4f4126; --tag-11-edge: #79663e;
+  /* lemon 1 */
+  --tag-12-paper: #f4efb9; --tag-12-ink: #534f22; --tag-12-edge: #79743e;
+  /* lemon 2 */
+  --tag-13-paper: #f8f5d3; --tag-13-ink: #534f22; --tag-13-edge: #79743e;
+  /* olive 1 */
+  --tag-14-paper: #cfd4af; --tag-14-ink: #484c29; --tag-14-edge: #707740;
+  /* olive 2 */
+  --tag-15-paper: #dbdfc3; --tag-15-ink: #484c29; --tag-15-edge: #707740;
+  /* lime 1 */
+  --tag-16-paper: #d5eab8; --tag-16-ink: #3f5322; --tag-16-edge: #61793e;
+  /* lime 2 */
+  --tag-17-paper: #e3f1d0; --tag-17-ink: #3f5322; --tag-17-edge: #61793e;
+  /* moss 1 */
+  --tag-18-paper: #bfd5b3; --tag-18-ink: #364c2a; --tag-18-edge: #547641;
+  /* moss 2 */
+  --tag-19-paper: #d0e0c7; --tag-19-ink: #364c2a; --tag-19-edge: #547641;
+  /* fern 1 */
+  --tag-20-paper: #bbddbe; --tag-20-ink: #274f2b; --tag-20-edge: #3e7944;
+  /* fern 2 */
+  --tag-21-paper: #cfe7d2; --tag-21-ink: #274f2b; --tag-21-edge: #3e7944;
+  /* mint 1 */
+  --tag-22-paper: #cbf1d9; --tag-22-ink: #225335; --tag-22-edge: #3e7955;
+  /* mint 2 */
+  --tag-23-paper: #e3f7eb; --tag-23-ink: #225335; --tag-23-edge: #3e7955;
+  /* jade 1 */
+  --tag-24-paper: #abdeca; --tag-24-ink: #225340; --tag-24-edge: #3e7962;
+  /* jade 2 */
+  --tag-25-paper: #c1e7d7; --tag-25-ink: #225340; --tag-25-edge: #3e7962;
+  /* seafoam 1 */
+  --tag-26-paper: #cde4df; --tag-26-ink: #294c44; --tag-26-edge: #40776a;
+  /* seafoam 2 */
+  --tag-27-paper: #e1efec; --tag-27-ink: #294c44; --tag-27-edge: #40776a;
+  /* turquoise 1 */
+  --tag-28-paper: #afe9e5; --tag-28-ink: #225350; --tag-28-edge: #3e7975;
+  /* turquoise 2 */
+  --tag-29-paper: #c7f0ed; --tag-29-ink: #225350; --tag-29-edge: #3e7975;
+  /* petrol 1 */
+  --tag-30-paper: #accfd2; --tag-30-ink: #29494c; --tag-30-edge: #407377;
+  /* petrol 2 */
+  --tag-31-paper: #c0dbdd; --tag-31-ink: #29494c; --tag-31-edge: #407377;
+  /* cyan 1 */
+  --tag-32-paper: #c0e9f2; --tag-32-ink: #224b53; --tag-32-edge: #3e6f79;
+  /* cyan 2 */
+  --tag-33-paper: #d9f2f7; --tag-33-ink: #224b53; --tag-33-edge: #3e6f79;
+  /* sky 1 */
+  --tag-34-paper: #b7dcf0; --tag-34-ink: #224253; --tag-34-edge: #3e6579;
+  /* sky 2 */
+  --tag-35-paper: #d1e8f5; --tag-35-ink: #224253; --tag-35-edge: #3e6579;
+  /* azure 1 */
+  --tag-36-paper: #acc7e7; --tag-36-ink: #223853; --tag-36-edge: #3e5979;
+  /* azure 2 */
+  --tag-37-paper: #c4d7ee; --tag-37-ink: #223853; --tag-37-edge: #3e5979;
+  /* cobalt 1 */
+  --tag-38-paper: #b9c5e9; --tag-38-ink: #222e53; --tag-38-edge: #3e4d79;
+  /* cobalt 2 */
+  --tag-39-paper: #d0d8f0; --tag-39-ink: #222e53; --tag-39-edge: #3e4d79;
+  /* denim 1 */
+  --tag-40-paper: #b2bed2; --tag-40-ink: #2b374a; --tag-40-edge: #445574;
+  /* denim 2 */
+  --tag-41-paper: #c5cedd; --tag-41-ink: #2b374a; --tag-41-edge: #445574;
+  /* indigo 1 */
+  --tag-42-paper: #b7b6dd; --tag-42-ink: #262650; --tag-42-edge: #3f3e79;
+  /* indigo 2 */
+  --tag-43-paper: #cbcbe7; --tag-43-ink: #262650; --tag-43-edge: #3f3e79;
+  /* periwinkle 1 */
+  --tag-44-paper: #ccc9f2; --tag-44-ink: #252253; --tag-44-edge: #423e79;
+  /* periwinkle 2 */
+  --tag-45-paper: #e4e2f8; --tag-45-ink: #252253; --tag-45-edge: #423e79;
+  /* violet 1 */
+  --tag-46-paper: #cab8e5; --tag-46-ink: #362253; --tag-46-edge: #563e79;
+  /* violet 2 */
+  --tag-47-paper: #dbceed; --tag-47-ink: #362253; --tag-47-edge: #563e79;
+  /* plum 1 */
+  --tag-48-paper: #cdb4d5; --tag-48-ink: #432a4b; --tag-48-edge: #6a4276;
+  /* plum 2 */
+  --tag-49-paper: #dac8e0; --tag-49-ink: #432a4b; --tag-49-edge: #6a4276;
+  /* orchid 1 */
+  --tag-50-paper: #e8c5ec; --tag-50-ink: #4e2253; --tag-50-edge: #733e79;
+  /* orchid 2 */
+  --tag-51-paper: #f1dcf4; --tag-51-ink: #4e2253; --tag-51-edge: #733e79;
+  /* raspberry 1 */
+  --tag-52-paper: #e3b0cd; --tag-52-ink: #53223e; --tag-52-edge: #793e60;
+  /* raspberry 2 */
+  --tag-53-paper: #ebc6db; --tag-53-ink: #53223e; --tag-53-edge: #793e60;
+  /* rose 1 */
+  --tag-54-paper: #f2cad6; --tag-54-ink: #532231; --tag-54-edge: #793e50;
+  /* rose 2 */
+  --tag-55-paper: #f8e2e9; --tag-55-ink: #532231; --tag-55-edge: #793e50;
+  /* cocoa 1 */
+  --tag-56-paper: #cbb9ae; --tag-56-ink: #48382e; --tag-56-edge: #705748;
+  /* cocoa 2 */
+  --tag-57-paper: #d7c9c1; --tag-57-ink: #48382e; --tag-57-edge: #705748;
+  /* taupe 1 */
+  --tag-58-paper: #d6d0c7; --tag-58-ink: #443c31; --tag-58-edge: #6a5e4d;
+  /* taupe 2 */
+  --tag-59-paper: #e3dfd9; --tag-59-ink: #443c31; --tag-59-edge: #6a5e4d;
+  /* stone 1 */
+  --tag-60-paper: #dcddd5; --tag-60-ink: #404135; --tag-60-edge: #636553;
+  /* stone 2 */
+  --tag-61-paper: #eaeae6; --tag-61-ink: #404135; --tag-61-edge: #636553;
+  /* graphite 1 */
+  --tag-62-paper: #bac2c9; --tag-62-ink: #343b42; --tag-62-edge: #515c67;
+  /* graphite 2 */
+  --tag-63-paper: #ccd1d7; --tag-63-ink: #343b42; --tag-63-edge: #515c67;
+}
+
+.paper-tag[data-tag-color="0"] { --tag-paper: var(--tag-0-paper); --tag-ink: var(--tag-0-ink); --tag-edge: var(--tag-0-edge); }
+.paper-tag[data-tag-color="1"] { --tag-paper: var(--tag-1-paper); --tag-ink: var(--tag-1-ink); --tag-edge: var(--tag-1-edge); }
+.paper-tag[data-tag-color="2"] { --tag-paper: var(--tag-2-paper); --tag-ink: var(--tag-2-ink); --tag-edge: var(--tag-2-edge); }
+.paper-tag[data-tag-color="3"] { --tag-paper: var(--tag-3-paper); --tag-ink: var(--tag-3-ink); --tag-edge: var(--tag-3-edge); }
+.paper-tag[data-tag-color="4"] { --tag-paper: var(--tag-4-paper); --tag-ink: var(--tag-4-ink); --tag-edge: var(--tag-4-edge); }
+.paper-tag[data-tag-color="5"] { --tag-paper: var(--tag-5-paper); --tag-ink: var(--tag-5-ink); --tag-edge: var(--tag-5-edge); }
+.paper-tag[data-tag-color="6"] { --tag-paper: var(--tag-6-paper); --tag-ink: var(--tag-6-ink); --tag-edge: var(--tag-6-edge); }
+.paper-tag[data-tag-color="7"] { --tag-paper: var(--tag-7-paper); --tag-ink: var(--tag-7-ink); --tag-edge: var(--tag-7-edge); }
+.paper-tag[data-tag-color="8"] { --tag-paper: var(--tag-8-paper); --tag-ink: var(--tag-8-ink); --tag-edge: var(--tag-8-edge); }
+.paper-tag[data-tag-color="9"] { --tag-paper: var(--tag-9-paper); --tag-ink: var(--tag-9-ink); --tag-edge: var(--tag-9-edge); }
+.paper-tag[data-tag-color="10"] { --tag-paper: var(--tag-10-paper); --tag-ink: var(--tag-10-ink); --tag-edge: var(--tag-10-edge); }
+.paper-tag[data-tag-color="11"] { --tag-paper: var(--tag-11-paper); --tag-ink: var(--tag-11-ink); --tag-edge: var(--tag-11-edge); }
+.paper-tag[data-tag-color="12"] { --tag-paper: var(--tag-12-paper); --tag-ink: var(--tag-12-ink); --tag-edge: var(--tag-12-edge); }
+.paper-tag[data-tag-color="13"] { --tag-paper: var(--tag-13-paper); --tag-ink: var(--tag-13-ink); --tag-edge: var(--tag-13-edge); }
+.paper-tag[data-tag-color="14"] { --tag-paper: var(--tag-14-paper); --tag-ink: var(--tag-14-ink); --tag-edge: var(--tag-14-edge); }
+.paper-tag[data-tag-color="15"] { --tag-paper: var(--tag-15-paper); --tag-ink: var(--tag-15-ink); --tag-edge: var(--tag-15-edge); }
+.paper-tag[data-tag-color="16"] { --tag-paper: var(--tag-16-paper); --tag-ink: var(--tag-16-ink); --tag-edge: var(--tag-16-edge); }
+.paper-tag[data-tag-color="17"] { --tag-paper: var(--tag-17-paper); --tag-ink: var(--tag-17-ink); --tag-edge: var(--tag-17-edge); }
+.paper-tag[data-tag-color="18"] { --tag-paper: var(--tag-18-paper); --tag-ink: var(--tag-18-ink); --tag-edge: var(--tag-18-edge); }
+.paper-tag[data-tag-color="19"] { --tag-paper: var(--tag-19-paper); --tag-ink: var(--tag-19-ink); --tag-edge: var(--tag-19-edge); }
+.paper-tag[data-tag-color="20"] { --tag-paper: var(--tag-20-paper); --tag-ink: var(--tag-20-ink); --tag-edge: var(--tag-20-edge); }
+.paper-tag[data-tag-color="21"] { --tag-paper: var(--tag-21-paper); --tag-ink: var(--tag-21-ink); --tag-edge: var(--tag-21-edge); }
+.paper-tag[data-tag-color="22"] { --tag-paper: var(--tag-22-paper); --tag-ink: var(--tag-22-ink); --tag-edge: var(--tag-22-edge); }
+.paper-tag[data-tag-color="23"] { --tag-paper: var(--tag-23-paper); --tag-ink: var(--tag-23-ink); --tag-edge: var(--tag-23-edge); }
+.paper-tag[data-tag-color="24"] { --tag-paper: var(--tag-24-paper); --tag-ink: var(--tag-24-ink); --tag-edge: var(--tag-24-edge); }
+.paper-tag[data-tag-color="25"] { --tag-paper: var(--tag-25-paper); --tag-ink: var(--tag-25-ink); --tag-edge: var(--tag-25-edge); }
+.paper-tag[data-tag-color="26"] { --tag-paper: var(--tag-26-paper); --tag-ink: var(--tag-26-ink); --tag-edge: var(--tag-26-edge); }
+.paper-tag[data-tag-color="27"] { --tag-paper: var(--tag-27-paper); --tag-ink: var(--tag-27-ink); --tag-edge: var(--tag-27-edge); }
+.paper-tag[data-tag-color="28"] { --tag-paper: var(--tag-28-paper); --tag-ink: var(--tag-28-ink); --tag-edge: var(--tag-28-edge); }
+.paper-tag[data-tag-color="29"] { --tag-paper: var(--tag-29-paper); --tag-ink: var(--tag-29-ink); --tag-edge: var(--tag-29-edge); }
+.paper-tag[data-tag-color="30"] { --tag-paper: var(--tag-30-paper); --tag-ink: var(--tag-30-ink); --tag-edge: var(--tag-30-edge); }
+.paper-tag[data-tag-color="31"] { --tag-paper: var(--tag-31-paper); --tag-ink: var(--tag-31-ink); --tag-edge: var(--tag-31-edge); }
+.paper-tag[data-tag-color="32"] { --tag-paper: var(--tag-32-paper); --tag-ink: var(--tag-32-ink); --tag-edge: var(--tag-32-edge); }
+.paper-tag[data-tag-color="33"] { --tag-paper: var(--tag-33-paper); --tag-ink: var(--tag-33-ink); --tag-edge: var(--tag-33-edge); }
+.paper-tag[data-tag-color="34"] { --tag-paper: var(--tag-34-paper); --tag-ink: var(--tag-34-ink); --tag-edge: var(--tag-34-edge); }
+.paper-tag[data-tag-color="35"] { --tag-paper: var(--tag-35-paper); --tag-ink: var(--tag-35-ink); --tag-edge: var(--tag-35-edge); }
+.paper-tag[data-tag-color="36"] { --tag-paper: var(--tag-36-paper); --tag-ink: var(--tag-36-ink); --tag-edge: var(--tag-36-edge); }
+.paper-tag[data-tag-color="37"] { --tag-paper: var(--tag-37-paper); --tag-ink: var(--tag-37-ink); --tag-edge: var(--tag-37-edge); }
+.paper-tag[data-tag-color="38"] { --tag-paper: var(--tag-38-paper); --tag-ink: var(--tag-38-ink); --tag-edge: var(--tag-38-edge); }
+.paper-tag[data-tag-color="39"] { --tag-paper: var(--tag-39-paper); --tag-ink: var(--tag-39-ink); --tag-edge: var(--tag-39-edge); }
+.paper-tag[data-tag-color="40"] { --tag-paper: var(--tag-40-paper); --tag-ink: var(--tag-40-ink); --tag-edge: var(--tag-40-edge); }
+.paper-tag[data-tag-color="41"] { --tag-paper: var(--tag-41-paper); --tag-ink: var(--tag-41-ink); --tag-edge: var(--tag-41-edge); }
+.paper-tag[data-tag-color="42"] { --tag-paper: var(--tag-42-paper); --tag-ink: var(--tag-42-ink); --tag-edge: var(--tag-42-edge); }
+.paper-tag[data-tag-color="43"] { --tag-paper: var(--tag-43-paper); --tag-ink: var(--tag-43-ink); --tag-edge: var(--tag-43-edge); }
+.paper-tag[data-tag-color="44"] { --tag-paper: var(--tag-44-paper); --tag-ink: var(--tag-44-ink); --tag-edge: var(--tag-44-edge); }
+.paper-tag[data-tag-color="45"] { --tag-paper: var(--tag-45-paper); --tag-ink: var(--tag-45-ink); --tag-edge: var(--tag-45-edge); }
+.paper-tag[data-tag-color="46"] { --tag-paper: var(--tag-46-paper); --tag-ink: var(--tag-46-ink); --tag-edge: var(--tag-46-edge); }
+.paper-tag[data-tag-color="47"] { --tag-paper: var(--tag-47-paper); --tag-ink: var(--tag-47-ink); --tag-edge: var(--tag-47-edge); }
+.paper-tag[data-tag-color="48"] { --tag-paper: var(--tag-48-paper); --tag-ink: var(--tag-48-ink); --tag-edge: var(--tag-48-edge); }
+.paper-tag[data-tag-color="49"] { --tag-paper: var(--tag-49-paper); --tag-ink: var(--tag-49-ink); --tag-edge: var(--tag-49-edge); }
+.paper-tag[data-tag-color="50"] { --tag-paper: var(--tag-50-paper); --tag-ink: var(--tag-50-ink); --tag-edge: var(--tag-50-edge); }
+.paper-tag[data-tag-color="51"] { --tag-paper: var(--tag-51-paper); --tag-ink: var(--tag-51-ink); --tag-edge: var(--tag-51-edge); }
+.paper-tag[data-tag-color="52"] { --tag-paper: var(--tag-52-paper); --tag-ink: var(--tag-52-ink); --tag-edge: var(--tag-52-edge); }
+.paper-tag[data-tag-color="53"] { --tag-paper: var(--tag-53-paper); --tag-ink: var(--tag-53-ink); --tag-edge: var(--tag-53-edge); }
+.paper-tag[data-tag-color="54"] { --tag-paper: var(--tag-54-paper); --tag-ink: var(--tag-54-ink); --tag-edge: var(--tag-54-edge); }
+.paper-tag[data-tag-color="55"] { --tag-paper: var(--tag-55-paper); --tag-ink: var(--tag-55-ink); --tag-edge: var(--tag-55-edge); }
+.paper-tag[data-tag-color="56"] { --tag-paper: var(--tag-56-paper); --tag-ink: var(--tag-56-ink); --tag-edge: var(--tag-56-edge); }
+.paper-tag[data-tag-color="57"] { --tag-paper: var(--tag-57-paper); --tag-ink: var(--tag-57-ink); --tag-edge: var(--tag-57-edge); }
+.paper-tag[data-tag-color="58"] { --tag-paper: var(--tag-58-paper); --tag-ink: var(--tag-58-ink); --tag-edge: var(--tag-58-edge); }
+.paper-tag[data-tag-color="59"] { --tag-paper: var(--tag-59-paper); --tag-ink: var(--tag-59-ink); --tag-edge: var(--tag-59-edge); }
+.paper-tag[data-tag-color="60"] { --tag-paper: var(--tag-60-paper); --tag-ink: var(--tag-60-ink); --tag-edge: var(--tag-60-edge); }
+.paper-tag[data-tag-color="61"] { --tag-paper: var(--tag-61-paper); --tag-ink: var(--tag-61-ink); --tag-edge: var(--tag-61-edge); }
+.paper-tag[data-tag-color="62"] { --tag-paper: var(--tag-62-paper); --tag-ink: var(--tag-62-ink); --tag-edge: var(--tag-62-edge); }
+.paper-tag[data-tag-color="63"] { --tag-paper: var(--tag-63-paper); --tag-ink: var(--tag-63-ink); --tag-edge: var(--tag-63-edge); }

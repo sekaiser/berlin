@@ -90,6 +90,14 @@ optional title, observation and continuation blocks. The `notebook_summary` and
 previews remain text-led. Site-root image URLs are rebased to the configured site
 URL, including repository-hosted sites. See [Org preview authoring](../../docs/emacs-authoring.md#article-previews).
 
+The `notebook_entry::entry` macro accepts `preview_side="right"` for a trailing
+preview. Its default, `"auto"`, uses `notebook_entry_layout::preview_side(target)`;
+the theme returns `left`. Override that small macro in project templates to
+choose placement consistently across home, Notes and tag collections, rather
+than repeating per-page decisions. Explicit `left` or `right` arguments take
+precedence. Placement is a presentation choice, not document metadata. On phones,
+a trailing preview follows the text; source and keyboard order match the layout.
+
 ## Foundations
 
 The authoritative common palette is `shared/styles/tokens.css`:
@@ -105,10 +113,33 @@ The authoritative common palette is `shared/styles/tokens.css`:
 | Strong rule | `--rule-strong` | `#9fae98` |
 | Accent rule | `--accent-rule` | `#b6815d` |
 
-Moss, sky, apricot and lavender tokens support tags and secondary surfaces.
+The tag palette lives in `shared/styles/components/tag-palette.css`: 64 fixed
+slots, arranged as 32 color bases with two tones each. The bases span warm and
+cool hues plus cocoa, taupe, stone and graphite neutrals, with varied saturation
+and lightness to keep the palette from reading as repeated pale tints. Every slot provides
+`--tag-N-paper`, `--tag-N-ink` and `--tag-N-edge` tokens. Text contrast is at least
+4.5:1; edges have at least 3:1 contrast against their tag surface.
+
+Tags choose a slot by hashing the lowercased label with UTF-8 FNV-1a, modulo 64.
+The `stable_hash` template filter renders `data-tag-color` before JavaScript runs.
+Reading filters copy their corresponding link's slot; search uses the same fixed
+algorithm in `static/js/tag-colors.js`. Colors survive rebuilds, collection order
+changes and new tags. Collisions are expected; labels, not colors, identify tags.
+Unselected Reading filters remain uncolored. Projects can override a slot's
+tokens or retain deliberate `data-tag` color assignments in their own CSS.
+
+Moss, sky, apricot, lavender, ochre and rose tokens remain available for secondary
+surfaces and existing project overrides; they are not the 64-slot tag palette.
 The same file defines the display, reading, interface and monospace font stacks,
 metadata, control, code and caption typography, outer width and base gutter.
 Responsive layouts override the gutter at their established breakpoints, not the palette.
+
+Article prose and introductions fill the available reading column; the contents
+margin occupies its own grid track on desktop. Projects can set `--reading-width`
+on `.study-page` to opt into a narrower measure. Export an explicit contents block
+inside the Org `frontmatter` block with `#+toc: headlines 2` for two heading levels;
+the article script places it in the desktop margin and a mobile disclosure.
+Without JavaScript, it remains in its original position in the document.
 
 `--figure-gap` gives traversals, results, comparisons and diagram plates the same
 outer rhythm: 42px above and below on larger screens, 30px at 600px and below.
@@ -291,6 +322,12 @@ pipeline without an additional parser or script. Panels may hold prose, a plain
 `tabindex="0"` and a descriptive `aria-label`; code retains its source whitespace
 and scrolls internally. Comparison styles do not replace code-listing controls.
 
+For paired code listings, add `notebook-comparison--code` to the figure. This
+variant stacks the panels when the figure is 880px wide or narrower, including
+when an article's navigation margin reduces its available width. When placing
+Org source blocks between HTML export fragments, keep the HTML flush left so
+the Markdown parser does not interpret it as an indented code block.
+
 The authored order is the reading order: left then right on wide screens, first
 then second at 700px and below. In print, panels stack and plain code wraps.
 The two surface treatments distinguish the specimens, not success and failure.
@@ -299,6 +336,10 @@ does not compute a diff, execute examples, synchronize scrolling, or imply that
 one approach is better. A before/after claim must come from the content itself.
 
 ### Diagram plates: give a figure its own surface
+
+Ordinary captioned images are centered in the reading column, with captions
+wrapping to the displayed image width. They shrink to fit narrow screens without
+stretching smaller images. Diagram plates retain their full-width caption surface.
 
 Wrap a captioned image in `notebook-diagram`. Unlike the comparison and result
 examples, this can be written entirely with ordinary Org special blocks and file

@@ -1,3 +1,5 @@
 {% macro tag(label, target) %}
-<a class="paper-tag" data-tag="{{label | lower}}" href="{{config_site_url}}{{target}}"><span>{{label}}</span></a>
+{% set hash = label | lower | stable_hash %}
+{% set color = hash % 64 %}
+<a class="paper-tag" data-tag="{{label | lower}}" data-tag-color="{{color}}" href="{{config_site_url}}{{target}}"><span>{{label}}</span></a>
 {% endmacro tag %}

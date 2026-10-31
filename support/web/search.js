@@ -91,6 +91,7 @@
       const tag = window.document.createElement(linked ? 'a' : 'span');
       tag.className = 'paper-tag';
       tag.dataset.tag = name.toLowerCase();
+      if (window.NotebookTagColors) tag.dataset.tagColor = String(window.NotebookTagColors.index(name));
       if (linked) tag.href = new URL('../' + path, indexUrl).href;
       const label = window.document.createElement('span');
       label.textContent = name;

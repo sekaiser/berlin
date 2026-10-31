@@ -14,6 +14,9 @@ document.addEventListener('DOMContentLoaded', () => {
     tags: [...element.querySelectorAll('.paper-tag')].map(el => el.dataset.tag),
   }));
   const tags = [...new Set(items.flatMap(item => item.tags))].sort((a, b) => a.localeCompare(b));
+  // Reuse the server-rendered slot; filter buttons match the corresponding links.
+  const tagColors = new Map([...document.querySelectorAll('#reading-entries .paper-tag')]
+    .map(tag => [tag.dataset.tag, tag.dataset.tagColor]));
   const parameters = new URL(location.href).searchParams;
   query.value = parameters.get('q') || '';
   // Keep previously shared single-topic URLs usable; new links use repeated tag keys.
@@ -23,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
     button.type = 'button';
     button.className = 'paper-tag';
     button.dataset.tag = tag;
+    button.dataset.tagColor = tagColors.get(tag) || '0';
     button.setAttribute('aria-label', tag);
     button.setAttribute('aria-pressed', String(initialTags.has(tag)));
     button.setAttribute('aria-controls', 'reading-entries');

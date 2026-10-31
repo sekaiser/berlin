@@ -27,6 +27,21 @@ async function inspectComparison(page, screenshot, width, print) {
     assert.equal(bounds[0].top,bounds[1].top);
     assert.ok(bounds[0].right<bounds[1].left);
   }
+  // The code variant must stack on a tablet even though the ordinary compact
+  // data specimens above still fit side by side at that viewport size.
+  await figure.evaluate(el=>el.classList.add('notebook-comparison--code'));
+  const codeBounds=await panels.evaluateAll(elements=>elements.map(el=>{
+    const {top,bottom,left,right}=el.getBoundingClientRect();
+    return {top,bottom,left,right};
+  }));
+  if(width<=820) {
+    assert.ok(codeBounds[0].bottom<=codeBounds[1].top,'Narrow code comparisons stack');
+    assert.equal(codeBounds[0].left,codeBounds[1].left);
+  } else {
+    assert.equal(codeBounds[0].top,codeBounds[1].top);
+    assert.ok(codeBounds[0].right<codeBounds[1].left);
+  }
+  await figure.evaluate(el=>el.classList.remove('notebook-comparison--code'));
   const compact=panels.last().locator('pre');
   assert.ok(await compact.evaluate(el=>el.scrollWidth>el.clientWidth));
   await compact.scrollIntoViewIfNeeded();

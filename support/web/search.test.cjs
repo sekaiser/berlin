@@ -53,7 +53,7 @@ test('excerpts end at word boundaries and keep the matching word in view', () =>
 
 // A deliberately small DOM double exercises the client contract without claiming
 // browser layout coverage. Disallow innerHTML so unsafe rendering fails the test.
-async function client({query = '', fail = false, tagPaths = {rust:'tags/rust.html'}, note = {title:'<script>Example</script>', kind:'article', tags:['rust'], path:'notes/example.html', sections:[{heading:'Details', fragment:'details', text:'countryObject <img onerror=alert(1)>'}]} } = {}) {
+async function client({query = '', fail = false, tagColors, tagPaths = {rust:'tags/rust.html'}, note = {title:'<script>Example</script>', kind:'article', tags:['rust'], path:'notes/example.html', sections:[{heading:'Details', fragment:'details', text:'countryObject <img onerror=alert(1)>'}]} } = {}) {
   const vm = require('node:vm');
   const fs = require('node:fs');
   function element(tagName) {
@@ -72,7 +72,7 @@ async function client({query = '', fail = false, tagPaths = {rust:'tags/rust.htm
   const root = {dataset:{searchIndex:'https://example.com/notebook/search/index.json?v=hash'}, querySelector: key => selectors[key]};
   const document = {querySelectorAll: () => [root], createElement: element, createTextNode: text => ({textContent:text})};
   const location = {href: 'https://example.com/notebook/search.html?q=' + encodeURIComponent(query)};
-  const window = {document, addEventListener() {}};
+  const window = {document, NotebookTagColors:tagColors, addEventListener() {}};
   vm.runInNewContext(fs.readFileSync(require.resolve('./search.js'), 'utf8'), {
     document, window, location, URL,
     history:{replaceState(_a, _b, url) { location.href = url.href; }},
@@ -116,6 +116,15 @@ test('results use safe highlighted text and the existing linked paper-tag markup
   assert.equal(tags.children[0].href, 'https://example.com/notebook/tags/rust.html');
   assert.equal(tags.children[0].children[0].tagName, 'span');
   assert.equal(tags.children[0].textContent, 'rust');
+});
+
+test('search applies the theme palette hook without requiring it for other themes', async () => {
+  const tagColors = require('../../themes/notebook/shared/static/js/tag-colors.js');
+  const colored = await client({query:'rust', tagColors});
+  const plain = await client({query:'rust'});
+  const tag = c => c.results.children[0].children.find(child => child.className === 'search-result-tags').children[0];
+  assert.equal(tag(colored).dataset.tagColor, '39');
+  assert.equal(tag(plain).dataset.tagColor, undefined);
 });
 
 test('highlighting preserves original Unicode spelling and handles literal punctuation', async () => {

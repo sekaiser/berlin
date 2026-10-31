@@ -5,6 +5,7 @@
 }
 .journal-entry-copy { min-width: 0; }
 .journal-entry:has(.journal-entry-visual) { grid-template-columns: 216px minmax(0, 1fr); }
+.journal-entry--preview-right:has(.journal-entry-visual) { grid-template-columns: minmax(0, 1fr) 216px; }
 .journal-entry-visual { display: block; padding-top: 4px; border-radius: 3px; }
 .journal-entry-visual:hover { outline: 1px solid var(--accent-rule); outline-offset: 4px; }
 .journal-entry-visual:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
@@ -40,6 +41,7 @@
   border-top: 2px solid var(--accent-rule);
 }
 .journal-entry--featured:has(.journal-entry-visual) { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
+.journal-entry--featured.journal-entry--preview-right:has(.journal-entry-visual) { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
 .journal-entry--featured .journal-entry-visual { align-self: center; }
 .journal-entry--featured .journal-entry-label {
   margin: 0 0 14px; color: var(--accent);
@@ -52,10 +54,15 @@
 
 @media (max-width: 1100px) {
   .journal-entry:has(.journal-entry-visual) { grid-template-columns: 180px minmax(0, 1fr); gap: 24px; }
+  .journal-entry--preview-right:has(.journal-entry-visual) { grid-template-columns: minmax(0, 1fr) 180px; }
   .journal-entry--featured:has(.journal-entry-visual) { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
+  .journal-entry--featured.journal-entry--preview-right:has(.journal-entry-visual) { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
 }
 @media (max-width: 600px) {
   .journal-entry, .journal-entry:has(.journal-entry-visual) { grid-template-columns: minmax(0, 1fr); gap: 20px; padding-block: 28px; }
+  .journal-entry--preview-right:has(.journal-entry-visual),
+  .journal-entry--featured.journal-entry--preview-right:has(.journal-entry-visual) { grid-template-columns: minmax(0, 1fr); }
+  .journal-entry--preview-right .journal-entry-visual { justify-self: end; }
   .journal-entry-visual { width: min(240px, 100%); padding: 0; }
   .journal-entry h2, .journal-entry h3 { font-size: 1.75rem; }
   .journal-entry.journal-entry--featured { gap: 24px; margin-top: 18px; padding-block: 24px 28px; }

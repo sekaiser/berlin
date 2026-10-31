@@ -39,7 +39,7 @@ body:has(.notebook-overview) main { flex: 0 0 auto; }
 
 /* A document and its navigation margin form one continuous sheet. */
 .study-page {
-  --reading-width: 44rem;
+  --reading-width: 100%;
   padding: 40px 38px 38px; border-radius: 3px;
   display: grid; grid-template-columns: minmax(0, 1fr) 220px;
   column-gap: 38px; box-shadow: 0 4px 30px #344f4220;
@@ -69,8 +69,8 @@ body:has(.notebook-overview) main { flex: 0 0 auto; }
 .study-introduction .abstract p + p, .study-prose .frontmatter .abstract p + p {
   font: inherit; color: inherit; max-width: none; margin-top: 0;
 }
-/* Prose has a reading measure; code, tables, and figures keep the wider working
-   column. This does not narrow the page surface or change its shared edges. */
+/* Prose fills its reading column. The navigation margin remains a separate
+   grid track; projects can opt into a narrower measure with --reading-width. */
 .study-introduction .abstract p,
 .study-introduction .abstract p + p,
 .study-prose :is(p, ul, ol, blockquote),

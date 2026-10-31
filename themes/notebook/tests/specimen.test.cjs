@@ -2,6 +2,7 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const {spawnSync} = require('node:child_process');
 const {buildSpecimen} = require('./specimen.cjs');
 
 test('code and worked-example presentation stays in component files', () => {
@@ -72,13 +73,17 @@ test('stress specimens publish long and untagged entries through the real pipeli
     }
     assert.equal([...read('feed.html').matchAll(/class="journal-bookmark"/g)].length, 2);
     const home = read('index.html');
-    const entries = html => [...html.matchAll(/<article class="journal-entry(?: journal-entry--featured)?">([\s\S]*?)<\/article>/g)].map(match => match[1]);
+    const entries = html => [...html.matchAll(/<article class="journal-entry(?: journal-entry--featured)?(?: journal-entry--preview-right)?">([\s\S]*?)<\/article>/g)].map(match => match[1]);
     const details = entry => ({
       title: entry.match(/<h[23]>([\s\S]*?)<\/h[23]>/)[1],
       summary: entry.match(/<div class="journal-excerpt">([\s\S]*?)<\/div>/)[1],
       date: entry.match(/<time datetime="([^"]+)">([^<]+)<\/time>/).slice(1),
     });
-    assert.equal([...home.matchAll(/class="journal-entry journal-entry--featured"/g)].length, 2);
+    assert.equal([...home.matchAll(/class="journal-entry journal-entry--featured(?: journal-entry--preview-right)?"/g)].length, 2);
+    const trailing = home.match(/<article class="journal-entry journal-entry--featured journal-entry--preview-right">([\s\S]*?)<\/article>/)[1];
+    assert.ok(trailing.indexOf('journal-entry-copy') < trailing.indexOf('journal-entry-visual'));
+    assert.match(trailing, /alt="Four synthetic points/);
+    assert.doesNotMatch(read('notes.html'), /journal-entry--preview-right/, 'Default previews remain on the left');
     assert.equal(entries(home).length, 5);
     assert.deepEqual(entries(home).map(details), entries(read('notes.html')).map(details));
     for (const page of ['notes.html', 'tags/design.html', 'notes/component-specimens.html']) {
@@ -96,5 +101,29 @@ test('empty specimens publish useful collection pages without invented entries',
     assert.doesNotMatch(read('feed.html'), /class="journal-bookmark"/);
     assert.doesNotMatch(read('notes.html'), /class="journal-entry"/);
     assert.ok(fs.existsSync(path.join(project.output, 'index.html')));
+  } finally {project.dispose();}
+});
+
+test('a project entry-layout policy follows its article across collection pages', () => {
+  const project = buildSpecimen('stress');
+  try {
+    const macros = path.join(project.root, 'pages/macros');
+    fs.mkdirSync(macros, {recursive:true});
+    fs.writeFileSync(path.join(macros, 'notebook_entry_layout.tera'),
+      '{% macro preview_side(target) %}{% if target == "/notes/illustrated-entry.html" %}right{% else %}left{% endif %}{% endmacro preview_side %}');
+    const binary = process.env.BERLIN_TEST_BINARY || path.resolve(__dirname, '../../../target/debug/bln');
+    const result = spawnSync(binary, ['build', '--pipeline', 'site'], {
+      env:{...process.env, BERLIN_DIR:project.root}, encoding:'utf8',
+    });
+    assert.equal(result.status, 0, result.error?.message || result.stderr);
+    for (const route of ['index.html', 'notes.html', 'tags/design.html']) {
+      const html = fs.readFileSync(path.join(project.output, route), 'utf8');
+      const entries = [...html.matchAll(/<article class="(journal-entry[^"]*)">([\s\S]*?)<\/article>/g)];
+      const illustrated = entries.find(entry => entry[2].includes('Reading a small plot'));
+      assert.ok(illustrated, route);
+      assert.ok(illustrated[1].includes('journal-entry--preview-right'), route);
+      assert.ok(illustrated[2].indexOf('journal-entry-copy') < illustrated[2].indexOf('journal-entry-visual'), route);
+      assert.equal(entries.filter(entry => entry[1].includes('journal-entry--preview-right')).length, 1);
+    }
   } finally {project.dispose();}
 });

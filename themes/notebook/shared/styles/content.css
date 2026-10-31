@@ -1,4 +1,24 @@
 .document-body figure { margin: 2em 0; }
+/* Let the image size ordinary figures; captions must not widen them.
+   Diagram plates have their own full-width editorial caption layout. */
+.document-body figure:has(> img):not(.notebook-diagram > figure) {
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+}
+.document-body figure:has(> img):not(.notebook-diagram > figure) > img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.document-body figure:has(> img):not(.notebook-diagram > figure) > figcaption {
+  /* Remove caption intrinsic width from shrink-to-fit sizing, then fill
+     the image-sized figure. Long words still wrap on narrow screens. */
+  width: 0;
+  min-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
 figcaption, .src-block-caption, .table-caption { font: .8rem/1.6 var(--font-interface); color: var(--muted); margin-top: .75rem; }
 .document-body table { display: block; overflow-x: auto; border-collapse: collapse; max-width: 100%; font-size: .9em; }
 th, td { border-bottom: 1px solid var(--rule); padding: .6em .8em; text-align: left; }

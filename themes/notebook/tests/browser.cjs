@@ -11,6 +11,7 @@ const {inspectDiagram} = require('./diagrams-browser.cjs');
 const {inspectObservations} = require('./observations-browser.cjs');
 const {inspectEntries} = require('./entries-browser.cjs');
 const {inspectReference} = require('./reference-browser.cjs');
+const {inspectTagPalette,inspectTagFilter} = require('./tags-browser.cjs');
 const artifacts = process.env.BERLIN_VALIDATION_DIR || fs.mkdtempSync(path.join(os.tmpdir(), 'berlin-theme-browser-'));
 
 async function inspect(browser, project, size, width, height, javaScriptEnabled, enlarged = false) {
@@ -70,6 +71,7 @@ async function inspect(browser, project, size, width, height, javaScriptEnabled,
       }
       await visit('notes/component-specimens.html');
       await inspectReference(page,screenshot,width,javaScriptEnabled);
+      await inspectTagPalette(page,screenshot);
       const listing=page.locator('#specimen-code');
       const note=listing.locator('.code-note');
       await note.locator('summary').focus();
@@ -130,7 +132,7 @@ async function inspect(browser, project, size, width, height, javaScriptEnabled,
       assert.equal(await page.locator('.reading-tools').isVisible(),javaScriptEnabled);
       if(javaScriptEnabled) {
         assert.equal(await page.locator('.reading-tag-options button').count(),20);
-        await page.getByRole('button',{name:'design',exact:true}).click();
+        await inspectTagFilter(page,'design');
         await page.getByRole('button',{name:'systems',exact:true}).click();
         assert.equal(await page.locator('.journal-bookmark:visible').count(),1);
         await page.reload();
