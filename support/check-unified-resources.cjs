@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const {execFileSync, spawnSync} = require('node:child_process');
+const {createHash}=require('node:crypto');
 const repository = path.resolve(__dirname, '..');
 const binary = process.env.BERLIN_TEST_BINARY || path.join(repository, 'target/debug/bln');
 const project = fs.mkdtempSync(path.join(os.tmpdir(), 'berlin-unified-resources-'));
@@ -114,5 +115,60 @@ const textSite=spawnSync(binary,['build','--pipeline','invalid_site_text'],{env,
 assert.notEqual(textSite.status,0);
 assert.match(textSite.stderr,/UnsupportedChannelFeature/);
 assert(!fs.existsSync(path.join(project,'_invalid_text')));
+fs.writeFileSync(script,original);
+function verifyInventory(directory,manifestFile,text=false) {
+  const full=JSON.parse(fs.readFileSync(path.join(directory,manifestFile),'utf8'));
+  const manifest=text?full.publication:full;
+  assert.equal(manifest.output.policy,'all-files-except-own-manifest/v1');
+  const actual=snapshot(directory);delete actual[manifestFile];
+  assert.deepEqual(manifest.output.files.map(file=>file.path),Object.keys(actual).sort());
+  for(const file of manifest.output.files) {
+    const bytes=Buffer.from(actual[file.path],'base64');
+    assert.equal(file.bytes,bytes.length);
+    assert.equal(file.sha256,createHash('sha256').update(bytes).digest('hex'));
+  }
+  return manifest;
+}
+for(const output of ['_site','_portfolio','_excerpts']) verifyInventory(path.join(project,output),'publication.json');
+for(const output of ['_text','_excerpt_text']) verifyInventory(path.join(project,output),'manifest.json',true);
+const portfolio=json('_portfolio/publication.json');
+assert.equal(Object.keys(portfolio.queries).length,2);
+assert(portfolio.catalog_inputs.some(input=>input.logical_name==='data/resources.yaml'));
+for(const [key,evidence] of Object.entries(portfolio.queries)) {
+  assert.equal(key,evidence.query_digest);
+  assert(evidence.selected.every(entry=>/^(local|external):/.test(entry.id)&&/^[a-f0-9]{64}$/.test(entry.revision)));
+}
+const presentation=path.join(project,'pages/components/berlin/resource_card.v1.tera');
+fs.mkdirSync(path.dirname(presentation),{recursive:true});
+fs.writeFileSync(presentation,fs.readFileSync(path.join(repository,'themes/notebook/shared/pages/components/berlin/resource_card.v1.tera'),'utf8').replace('publication-resource','publication-resource alternate-resource'));
+run('check','--pipeline','portfolio');run('build','--pipeline','portfolio');
+const alternate=json('_portfolio/publication.json');
+assert.equal(alternate.composition_fingerprint,portfolio.composition_fingerprint);
+assert.notEqual(alternate.render_input_fingerprint,portfolio.render_input_fingerprint);
+assert(fs.readFileSync(path.join(project,'_portfolio/index.html'),'utf8').includes('alternate-resource'));
+fs.rmSync(presentation);run('build','--pipeline','portfolio');
+assert.equal(json('_portfolio/publication.json').render_input_fingerprint,portfolio.render_input_fingerprint);
+const relocated=fs.mkdtempSync(path.join(os.tmpdir(),'berlin-unified-relocated-'));
+fs.cpSync(path.join(__dirname,'fixtures/unified-resources'),relocated,{recursive:true});
+execFileSync(binary,['build','--pipeline','site'],{env:{...env,BERLIN_DIR:relocated},stdio:'pipe'});
+assert.deepEqual(snapshot(path.join(relocated,'_site')),first,'project relocation altered public bytes');
+// Local sealing exercises the normal release lifecycle without any publishing.
+fs.writeFileSync(script,original.replace('.with_assets(load_assets("attachments/**/*"),"attachments");','.with_assets(load_assets("attachments/**/*"),"attachments").deploy_to(github_pages("example/notebook"));'));
+const release=run('release','--pipeline','site','--production').trim();
+assert.match(release,/^[a-f0-9]{64}$/);
+const bundle=path.join(project,'.berlin/releases',release);
+const sealed=JSON.parse(fs.readFileSync(path.join(bundle,'manifest.json'),'utf8'));
+assert.deepEqual(sealed.documents.entries.map(entry=>entry.id),['footnotes-example','recovery-design','rust-futures','storage-latency']);
+const production=verifyInventory(path.join(bundle,'site'),'publication.json');
+assert.equal(production.output.processing,'berlin-production/v1');
+assert.notEqual(production.render_input_fingerprint,json('_site/publication.json').render_input_fingerprint);
+assert(sealed.files.some(file=>file.path==='publication.json'));
+run('release-diff',release,release,'--json');
+const sealedBefore=snapshot(bundle);
+const imported=run('release','--pipeline','site','--from-directory','_site').trim();
+assert(!('documents' in json(`.berlin/releases/${imported}/manifest.json`)),'imported bytes gained document provenance');
+run('release-diff',release,imported,'--json');
+assert.deepEqual(snapshot(bundle),sealedBefore,'later operations rewrote an existing sealed release');
+assert(!fs.existsSync(path.join(project,'.berlin/publications')),'local release created a publication ledger');
 fs.writeFileSync(script,original);
 console.log(`Unified catalog acceptance passed; synthetic project retained at ${project}`);

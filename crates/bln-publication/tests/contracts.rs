@@ -14,6 +14,7 @@ fn spec() -> PublicationSpec {
     );
     PublicationSpec {
         schema_version: 1,
+        queries: Default::default(),
         metadata: PublicationMetadata {
             id: PublicationId("portfolio α".into()),
             title: "Work".into(),

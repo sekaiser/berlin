@@ -47,6 +47,7 @@ fn assemble(root: ComponentCall, catalog: PublicationCatalog) -> PublicationAsse
     PublicationAssembly::resolve(
         &PublicationSpec {
             schema_version: 1,
+            queries: Default::default(),
             metadata: PublicationMetadata {
                 id: PublicationId("example".into()),
                 title: "Selected work".into(),

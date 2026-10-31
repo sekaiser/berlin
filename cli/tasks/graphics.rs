@@ -12,7 +12,7 @@ use std::{
 
 pub(crate) use berlin_core::TexEngine as Engine;
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub(crate) struct Input {
     pub relative: PathBuf,
     pub bytes: Vec<u8>,

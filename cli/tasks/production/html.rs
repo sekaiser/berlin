@@ -94,8 +94,8 @@ impl ProductionSite<'_> {
     pub(super) fn validate_pages(&self) -> Result<(), Error> {
         for (name, page) in &self.pages {
             if let Some(target) = &page.redirect {
-                if !article_path(name)
-                    || !article_path(target)
+                if !generated_page_path(name)
+                    || !generated_page_path(target)
                     || name == target
                     || !self.pages.contains_key(target)
                 {
@@ -164,18 +164,8 @@ fn attribute(element: &Element<'_, '_>, name: &str) -> Option<String> {
         .map(|value| html_escape::decode_html_entities(&value).into_owned())
 }
 
-fn article_path(path: &str) -> bool {
-    path.strip_prefix("notes/")
-        .and_then(|path| path.strip_suffix(".html"))
-        .is_some_and(|slug| {
-            !slug.is_empty()
-                && slug.split('-').all(|word| {
-                    !word.is_empty()
-                        && word
-                            .bytes()
-                            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
-                })
-        })
+fn generated_page_path(path: &str) -> bool {
+    path.ends_with(".html") && berlin_publication::validate_site_route(path).is_ok()
 }
 
 /// URLs end at whitespace, not at embedded commas (notably in data URLs).

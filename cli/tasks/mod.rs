@@ -56,7 +56,7 @@ enum RuntimeArtifact {
     CssSources(Vec<SourceFile>),
     StaticSources {
         source_root: PathBuf,
-        files: Vec<PathBuf>,
+        snapshot: std::sync::Arc<Vec<graphics::Input>>,
     },
 }
 

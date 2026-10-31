@@ -49,6 +49,7 @@ fn prepare(document: Document) -> Result<PublicationAssembly> {
     .into_call();
     let spec = PublicationSpec {
         schema_version: 1,
+        queries: Default::default(),
         metadata: PublicationMetadata {
             id: PublicationId("p".into()),
             title: "Portfolio".into(),
@@ -94,6 +95,7 @@ fn f17_excerpt_budget_counts_inline_nodes_before_copying() {
         PublicationAssembly::resolve(
             &PublicationSpec {
                 schema_version: 1,
+                queries: Default::default(),
                 metadata: PublicationMetadata {
                     id: PublicationId("p".into()),
                     title: "P".into(),

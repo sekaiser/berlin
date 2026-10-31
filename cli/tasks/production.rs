@@ -33,7 +33,11 @@ pub(super) fn validate_plan(plan: &PipelinePlan) -> Result<(), Error> {
     )
 }
 
-pub(super) fn prepare(plan: &PipelinePlan, staging: &Path) -> Result<(), Error> {
+pub(super) fn prepare(
+    plan: &PipelinePlan,
+    staging: &Path,
+    artifacts: &HashMap<berlin_core::NodeId, super::RuntimeArtifact>,
+) -> Result<(), Error> {
     validate_plan(plan)?;
     let node = release::website_output(plan)?;
     let config = node
@@ -45,11 +49,31 @@ pub(super) fn prepare(plan: &PipelinePlan, staging: &Path) -> Result<(), Error> 
             .as_ref()
             .context("website has no output directory")?,
     );
-    finish(&root, config.url.as_ref().context("website has no URL")?)
+    let mut outbound = HashSet::new();
+    for artifact in artifacts.values() {
+        if let super::RuntimeArtifact::Composed(composed) = artifact {
+            for entry in composed.catalog().resources() {
+                if let Some(url) = entry.original_url() {
+                    let mut url = Url::parse(url)?;
+                    url.set_fragment(None);
+                    outbound.insert(url.to_string());
+                }
+            }
+        }
+    }
+    finish_with_outbound(
+        &root,
+        config.url.as_ref().context("website has no URL")?,
+        outbound,
+    )
 }
 
 /// The caller owns this disposable directory. Failure never installs its contents.
+#[cfg(test)]
 fn finish(root: &Path, url: &Url) -> Result<(), Error> {
+    finish_with_outbound(root, url, HashSet::new())
+}
+fn finish_with_outbound(root: &Path, url: &Url, outbound: HashSet<String>) -> Result<(), Error> {
     release::validate_url(url)?;
     // Validate paths (including symlinks) before adding any support files.
     release::inventory(root)?;
@@ -74,6 +98,7 @@ fn finish(root: &Path, url: &Url) -> Result<(), Error> {
     }
     let base = Url::parse(&format!("{}/", url.as_str().trim_end_matches('/')))?;
     let mut site = ProductionSite {
+        outbound,
         root,
         base,
         pages,
@@ -105,6 +130,7 @@ fn finish(root: &Path, url: &Url) -> Result<(), Error> {
 }
 
 struct ProductionSite<'a> {
+    outbound: HashSet<String>,
     root: &'a Path,
     base: Url,
     known: HashSet<String>,

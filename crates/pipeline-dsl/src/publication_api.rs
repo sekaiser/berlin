@@ -50,6 +50,7 @@ impl ScriptFragment {
     }
 }
 struct Budget {
+    queries: QueryEvidenceTable,
     limits: PublicationLimits,
     nodes: usize,
     bytes: usize,
@@ -68,6 +69,7 @@ impl ComposerState {
         registry: Arc<ComponentRegistry>,
     ) -> Self {
         Self(Rc::new(RefCell::new(Budget {
+            queries: BTreeMap::new(),
             limits,
             nodes: 0,
             bytes: 0,
@@ -79,6 +81,9 @@ impl ComposerState {
             resource_limits,
             registry,
         })))
+    }
+    pub fn queries(&self) -> QueryEvidenceTable {
+        self.0.borrow().queries.clone()
     }
 }
 fn failure(error: impl std::fmt::Display) -> Box<EvalAltResult> {
@@ -157,7 +162,10 @@ pub(super) fn register(engine: &mut Engine) {
                 budget.query_results = results;
             }
             let result = catalog.select(&query).map_err(failure)?;
-            state.0.borrow_mut().query_results -= reservation - result.len();
+            let mut budget = state.0.borrow_mut();
+            budget.query_results -= reservation - result.len();
+            let limits = budget.limits.clone();
+            record_selection(&mut budget.queries, &result, &limits).map_err(failure)?;
             Ok(result)
         },
     );

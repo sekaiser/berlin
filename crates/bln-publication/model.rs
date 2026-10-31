@@ -223,6 +223,8 @@ pub struct PublicationMetadata {
 #[serde(deny_unknown_fields)]
 pub struct PublicationSpec {
     pub schema_version: u32,
+    #[serde(default)]
+    pub queries: crate::QueryEvidenceTable,
     pub metadata: PublicationMetadata,
     pub root: ViewSpec,
 }
@@ -253,9 +255,21 @@ impl PublicationSpec {
         }
         Ok(Self {
             schema_version: 1,
+            queries: BTreeMap::new(),
             metadata,
             root: roots.remove(0),
         })
+    }
+    /// Retain the query even if it selected nothing or only influenced editorial
+    /// text. Explicit Rust composition has no ambient mutable query log.
+    pub fn with_selection(
+        mut self,
+        selection: &crate::ResourceSelection,
+        limits: &PublicationLimits,
+    ) -> Result<Self> {
+        crate::record_selection(&mut self.queries, selection, limits)?;
+        self.occurrences(limits)?;
+        Ok(self)
     }
     /// Validates structural identities and budgets. Registry/schema and source
     /// validation are separate, mandatory steps before any rendering.
@@ -276,6 +290,7 @@ impl PublicationSpec {
                 occurrences: Vec::new(),
                 property_bytes: 0,
             };
+            budget.bytes(crate::query_evidence_bytes(&self.queries, limits)?, limits)?;
             budget.string(&self.metadata.title, limits)?;
             if let Some(description) = &self.metadata.description {
                 budget.string(description, limits)?;

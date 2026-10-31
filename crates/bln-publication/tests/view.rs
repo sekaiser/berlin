@@ -17,6 +17,7 @@ pub struct Panel {
 fn spec(root: ViewFragment) -> PublicationSpec {
     PublicationSpec {
         schema_version: 1,
+        queries: Default::default(),
         metadata: PublicationMetadata {
             id: PublicationId("view".into()),
             title: "View".into(),

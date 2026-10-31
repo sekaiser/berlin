@@ -40,6 +40,7 @@ impl PublicationAssembly {
         registry: &ComponentRegistry,
     ) -> Result<Self> {
         catalog.validate_local_links()?;
+        crate::validate_query_evidence(&spec.queries, &catalog)?;
         let spec = registry.normalize(spec, catalog.limits())?;
         let occurrences = spec.occurrences(catalog.limits())?;
         let mut placements = Vec::new();
@@ -285,6 +286,10 @@ impl PublicationAssembly {
         )?;
         Ok(PublicationManifest {
             schema_version: 2,
+            catalog_digest: self.catalog.input_digest().into(),
+            queries: self.spec.queries.clone(),
+            catalog_inputs: self.catalog.input_sources().to_vec(),
+            output: None,
             publication_id: self.spec.metadata.id.clone(),
             metadata_digest: fingerprint("metadata/v1", &self.spec.metadata)?,
             normalized_spec_digest: self.spec.normalized_digest()?,
@@ -306,6 +311,11 @@ impl PublicationAssembly {
 #[serde(deny_unknown_fields)]
 pub struct PublicationManifest {
     pub schema_version: u32,
+    pub catalog_digest: String,
+    pub queries: crate::QueryEvidenceTable,
+    pub catalog_inputs: Vec<crate::ResourceInputEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<OutputEvidence>,
     pub publication_id: crate::PublicationId,
     pub metadata_digest: String,
     pub normalized_spec_digest: String,
@@ -319,6 +329,22 @@ pub struct PublicationManifest {
     pub render_inputs: BTreeMap<String, String>,
     pub render_input_fingerprint: String,
     pub diagnostics: Vec<crate::Diagnostic>,
+}
+/// Inventories every installed file except this manifest itself. A sealed release
+/// independently hashes the manifest as well, avoiding a self-hash cycle.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OutputEvidence {
+    pub policy: String,
+    pub processing: String,
+    pub files: Vec<OutputFile>,
+}
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OutputFile {
+    pub path: String,
+    pub bytes: u64,
+    pub sha256: String,
 }
 impl PublicationManifest {
     pub fn record_inputs(&mut self, inputs: BTreeMap<String, String>) -> Result<()> {

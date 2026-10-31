@@ -262,9 +262,18 @@ fn d05_d08_rust_and_runtime_rhai_use_the_same_normalized_contract() {
         .compose_publication(&FunctionRef::new("portfolio"), &documents(), &options)
         .unwrap();
     let catalog = PublicationCatalog::new(documents(), options).unwrap();
+    let selection = catalog
+        .select(&ResourceQuery {
+            topics_all: vec!["systems".into()],
+            ..Default::default()
+        })
+        .unwrap();
+    let mut queries = QueryEvidenceTable::new();
+    record_selection(&mut queries, &selection, catalog.limits()).unwrap();
     let rust = PublicationAssembly::resolve(
         &PublicationSpec {
             schema_version: 1,
+            queries,
             metadata: PublicationMetadata {
                 id: PublicationId("systems".into()),
                 title: "Selected work".into(),
@@ -329,6 +338,39 @@ fn d05_d08_rust_and_runtime_rhai_use_the_same_normalized_contract() {
             .output_kind(),
         ArtifactKind::PublicationText
     );
+}
+
+#[test]
+fn query_evidence_records_empty_editorial_selections_and_is_session_local() {
+    let loader=RhaiPipelineLoader::new(r#"
+        fn empty(c) {
+            let unused=c.select(#{topics_all:["not-present"]});
+            publication("empty",#{title:"Empty decision"},[view_component("berlin.introduction@1",#{text:"Nothing matched."},#{})])
+        }
+        fn plain(c) {
+            publication("plain",#{title:"No query"},[view_component("berlin.introduction@1",#{text:"Static editorial text."},#{})])
+        }
+    "#).unwrap();
+    let catalog = PublicationCatalog::new(documents(), PublicationOptions::default()).unwrap();
+    let first = loader
+        .compose_artifact(&FunctionRef::new("empty"), catalog.clone())
+        .unwrap();
+    let first = first.single().unwrap();
+    assert_eq!(first.spec().queries.len(), 1);
+    assert!(
+        first
+            .spec()
+            .queries
+            .values()
+            .next()
+            .unwrap()
+            .selected
+            .is_empty()
+    );
+    let second = loader
+        .compose_artifact(&FunctionRef::new("plain"), catalog)
+        .unwrap();
+    assert!(second.single().unwrap().spec().queries.is_empty());
 }
 #[test]
 fn d07_plan_checks_arity_without_loading_documents_or_executing_composers() {

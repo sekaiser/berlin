@@ -272,6 +272,7 @@ fn spec() -> PublicationSpec {
     .into_call();
     PublicationSpec {
         schema_version: 1,
+        queries: Default::default(),
         metadata: PublicationMetadata {
             id: PublicationId("portfolio".into()),
             title: "Selected work".into(),

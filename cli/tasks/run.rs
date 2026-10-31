@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Instant, SystemTime};
 
-use anyhow::Error;
+use anyhow::{Context, Error};
 use berlin_core::{NodeId, PipelineLoader as _, PipelineNode, PipelinePlan};
 use berlin_pipeline_dsl::RhaiPipelineLoader;
 
@@ -169,7 +169,34 @@ impl<'a> PipelineRun<'a> {
             self.accept_output(node, artifact)?;
         }
         if self.options.production && !self.options.dry_run {
-            super::production::prepare(&prepared.plan, &self.output_root)?;
+            super::production::prepare(&prepared.plan, &self.output_root, &self.artifacts)?;
+        }
+        if !self.options.dry_run {
+            for node in prepared.plan.nodes() {
+                let text = match node.operation {
+                    berlin_core::Operation::RenderHtml { .. } => false,
+                    berlin_core::Operation::RenderText { .. } => true,
+                    _ => continue,
+                };
+                let composed =
+                    super::executor::runtime_input(node, &self.artifacts, 0, |artifact| {
+                        match artifact {
+                            RuntimeArtifact::Composed(composed) => Some(composed),
+                            _ => None,
+                        }
+                    })?;
+                let output = self.output_root.join(
+                    node.output_path
+                        .as_ref()
+                        .context("publication output has no path")?,
+                );
+                super::composed::finalize_manifest(
+                    &output,
+                    text,
+                    self.options.production,
+                    composed.catalog().limits(),
+                )?;
+            }
         }
         Ok(())
     }

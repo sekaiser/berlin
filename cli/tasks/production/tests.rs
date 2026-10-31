@@ -21,6 +21,67 @@ fn finish_at(root: &Path, base: &str) -> Result<(), Error> {
 }
 
 #[test]
+fn declared_catalog_originals_remain_outbound_but_unknown_local_destinations_fail() {
+    let root = tempfile::tempdir().unwrap();
+    let original = "https://example.test/original/work.html";
+    page(
+        root.path(),
+        "index.html",
+        "https://example.test/portfolio/",
+        &format!("<a href='{original}#section'>Original work</a>"),
+    );
+    assert!(finish_at(root.path(), "https://example.test/portfolio").is_err());
+    finish_with_outbound(
+        root.path(),
+        &Url::parse("https://example.test/portfolio").unwrap(),
+        HashSet::from([original.into()]),
+    )
+    .unwrap();
+    assert!(
+        fs::read_to_string(root.path().join("index.html"))
+            .unwrap()
+            .contains(original)
+    );
+    page(
+        root.path(),
+        "index.html",
+        "https://example.test/portfolio/",
+        "<a href='missing.html'>Missing</a>",
+    );
+    assert!(
+        finish_with_outbound(
+            root.path(),
+            &Url::parse("https://example.test/portfolio").unwrap(),
+            HashSet::from([original.into()])
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn marked_redirects_support_the_declared_custom_document_prefix() {
+    let root = tempfile::tempdir().unwrap();
+    page(
+        root.path(),
+        "index.html",
+        "https://example.test/",
+        "<a href='engineering/new.html'>Entry</a>",
+    );
+    page(
+        root.path(),
+        "engineering/new.html",
+        "https://example.test/engineering/new.html",
+        "<p>Entry</p>",
+    );
+    put(
+        root.path(),
+        "engineering/old.html",
+        "<meta name='berlin-redirect' content='engineering/new.html'><meta http-equiv='refresh' content='0;url=https://example.test/engineering/new.html'><link rel='canonical' href='https://example.test/engineering/new.html'>",
+    );
+    finish_at(root.path(), "https://example.test").unwrap();
+}
+
+#[test]
 fn versions_final_css_dependencies_and_normalizes_root_and_repository_links() {
     for base in ["https://example.com", "https://example.com/notebook"] {
         let mut versions = Vec::new();

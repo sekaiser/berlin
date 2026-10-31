@@ -58,6 +58,20 @@ impl DocumentRevision {
 }
 
 impl DocumentInventory {
+    pub(super) fn from_site(site: &berlin_publication::SiteAssembly) -> Result<Self, Error> {
+        let mut entries = Vec::with_capacity(site.document_routes().len());
+        for (id, route) in site.document_routes() {
+            let document = site.catalog().get(id)?.handle().try_local_document()?;
+            let mut revision = DocumentRevision::from_document(document)?;
+            revision.path = route.clone();
+            entries.push(revision);
+        }
+        entries.sort_by(|left, right| left.id.0.cmp(&right.id.0));
+        Ok(Self {
+            fingerprint_version: 1,
+            entries,
+        })
+    }
     pub(super) fn from_website(website: &WebsiteAssembly) -> Result<Self, Error> {
         let mut entries = website
             .documents()

@@ -113,7 +113,7 @@ impl RhaiPipelineLoader {
         let spec = self
             .engine
             .call_fn_with_options::<rhai::Dynamic>(
-                rhai::CallFnOptions::new().with_tag(state),
+                rhai::CallFnOptions::new().with_tag(state.clone()),
                 &mut Scope::new(),
                 &self.ast,
                 composer.as_str(),
@@ -124,7 +124,8 @@ impl RhaiPipelineLoader {
                 source,
             })?;
         if spec.is::<publication_api::ScriptPublication>() {
-            let spec = spec.cast::<publication_api::ScriptPublication>().0;
+            let mut spec = spec.cast::<publication_api::ScriptPublication>().0;
+            std::sync::Arc::make_mut(&mut spec).queries = state.queries();
             Ok(berlin_publication::ComposedArtifact::Single(
                 std::sync::Arc::new(berlin_publication::PublicationAssembly::resolve(
                     &spec,
@@ -133,7 +134,8 @@ impl RhaiPipelineLoader {
                 )?),
             ))
         } else if spec.is::<publication_api::ScriptSite>() {
-            let spec = spec.cast::<publication_api::ScriptSite>().0;
+            let mut spec = spec.cast::<publication_api::ScriptSite>().0;
+            std::sync::Arc::make_mut(&mut spec).queries = state.queries();
             Ok(berlin_publication::ComposedArtifact::Site(
                 std::sync::Arc::new(berlin_publication::SiteAssembly::resolve(
                     &spec,

@@ -115,6 +115,7 @@ fn measure(label: &str, sources: usize, repeats: usize, depth: usize) {
     let root = Portfolio::builder().body(body).build();
     let spec = PublicationSpec {
         schema_version: 1,
+        queries: Default::default(),
         metadata: PublicationMetadata {
             id: PublicationId(label.into()),
             title: label.into(),

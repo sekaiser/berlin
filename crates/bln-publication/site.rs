@@ -10,6 +10,8 @@ use std::{
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SiteSpec {
+    #[serde(default)]
+    pub queries: QueryEvidenceTable,
     pub id: PublicationId,
     pub title: String,
     #[serde(default = "local_scope")]
@@ -47,11 +49,19 @@ pub enum SiteEntrySpec {
 impl SiteSpec {
     pub fn new(id: PublicationId, title: impl Into<String>) -> Self {
         Self {
+            queries: BTreeMap::new(),
             id,
             title: title.into(),
             source_scope: local_scope(),
             entries: vec![],
         }
+    }
+    pub fn record_selection(
+        &mut self,
+        selection: &ResourceSelection,
+        limits: &PublicationLimits,
+    ) -> Result<()> {
+        record_selection(&mut self.queries, selection, limits)
     }
     pub fn add_page(
         &mut self,
@@ -106,6 +116,7 @@ pub enum SiteRoute {
 }
 #[derive(Clone, Debug)]
 pub struct SiteAssembly {
+    source_scope_evidence: QueryEvidence,
     spec: SiteSpec,
     catalog: PublicationCatalog,
     routes: BTreeMap<String, SiteRoute>,
@@ -200,6 +211,7 @@ impl SiteAssembly {
         registry: &ComponentRegistry,
     ) -> Result<Self> {
         let limits = catalog.limits();
+        validate_query_evidence(&spec.queries, &catalog)?;
         if spec.id.0.trim().is_empty() || spec.id.0.chars().any(char::is_control) {
             return Err(fail(Code::InvalidIdentifier, "site requires a stable ID"));
         }
@@ -326,6 +338,7 @@ impl SiteAssembly {
                 }
                 SiteEntrySpec::LocalDocuments { selection, prefix } => {
                     let result = catalog.select(selection)?;
+                    record_selection(&mut spec.queries, &result, limits)?;
                     result.local_documents()?;
                     *selection = result.query().clone();
                     for id in result.ids() {
@@ -379,6 +392,7 @@ impl SiteAssembly {
             match entry {
                 SiteEntrySpec::TagPages { selection } => {
                     let result = catalog.select(selection)?;
+                    record_selection(&mut spec.queries, &result, limits)?;
                     *selection = result.query().clone();
                     let mut tags = BTreeMap::<String, (String, Vec<ResourceRef>)>::new();
                     for source in result.iter() {
@@ -415,6 +429,7 @@ impl SiteAssembly {
                 }
                 SiteEntrySpec::Search { selection } => {
                     let result = catalog.select(selection)?;
+                    record_selection(&mut spec.queries, &result, limits)?;
                     generated_references = generated_references
                         .checked_add(result.len())
                         .ok_or_else(|| {
@@ -453,6 +468,7 @@ impl SiteAssembly {
                 }
                 SiteEntrySpec::Redirects { selection } => {
                     let result = catalog.select(selection)?;
+                    record_selection(&mut spec.queries, &result, limits)?;
                     result.local_documents()?;
                     *selection = result.query().clone();
                     for id in result.ids() {
@@ -484,6 +500,14 @@ impl SiteAssembly {
             return Err(fail(
                 Code::InvalidProperty,
                 "site requires an explicit index.html page",
+            ));
+        }
+        if property_bytes.saturating_add(query_evidence_bytes(&spec.queries, limits)?)
+            > limits.property_bytes
+        {
+            return Err(fail(
+                Code::ResourceLimit,
+                "site properties and query evidence exceed byte limit",
             ));
         }
         // Bounds apply across repeated generation intentions, not just each query.
@@ -527,6 +551,7 @@ impl SiteAssembly {
             &(&spec, &selected, revisions),
         )?;
         Ok(Self {
+            source_scope_evidence: scope.evidence(),
             spec,
             catalog,
             routes,
@@ -537,6 +562,9 @@ impl SiteAssembly {
     }
     pub fn spec(&self) -> &SiteSpec {
         &self.spec
+    }
+    pub fn source_scope_evidence(&self) -> &QueryEvidence {
+        &self.source_scope_evidence
     }
     pub fn catalog(&self) -> &PublicationCatalog {
         &self.catalog

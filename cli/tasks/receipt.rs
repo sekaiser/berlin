@@ -286,8 +286,22 @@ fn collect_artifact_inputs(
         | RuntimeArtifact::CssSources(sources) => {
             collect_text_inputs(inputs, project_root, sources)
         }
-        RuntimeArtifact::StaticSources { files, .. } => {
-            collect_file_inputs(inputs, project_root, files)?
+        RuntimeArtifact::StaticSources {
+            source_root,
+            snapshot,
+            ..
+        } => {
+            for file in snapshot.iter() {
+                let path = source_root.join(&file.relative);
+                let uri = url::Url::from_file_path(&path)
+                    .map_err(|_| anyhow::anyhow!("invalid asset input path"))?
+                    .to_string();
+                inputs.entry(uri.clone()).or_insert(InputReceipt {
+                    path: source_path(project_root, &uri, &path),
+                    sha256: digest(&file.bytes),
+                    content_id: None,
+                });
+            }
         }
         RuntimeArtifact::PublicationAssembly(_)
         | RuntimeArtifact::Catalog(_)
@@ -308,17 +322,6 @@ fn collect_org_inputs(
     for path in paths {
         let text = fs::read_to_string(path)?;
         insert_file_input(inputs, project_root, path, org_content_id(&text))?;
-    }
-    Ok(())
-}
-
-fn collect_file_inputs(
-    inputs: &mut BTreeMap<String, InputReceipt>,
-    project_root: &Path,
-    paths: &[PathBuf],
-) -> Result<(), Error> {
-    for path in paths {
-        insert_file_input(inputs, project_root, path, None)?;
     }
     Ok(())
 }

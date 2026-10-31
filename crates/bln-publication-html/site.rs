@@ -25,6 +25,11 @@ pub struct SiteManifest {
     pub schema_version: u32,
     pub site_id: PublicationId,
     pub catalog_digest: String,
+    pub queries: QueryEvidenceTable,
+    pub source_scope: QueryEvidence,
+    pub catalog_inputs: Vec<ResourceInputEvidence>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<OutputEvidence>,
     pub composition_fingerprint: String,
     pub render_input_fingerprint: String,
     pub routes: Vec<String>,
@@ -296,6 +301,7 @@ impl PublicationHtmlRenderer {
                     result.html.into_bytes()
                 }
                 SiteRoute::Redirect { target, source } => {
+                    context.insert("redirect_target", target);
                     context.insert(
                         "destination",
                         mount
@@ -312,6 +318,7 @@ impl PublicationHtmlRenderer {
                 }
                 SiteRoute::SearchPage => {
                     stylesheets.insert("search.css".into());
+                    stylesheets.insert("overview.css".into());
                     context.insert("search_index_version", assembly.composition_fingerprint());
                     self.owned_page("search.tera", None, context, limits)?
                         .into_bytes()
@@ -348,6 +355,10 @@ impl PublicationHtmlRenderer {
             schema_version: 1,
             site_id: assembly.spec().id.clone(),
             catalog_digest: catalog.input_digest().into(),
+            queries: assembly.spec().queries.clone(),
+            source_scope: assembly.source_scope_evidence().clone(),
+            catalog_inputs: catalog.input_sources().to_vec(),
+            output: None,
             composition_fingerprint: assembly.composition_fingerprint().into(),
             render_input_fingerprint,
             routes: files.keys().cloned().collect(),

@@ -54,6 +54,12 @@ impl ProductionSite<'_> {
         if url.path() == self.base.path().trim_end_matches('/') {
             url.set_path(self.base.path());
         }
+        let mut without_fragment = url.clone();
+        without_fragment.set_fragment(None);
+        let declared_original = self.outbound.contains(without_fragment.as_str());
+        if declared_original && !url.path().starts_with(self.base.path()) {
+            return Ok(None);
+        }
         let path = url
             .path()
             .strip_prefix(self.base.path())
@@ -63,6 +69,9 @@ impl ProductionSite<'_> {
             path.push_str("index.html");
         }
         if !self.known.contains(&path) {
+            if declared_original {
+                return Ok(None);
+            }
             bail!("Missing local destination in {owner}: {value} ({path})");
         }
         Ok(Some(LocalReference { path, url }))

@@ -68,10 +68,19 @@ pub(super) fn seal(
             .as_ref()
             .context("website has no output directory")?,
     );
-    let documents = if matches!(
-        node.operation,
-        Operation::RenderPublicationWebsite { .. } | Operation::RenderHtml { .. }
-    ) {
+    let documents = if matches!(node.operation, Operation::RenderHtml { .. }) {
+        let composed =
+            super::executor::runtime_input(node, artifacts, 0, |artifact| match artifact {
+                super::RuntimeArtifact::Composed(composed) => Some(composed),
+                _ => None,
+            })?;
+        match composed {
+            berlin_publication::ComposedArtifact::Site(site) => {
+                Some(DocumentInventory::from_site(site)?)
+            }
+            berlin_publication::ComposedArtifact::Single(_) => None,
+        }
+    } else if matches!(node.operation, Operation::RenderPublicationWebsite { .. }) {
         // Original-work routes are outside this portfolio. Its own manifest is
         // part of the exact sealed bundle; never invent legacy document routes.
         None
@@ -83,7 +92,17 @@ pub(super) fn seal(
             })?;
         Some(DocumentInventory::from_website(website)?)
     };
-    seal_output(project, pipeline, node, &source, documents)
+    let limits = if matches!(node.operation, Operation::RenderHtml { .. }) {
+        let composed =
+            super::executor::runtime_input(node, artifacts, 0, |artifact| match artifact {
+                super::RuntimeArtifact::Composed(composed) => Some(composed),
+                _ => None,
+            })?;
+        Some(composed.catalog().limits())
+    } else {
+        None
+    };
+    seal_output(project, pipeline, node, &source, documents, limits)
 }
 
 /// Import externally prepared bytes. The selected pipeline declares identity and
@@ -104,7 +123,7 @@ pub(crate) fn from_directory(
     ensure_directory(&source)?;
     let source = source.canonicalize()?;
     // Imported bytes have no verified relationship to the current authoring inputs.
-    seal_output(project, pipeline, node, &source, None)
+    seal_output(project, pipeline, node, &source, None, None)
 }
 
 pub(super) fn website_output(plan: &PipelinePlan) -> Result<&PipelineNode, Error> {
@@ -139,6 +158,7 @@ fn seal_output(
     node: &PipelineNode,
     source: &Path,
     documents: Option<DocumentInventory>,
+    publication_limits: Option<&berlin_publication::PublicationLimits>,
 ) -> Result<WebsiteRelease, Error> {
     let config = node
         .operation
@@ -185,6 +205,16 @@ fn seal_output(
         bail!("default github.io release must not contain a custom-domain CNAME");
     }
     add_notices(&site)?;
+    if let Some(limits) = publication_limits {
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(site.join("publication.json"))?)?;
+        let production = manifest
+            .get("output")
+            .and_then(|output| output.get("processing"))
+            .and_then(serde_json::Value::as_str)
+            == Some("berlin-production/v1");
+        super::composed::finalize_manifest(&site, false, production, limits)?;
+    }
     let files = inventory(&site)?;
     validate_site(&site, &files)?;
     let manifest = Manifest {

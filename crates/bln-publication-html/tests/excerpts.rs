@@ -108,6 +108,7 @@ fn fixture() -> (PublicationAssembly, ExcerptRef) {
     .into_call();
     let spec = PublicationSpec {
         schema_version: 1,
+        queries: Default::default(),
         metadata: PublicationMetadata {
             id: PublicationId("example".into()),
             title: "Example".into(),

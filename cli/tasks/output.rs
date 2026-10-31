@@ -422,6 +422,7 @@ mod tests {
         .unwrap();
         let spec = PublicationSpec {
             schema_version: 1,
+            queries: Default::default(),
             metadata: PublicationMetadata {
                 id: PublicationId("example".into()),
                 title: "Example".into(),

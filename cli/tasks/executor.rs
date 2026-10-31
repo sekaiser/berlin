@@ -86,13 +86,15 @@ impl<'a> NodeExecutor<'a> {
                 let mut assets = Vec::new();
                 let mut bytes = 0usize;
                 for (index, mount) in asset_mounts.iter().enumerate() {
-                    let (root, files) = self.input(node, index + 1, |a| match a {
-                        RuntimeArtifact::StaticSources { source_root, files } => {
-                            Some((source_root, files))
-                        }
+                    let (root, snapshot) = self.input(node, index + 1, |a| match a {
+                        RuntimeArtifact::StaticSources {
+                            source_root,
+                            snapshot,
+                            ..
+                        } => Some((source_root, snapshot)),
                         _ => None,
                     })?;
-                    for input in super::graphics::snapshot_files(root, files)? {
+                    for input in snapshot.iter() {
                         bytes = bytes
                             .checked_add(input.bytes.len())
                             .context("asset byte count overflow")?;
@@ -109,7 +111,7 @@ impl<'a> NodeExecutor<'a> {
                             ),
                             &input.bytes,
                         ));
-                        assets.push((Path::new(mount).join(input.relative), input.bytes));
+                        assets.push((Path::new(mount).join(&input.relative), input.bytes.clone()));
                     }
                 }
                 match composed {
@@ -325,13 +327,12 @@ impl<'a> NodeExecutor<'a> {
             RuntimeArtifact::DataSources(sources) => Some(sources),
             _ => None,
         })?;
-        let (root, files) = self.input(node, 1, |artifact| match artifact {
-            RuntimeArtifact::StaticSources { source_root, files } => Some((source_root, files)),
+        let inputs = self.input(node, 1, |artifact| match artifact {
+            RuntimeArtifact::StaticSources { snapshot, .. } => Some(snapshot),
             _ => None,
         })?;
         let output = output_path(node)?;
         let names = super::graphics::output_names(sources)?;
-        let inputs = super::graphics::snapshot_files(root, files)?;
         if self.options.dry_run {
             println!(
                 "would compile {} diagram(s) -> {}",
@@ -347,7 +348,7 @@ impl<'a> NodeExecutor<'a> {
             for (source, name) in sources.iter().zip(names) {
                 let svg = super::graphics::render(
                     &source.text,
-                    &inputs,
+                    inputs,
                     engine,
                     self.project.root(),
                     self.options.no_cache,
@@ -549,28 +550,30 @@ impl<'a> NodeExecutor<'a> {
         } else {
             source_root
         };
+        let files = load_files(self.project, pattern)?
+            .into_iter()
+            .filter(|path| {
+                path.is_file()
+                    && path.file_name().and_then(|name| name.to_str()) != Some(".DS_Store")
+            })
+            .collect::<Vec<_>>();
+        let snapshot = std::sync::Arc::new(super::graphics::snapshot_files(&source_root, &files)?);
         Ok(Some(RuntimeArtifact::StaticSources {
             source_root,
-            files: load_files(self.project, pattern)?
-                .into_iter()
-                .filter(|path| {
-                    path.is_file()
-                        && path.file_name().and_then(|name| name.to_str()) != Some(".DS_Store")
-                })
-                .collect(),
+            snapshot,
         }))
     }
 
     fn copy_assets(&self, node: &PipelineNode) -> Result<Option<RuntimeArtifact>, Error> {
-        let (source_root, files) = self.input(node, 0, |artifact| match artifact {
-            RuntimeArtifact::StaticSources { source_root, files } => Some((source_root, files)),
+        let snapshot = self.input(node, 0, |artifact| match artifact {
+            RuntimeArtifact::StaticSources { snapshot, .. } => Some(snapshot),
             _ => None,
         })?;
         let output = output_path(node)?;
         if self.options.dry_run {
             println!("would copy assets -> {}", output.display());
         } else {
-            copy_static::copy(files, source_root, &self.output_root.join(output))?;
+            copy_static::copy(snapshot, &self.output_root.join(output))?;
         }
         Ok(None)
     }
@@ -704,6 +707,54 @@ fn linkedin_diagnostics(node: &PipelineNode, drafts: &LinkedInDrafts) -> Vec<rec
 mod tests {
     use super::*;
     use berlin_content::Feed;
+
+    #[test]
+    fn asset_load_freezes_bytes_before_later_render_or_copy() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("assets")).unwrap();
+        let source = root.path().join("assets/diagram.svg");
+        std::fs::write(&source, "captured artwork").unwrap();
+        let project = Project::new(root.path().to_owned(), vec![]);
+        let program = berlin_pipeline_dsl::RhaiPipelineLoader::new(
+            "pipeline assets {output copy_assets(load_assets(\"assets/*\"),\"public\");}",
+        )
+        .unwrap();
+        let mut consumed_inputs = vec![];
+        let mut diagnostics = vec![];
+        let mut artifacts = HashMap::new();
+        let captured = NodeExecutor {
+            consumed_inputs: &mut consumed_inputs,
+            diagnostics: &mut diagnostics,
+            project: &project,
+            program: &program,
+            artifacts: &artifacts,
+            options: ExecutionOptions::default(),
+            output_root: root.path(),
+        }
+        .load_assets("assets/*")
+        .unwrap()
+        .unwrap();
+        std::fs::write(&source, "changed artwork").unwrap();
+        artifacts.insert(NodeId::from("assets"), captured);
+        let node = PipelineNode::new("copy", Operation::CopyAssets)
+            .depends_on("assets")
+            .output_to("public");
+        NodeExecutor {
+            consumed_inputs: &mut consumed_inputs,
+            diagnostics: &mut diagnostics,
+            project: &project,
+            program: &program,
+            artifacts: &artifacts,
+            options: ExecutionOptions::default(),
+            output_root: root.path(),
+        }
+        .execute(&node)
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("public/diagram.svg")).unwrap(),
+            "captured artwork"
+        );
+    }
 
     fn document_input<'a>(
         node: &PipelineNode,

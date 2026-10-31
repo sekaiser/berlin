@@ -123,6 +123,7 @@ fn assembly_with_limits(opening: &str, limits: PublicationLimits) -> Publication
     ]));
     let spec = PublicationSpec {
         schema_version: 1,
+        queries: Default::default(),
         metadata: PublicationMetadata {
             id: PublicationId("portfolio".into()),
             title: "Selected work".into(),
@@ -484,6 +485,7 @@ fn p05_nested_source_callout_renders_through_the_same_session_slots() {
     .into_call();
     let spec = PublicationSpec {
         schema_version: 1,
+        queries: Default::default(),
         metadata: PublicationMetadata {
             id: PublicationId("excerpt".into()),
             title: "Source excerpts".into(),

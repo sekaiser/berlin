@@ -119,6 +119,7 @@ fn e06_channel_support_is_explicit() {
     let registry = builder.finish();
     let spec = PublicationSpec {
         schema_version: 1,
+        queries: Default::default(),
         metadata: PublicationMetadata {
             id: PublicationId("example".into()),
             title: "Example".into(),
