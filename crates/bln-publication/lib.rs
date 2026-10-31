@@ -14,6 +14,7 @@ mod model;
 mod query;
 mod registry;
 mod resources;
+mod site;
 
 pub use assembly::*;
 pub use canonical::{canonical_bytes, fingerprint, input_digest};
@@ -26,6 +27,7 @@ pub use model::*;
 pub use query::*;
 pub use registry::*;
 pub use resources::*;
+pub use site::*;
 
 pub use berlin_publication_macros::{__view, Component};
 

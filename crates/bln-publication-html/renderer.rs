@@ -8,6 +8,9 @@ use berlin_publication::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tera::{Context, Function, Tera};
+#[path = "site.rs"]
+mod site_renderer;
+pub use site_renderer::*;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct HtmlBinding {
@@ -163,6 +166,24 @@ impl PublicationHtmlRenderer {
         registry: &ComponentRegistry,
         site: &PublicationSite,
     ) -> Result<HtmlPublication> {
+        self.render_mounted(
+            assembly,
+            registry,
+            site,
+            "publications/page.tera",
+            None,
+            &BTreeMap::new(),
+        )
+    }
+    fn render_mounted(
+        &self,
+        assembly: &PublicationAssembly,
+        registry: &ComponentRegistry,
+        site: &PublicationSite,
+        page_template: &str,
+        extra_context: Option<&Context>,
+        local_urls: &BTreeMap<ResourceId, String>,
+    ) -> Result<HtmlPublication> {
         registry.validate_channel(assembly.spec(), Channel::Html, assembly.catalog().limits())?;
         let mount: url::Url = site
             .url
@@ -227,16 +248,15 @@ impl PublicationHtmlRenderer {
                 stylesheets.insert(entry.clone());
             }
         }
-        if !self.tera.templates.contains_key("publications/page.tera") {
+        if !self.tera.templates.contains_key(page_template) {
             return Err(template_error(
                 Code::MissingTemplate,
-                "publications/page.tera",
+                page_template,
                 "required page wrapper is absent",
             ));
         }
-        crate::audit::audit(&self.tera, "publications/page.tera").map_err(|e| {
-            template_error(Code::TemplateContextFailure, "publications/page.tera", e)
-        })?;
+        crate::audit::audit(&self.tera, page_template)
+            .map_err(|e| template_error(Code::TemplateContextFailure, page_template, e))?;
         let site_value = json!({"url":mount.as_str().trim_end_matches('/'), "title":site.title, "author":site.author, "stylesheets":stylesheets.iter().map(|entry| mount.join(&format!("assets/css/{entry}")).map(|u| u.to_string())).collect::<std::result::Result<Vec<_>, _>>().map_err(|e| error(Code::UnsafeUrl,e.to_string()))?});
         let state = Arc::new(Mutex::new(SlotStore::new(
             assembly.catalog().limits().fragment_bytes,
@@ -248,12 +268,16 @@ impl PublicationHtmlRenderer {
             .resources()
             .filter_map(|entry| {
                 if entry.descriptor().origin == ResourceOrigin::Local {
-                    entry.original_url().map(|url| {
-                        (
-                            berlin_document::ContentId(entry.descriptor().id.leaf().into()),
-                            url.to_owned(),
-                        )
-                    })
+                    local_urls
+                        .get(&entry.descriptor().id)
+                        .map(String::as_str)
+                        .or_else(|| entry.original_url())
+                        .map(|url| {
+                            (
+                                berlin_document::ContentId(entry.descriptor().id.leaf().into()),
+                                url.to_owned(),
+                            )
+                        })
                 } else {
                     None
                 }
@@ -298,10 +322,11 @@ impl PublicationHtmlRenderer {
             cursor: 0,
             rendered: 0,
             descriptions,
+            local_urls,
         };
         let root = session.component(&assembly.spec().root, 0)?;
         store_slot(&state, "page", "body", root)?;
-        let context = context(
+        let mut context = context(
             assembly,
             &site_value,
             "page",
@@ -309,9 +334,12 @@ impl PublicationHtmlRenderer {
             Value::Object(Default::default()),
             slot_metadata(&state, "page")?,
         );
+        if let Some(extra) = extra_context {
+            context.extend(extra.clone());
+        }
         let html = render_template(
             &tera,
-            "publications/page.tera",
+            page_template,
             &context,
             &state,
             "page",
@@ -602,6 +630,7 @@ struct Session<'a> {
     cursor: usize,
     rendered: usize,
     descriptions: HashMap<String, Vec<berlin_document::Block>>,
+    local_urls: &'a BTreeMap<ResourceId, String>,
 }
 impl Session<'_> {
     fn component(&mut self, call: &ComponentCall, parent_heading: u8) -> Result<String> {
@@ -850,8 +879,11 @@ impl Session<'_> {
     fn resource(&self, reference: &ResourceRef) -> Result<Value> {
         let entry = self.assembly.catalog().resolve_resource(reference)?;
         let descriptor = entry.descriptor();
-        let url = entry
-            .original_url()
+        let url = self
+            .local_urls
+            .get(&reference.id)
+            .map(String::as_str)
+            .or_else(|| entry.original_url())
             .ok_or_else(|| error(Code::UnsafeUrl, "missing original resource URL"))?;
         let (kind_class, kind_label) = match descriptor.kind.as_str() {
             "repository" => ("repository", "Repository"),

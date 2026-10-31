@@ -1,0 +1,2 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="refresh" content="0;url={{ destination }}"><link rel="canonical" href="{{ destination }}"><title>{{ page_title }}</title></head><body><p>This entry has moved to <a href="{{ destination }}">{{ page_title }}</a>.</p></body></html>

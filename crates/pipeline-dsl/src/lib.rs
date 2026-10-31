@@ -98,6 +98,13 @@ impl RhaiPipelineLoader {
         composer: &FunctionRef,
         catalog: berlin_publication::PublicationCatalog,
     ) -> Result<berlin_publication::PublicationAssembly, CompileError> {
+        Ok(self.compose_artifact(composer, catalog)?.single()?.clone())
+    }
+    pub fn compose_artifact(
+        &self,
+        composer: &FunctionRef,
+        catalog: berlin_publication::PublicationCatalog,
+    ) -> Result<berlin_publication::ComposedArtifact, CompileError> {
         let state = publication_api::ComposerState::new(
             catalog.limits().clone(),
             catalog.options().resource_limits.clone(),
@@ -105,7 +112,7 @@ impl RhaiPipelineLoader {
         );
         let spec = self
             .engine
-            .call_fn_with_options::<berlin_publication::PublicationSpec>(
+            .call_fn_with_options::<rhai::Dynamic>(
                 rhai::CallFnOptions::new().with_tag(state),
                 &mut Scope::new(),
                 &self.ast,
@@ -116,11 +123,32 @@ impl RhaiPipelineLoader {
                 name: composer.as_str().into(),
                 source,
             })?;
-        Ok(berlin_publication::PublicationAssembly::resolve(
-            &spec,
-            catalog,
-            &self.components,
-        )?)
+        if spec.is::<publication_api::ScriptPublication>() {
+            let spec = spec.cast::<publication_api::ScriptPublication>().0;
+            Ok(berlin_publication::ComposedArtifact::Single(
+                std::sync::Arc::new(berlin_publication::PublicationAssembly::resolve(
+                    &spec,
+                    catalog,
+                    &self.components,
+                )?),
+            ))
+        } else if spec.is::<publication_api::ScriptSite>() {
+            let spec = spec.cast::<publication_api::ScriptSite>().0;
+            Ok(berlin_publication::ComposedArtifact::Site(
+                std::sync::Arc::new(berlin_publication::SiteAssembly::resolve(
+                    &spec,
+                    catalog,
+                    &self.components,
+                )?),
+            ))
+        } else {
+            Err(berlin_publication::Diagnostic::new(
+                berlin_publication::Code::InvalidProperty,
+                berlin_publication::Stage::Construction,
+                "composer must return a PublicationSpec or SiteSpec",
+            )
+            .into())
+        }
     }
     pub fn new(source: &str) -> Result<Self, CompileError> {
         Self::with_components(source, berlin_publication::ComponentRegistry::builtins())

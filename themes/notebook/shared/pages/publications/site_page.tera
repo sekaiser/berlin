@@ -1,0 +1,6 @@
+{% extends "_notebook.tera" %}
+{% block page_styles %}
+  {{ super() }}
+  {% for stylesheet in site.stylesheets %}<link rel="stylesheet" href="{{ stylesheet }}">{% endfor %}
+{% endblock page_styles %}
+{% block content %}<div class="publication-page"><div class="publication-site-content">{{ render_slot(owner=view.id, name="body") }}</div></div>{% endblock content %}

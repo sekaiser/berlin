@@ -61,8 +61,10 @@
   function resultUrl(indexUrl, document, section) {
     // The index is at <publication>/search/index.json. Relative resolution also
     // works for repository GitHub Pages deployments, without assuming '/'.
-    if (!/^notes\/[a-z0-9-]+\.html$/.test(document.path)) throw new Error('Invalid search result route');
-    const url = new URL('../' + document.path, indexUrl);
+    const external = /^https?:\/\//.test(document.path);
+    if (!external && (!/^[A-Za-z0-9_./-]+\.html$/.test(document.path) || document.path.startsWith('/') || document.path.split('/').some(part => !part || part === '.' || part === '..'))) throw new Error('Invalid search result route');
+    const url = new URL(external ? document.path : '../' + document.path, indexUrl);
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error('Invalid search result URL');
     if (section.fragment) url.hash = section.fragment;
     return url.href;
   }
@@ -105,7 +107,7 @@
     const item = window.document.createElement('li');
     const label = window.document.createElement('p');
     label.className = 'search-result-label';
-    label.textContent = note.kind === 'guide' ? 'Guide' : 'Note';
+    label.textContent = ({article:'Article', guide:'Guide', note:'Note', repository:'Repository', paper:'Paper', documentation:'Documentation', website:'Website', video:'Video', social_post:'Social post'})[note.kind] || 'Resource';
     const heading = window.document.createElement('h2');
     const link = window.document.createElement('a');
     link.href = resultUrl(indexUrl, note, section);

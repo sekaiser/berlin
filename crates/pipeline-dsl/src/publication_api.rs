@@ -12,6 +12,10 @@ type ScriptResult<T> = std::result::Result<T, Box<EvalAltResult>>;
 #[derive(Clone)]
 pub(super) struct ComposerState(Rc<RefCell<Budget>>);
 #[derive(Clone)]
+pub(super) struct ScriptPublication(pub Arc<PublicationSpec>);
+#[derive(Clone)]
+pub(super) struct ScriptSite(pub Arc<SiteSpec>);
+#[derive(Clone)]
 struct ScriptFragment {
     view: Arc<ScriptNode>,
     nodes: usize,
@@ -52,6 +56,8 @@ struct Budget {
     edges: usize,
     query_work: usize,
     query_results: usize,
+    lowered_bytes: usize,
+    lowered_nodes: usize,
     resource_limits: ResourceLimits,
     registry: Arc<ComponentRegistry>,
 }
@@ -68,6 +74,8 @@ impl ComposerState {
             edges: 0,
             query_work: 0,
             query_results: 0,
+            lowered_bytes: 0,
+            lowered_nodes: 0,
             resource_limits,
             registry,
         })))
@@ -87,11 +95,12 @@ fn state(context: &NativeCallContext<'_>) -> ScriptResult<ComposerState> {
 }
 
 pub(super) fn register(engine: &mut Engine) {
+    register_sites(engine);
     engine.register_type_with_name::<PublicationCatalog>("PublicationCatalog");
     engine.register_type_with_name::<ContentRef>("ContentRef");
     engine.register_type_with_name::<ExcerptRef>("ExcerptRef");
     engine.register_type_with_name::<ScriptFragment>("ViewFragment");
-    engine.register_type_with_name::<PublicationSpec>("PublicationSpec");
+    engine.register_type_with_name::<ScriptPublication>("PublicationSpec");
     engine.register_type_with_name::<ResourceRef>("ResourceRef");
     engine.register_type_with_name::<ResourceSelection>("ResourceSelection");
     engine.register_iterator::<ResourceSelection>();
@@ -199,6 +208,157 @@ pub(super) fn register(engine: &mut Engine) {
     );
     engine.register_fn("view_component", view_component);
     engine.register_fn("publication", publication);
+}
+
+fn register_sites(engine: &mut Engine) {
+    engine.register_type_with_name::<ScriptSite>("SiteSpec");
+    engine.register_fn(
+        "site",
+        |context: NativeCallContext<'_>,
+         id: ImmutableString,
+         settings: rhai::Map|
+         -> ScriptResult<ScriptSite> {
+            let state = state(&context)?;
+            if settings.keys().any(|key| key != "title") {
+                return Err(failure("unknown site setting"));
+            }
+            let title = settings
+                .get("title")
+                .and_then(|v| v.clone().try_cast::<ImmutableString>())
+                .ok_or_else(|| failure("site requires a title"))?;
+            let limits = state.0.borrow().limits.clone();
+            if id.trim().is_empty()
+                || id.chars().any(char::is_control)
+                || title.trim().is_empty()
+                || id.len() > limits.string_bytes
+                || title.len() > limits.string_bytes
+            {
+                return Err(failure("invalid or oversized site identity/title"));
+            }
+            {
+                let mut budget = state.0.borrow_mut();
+                if id.len().saturating_add(title.len())
+                    > budget.limits.property_bytes.saturating_sub(budget.bytes)
+                    || budget.edges >= budget.limits.occurrences
+                {
+                    return Err(failure(
+                        "ResourceLimit: cumulative site value budget exceeded",
+                    ));
+                }
+                budget.bytes += id.len() + title.len();
+                budget.edges += 1;
+            }
+            Ok(ScriptSite(Arc::new(SiteSpec::new(
+                PublicationId(id.into()),
+                title.to_string(),
+            ))))
+        },
+    );
+    engine.register_fn(
+        "add_page",
+        |context: NativeCallContext<'_>,
+         site: &mut ScriptSite,
+         key: ImmutableString,
+         route: ImmutableString,
+         view: ScriptPublication|
+         -> ScriptResult<()> {
+            validate_site_route(&route).map_err(failure)?;
+            let state = state(&context)?;
+            let limits = state.0.borrow().limits.clone();
+            let (nodes, bytes) = view.0.root.measure(&limits).map_err(failure)?;
+            charge_site(
+                &state,
+                &site.0,
+                nodes,
+                bytes
+                    .checked_add(key.len())
+                    .and_then(|v| v.checked_add(route.len()))
+                    .ok_or_else(|| failure("ResourceLimit: site size overflow"))?,
+            )?;
+            let site = site_mut(site, &state)?;
+            site.add_page(key.to_string(), route.to_string(), view.0.as_ref().clone());
+            Ok(())
+        },
+    );
+    engine.register_fn(
+        "add_document_pages",
+        |context: NativeCallContext<'_>,
+         site: &mut ScriptSite,
+         selection: ResourceSelection,
+         prefix: ImmutableString|
+         -> ScriptResult<()> {
+            selection.local_documents().map_err(failure)?;
+            validate_site_route(&prefix).map_err(failure)?;
+            let state = state(&context)?;
+            charge_site(&state, &site.0, selection.len(), prefix.len())?;
+            site_mut(site, &state)?
+                .add_document_pages(selection.query().clone(), prefix.to_string());
+            Ok(())
+        },
+    );
+    engine.register_fn(
+        "add_tag_pages",
+        |context: NativeCallContext<'_>,
+         site: &mut ScriptSite,
+         selection: ResourceSelection|
+         -> ScriptResult<()> {
+            let state = state(&context)?;
+            charge_site(&state, &site.0, selection.len(), 0)?;
+            site_mut(site, &state)?.add_tag_pages(selection.query().clone());
+            Ok(())
+        },
+    );
+    engine.register_fn(
+        "add_search",
+        |context: NativeCallContext<'_>,
+         site: &mut ScriptSite,
+         selection: ResourceSelection|
+         -> ScriptResult<()> {
+            let state = state(&context)?;
+            charge_site(&state, &site.0, selection.len(), 0)?;
+            site_mut(site, &state)?.add_search(selection.query().clone());
+            Ok(())
+        },
+    );
+    engine.register_fn(
+        "add_redirects",
+        |context: NativeCallContext<'_>,
+         site: &mut ScriptSite,
+         selection: ResourceSelection|
+         -> ScriptResult<()> {
+            selection.local_documents().map_err(failure)?;
+            let state = state(&context)?;
+            charge_site(&state, &site.0, selection.len(), 0)?;
+            site_mut(site, &state)?.add_redirects(selection.query().clone());
+            Ok(())
+        },
+    );
+}
+fn site_mut<'a>(site: &'a mut ScriptSite, state: &ComposerState) -> ScriptResult<&'a mut SiteSpec> {
+    if Arc::strong_count(&site.0) > 1 {
+        let bytes = canonical_bytes(site.0.as_ref()).map_err(failure)?.len();
+        charge_site(state, &site.0, site.0.entries.len(), bytes)?;
+    }
+    Ok(Arc::make_mut(&mut site.0))
+}
+fn charge_site(
+    state: &ComposerState,
+    site: &SiteSpec,
+    nodes: usize,
+    bytes: usize,
+) -> ScriptResult<()> {
+    let mut budget = state.0.borrow_mut();
+    if site.entries.len() >= budget.limits.occurrences
+        || nodes > budget.limits.occurrences.saturating_sub(budget.edges)
+        || bytes > budget.limits.property_bytes.saturating_sub(budget.bytes)
+    {
+        return Err(failure(
+            "ResourceLimit: cumulative site composition limit exceeded",
+        ));
+    }
+    budget.edges += nodes;
+    budget.bytes += bytes;
+    Ok(())
 }
 
 // Check borrowed Rhai arrays before serde copies their strings into Rust Vecs.
@@ -399,13 +559,38 @@ fn publication(
     context: NativeCallContext<'_>,
     metadata: rhai::Map,
     root: ScriptFragment,
-) -> ScriptResult<PublicationSpec> {
+) -> ScriptResult<ScriptPublication> {
     let state = state(&context)?;
     let mut metadata = metadata;
     metadata
         .entry("description".into())
         .or_insert(Dynamic::UNIT);
     let metadata: PublicationMetadata = rhai::serde::from_dynamic(&Dynamic::from(metadata))?;
+    {
+        let mut budget = state.0.borrow_mut();
+        let bytes = root
+            .bytes
+            .saturating_add(metadata.id.0.len())
+            .saturating_add(metadata.title.len())
+            .saturating_add(metadata.description.as_ref().map_or(0, String::len));
+        if bytes
+            > budget
+                .limits
+                .property_bytes
+                .saturating_sub(budget.lowered_bytes)
+            || root.nodes
+                > budget
+                    .limits
+                    .occurrences
+                    .saturating_sub(budget.lowered_nodes)
+        {
+            return Err(failure(
+                "ResourceLimit: cumulative publication lowering budget exceeded",
+            ));
+        }
+        budget.lowered_bytes += bytes;
+        budget.lowered_nodes += root.nodes;
+    }
     let spec = PublicationSpec::new(metadata, root.lower()).map_err(failure)?;
     let limits = state.0.borrow().limits.clone();
     state
@@ -413,5 +598,6 @@ fn publication(
         .borrow()
         .registry
         .normalize(&spec, &limits)
+        .map(|spec| ScriptPublication(Arc::new(spec)))
         .map_err(failure)
 }

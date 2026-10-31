@@ -21,6 +21,7 @@ lol_html.workspace = true
 markdown.workspace = true
 url.workspace = true
 html-escape.workspace = true
+slugify.workspace = true
 
 [dev-dependencies]
 berlin_content.workspace = true

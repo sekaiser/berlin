@@ -30,6 +30,9 @@ test('normalizes Unicode and treats punctuation as text, not regex', () => {
 test('supports Pages prefixes and rejects unsafe routes', () => {
   assert.equal(resultUrl('https://example.com/notebook/search/index.json', data[0], data[0].sections[1]), 'https://example.com/notebook/notes/processing-json.html#medals');
   assert.throws(() => resultUrl('https://example.com/search/index.json', {path: '//evil.test'}, {}));
+  assert.equal(resultUrl('https://example.com/notebook/search/index.json', {path:'engineering/notes/entry.html'}, {}), 'https://example.com/notebook/engineering/notes/entry.html');
+  assert.equal(resultUrl('https://example.com/notebook/search/index.json', {path:'https://example.test/paper?a=1&b=2#original'}, {}), 'https://example.test/paper?a=1&b=2#original');
+  for (const path of ['../escape.html','javascript:alert(1)','https://user:password@example.test/paper','/absolute.html']) assert.throws(() => resultUrl('https://example.com/search/index.json', {path}, {}));
   assert.equal(resultUrl('https://example.com/search/index.json', data[0], {fragment:'a%20b'}), 'https://example.com/notes/processing-json.html#a%20b');
 });
 test('excerpts show matching passages without interpreting markup', () => {

@@ -295,6 +295,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "slugify",
  "tempfile",
  "thiserror",
  "url",
@@ -314,6 +315,7 @@ dependencies = [
  "markdown",
  "serde",
  "serde_json",
+ "slugify",
  "tera",
  "url",
 ]

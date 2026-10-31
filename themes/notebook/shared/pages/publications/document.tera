@@ -1,0 +1,2 @@
+{% extends "notes/_article.tera" %}
+{% block article_body %}{{ render_slot(owner=view.id, name="body") }}{% endblock article_body %}

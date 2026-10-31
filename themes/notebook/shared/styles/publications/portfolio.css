@@ -20,5 +20,6 @@
 .publication-resource--compact { margin-block: 1rem; padding-block: 1rem; }
 .publication-citation { padding-left: 1.5rem; text-indent: -1.5rem; overflow-wrap: anywhere; }
 .publication-reading-list, .publication-resource-group { margin-block: 3rem; }
+.publication-site-content { padding: clamp(1.5rem, 5vw, 4rem); background: var(--paper); }
 .publication-page a:focus-visible { outline: 2px solid var(--ink); outline-offset: .25rem; }
 @media (max-width: 600px) { .publication-page main { margin: 0; } }
