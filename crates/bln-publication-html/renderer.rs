@@ -96,7 +96,7 @@ impl PublicationHtmlRenderer {
         let mut input_digests = BTreeMap::new();
         for (name, source) in &sources {
             logical_name(name)?;
-            input_digests.insert(format!("pages/{name}"), fingerprint("template/v1", source)?);
+            input_digests.insert(format!("pages/{name}"), input_digest(source.as_bytes()));
         }
         let mut tera = Tera::default();
         tera.autoescape_on(vec![".tera"]);

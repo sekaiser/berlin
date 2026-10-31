@@ -14,6 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 pub(super) struct NodeExecutor<'a> {
+    pub(super) consumed_inputs: &'a mut Vec<receipt::ConsumedInput>,
     pub(super) project: &'a Project,
     pub(super) artifacts: &'a HashMap<NodeId, RuntimeArtifact>,
     pub(super) program: &'a berlin_pipeline_dsl::RhaiPipelineLoader,
@@ -36,6 +37,48 @@ impl<'a> NodeExecutor<'a> {
             );
         }
         match &node.operation {
+            Operation::ComposePublication { composer, options } => {
+                let documents = self.input(node, 0, |artifact| match artifact {
+                    RuntimeArtifact::Documents(documents) => Some(documents),
+                    _ => None,
+                })?;
+                let assembly = self
+                    .program
+                    .compose_publication(composer, documents, options)
+                    .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+                Ok(Some(RuntimeArtifact::PublicationAssembly(Box::new(
+                    assembly,
+                ))))
+            }
+            Operation::RenderPublicationWebsite { config } => {
+                let assembly = self.input(node, 0, |artifact| match artifact {
+                    RuntimeArtifact::PublicationAssembly(assembly) => Some(assembly),
+                    _ => None,
+                })?;
+                super::composed::website(
+                    self.project,
+                    assembly,
+                    config,
+                    &self.output_root.join(output_path(node)?),
+                    self.options.dry_run,
+                    self.consumed_inputs,
+                )?;
+                Ok(None)
+            }
+            Operation::RenderPublicationText { config } => {
+                let assembly = self.input(node, 0, |artifact| match artifact {
+                    RuntimeArtifact::PublicationAssembly(assembly) => Some(assembly),
+                    _ => None,
+                })?;
+                super::composed::text(
+                    assembly,
+                    config,
+                    &self.output_root.join(output_path(node)?),
+                    self.options.dry_run,
+                    self.consumed_inputs,
+                )?;
+                Ok(None)
+            }
             Operation::LoadLatex { pattern } => Ok(Some(RuntimeArtifact::LatexSources(
                 super::paper::load(self.project, pattern)?,
             ))),

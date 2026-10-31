@@ -13,6 +13,9 @@ path = "main.rs"
 doc = false
 
 [dependencies]
+berlin_publication.workspace = true
+berlin_publication_html.workspace = true
+berlin_publication_text.workspace = true
 serde.workspace = true
 markdown.workspace = true
 berlin_document.workspace = true
@@ -47,7 +50,5 @@ warp.workspace = true
 libc = "0.2.189"
 
 [dev-dependencies]
-berlin_publication.workspace = true
-berlin_publication_html.workspace = true
 tempfile.workspace = true
 warp = { workspace = true, features = ["test"] }

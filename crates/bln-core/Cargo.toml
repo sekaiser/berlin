@@ -12,5 +12,6 @@ description = "A runtime for Berlin"
 path = "src/lib.rs"
 
 [dependencies]
+berlin_publication.workspace = true
 serde.workspace = true
 url.workspace = true

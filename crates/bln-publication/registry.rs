@@ -221,18 +221,38 @@ impl ComponentRegistry {
     }
 
     pub fn normalize_call(&self, call: &mut ComponentCall) -> Result<()> {
-        let schema = self.schema(&call.component)?;
-        for name in call.properties.keys() {
+        let counts = call
+            .slots
+            .iter()
+            .map(|(name, children)| (name.clone(), children.0.len()))
+            .collect();
+        self.normalize_parts(&call.component, &mut call.properties, &counts)?;
+        for name in self.schema(&call.component)?.slots.keys() {
+            call.slots.entry(name.clone()).or_default();
+        }
+        Ok(())
+    }
+
+    /// Shared validation for both owned trees and native shared fragment graphs.
+    /// Slot counts avoid expanding a reused child merely to validate its parent.
+    pub fn normalize_parts(
+        &self,
+        component: &ComponentKey,
+        properties: &mut BTreeMap<String, Property>,
+        slots: &BTreeMap<String, usize>,
+    ) -> Result<()> {
+        let schema = self.schema(component)?;
+        for name in properties.keys() {
             if !schema.properties.contains_key(name) {
                 return Err(Diagnostic::new(
                     Code::UnknownProperty,
                     Stage::Construction,
-                    format!("unknown property '{name}' for {}", call.component),
+                    format!("unknown property '{name}' for {component}"),
                 ));
             }
         }
         for (name, property) in &schema.properties {
-            match call.properties.get(name) {
+            match properties.get(name) {
                 Some(value) if !property.kind.accepts(value) => {
                     return Err(Diagnostic::new(
                         Code::InvalidProperty,
@@ -242,7 +262,7 @@ impl ComponentRegistry {
                 }
                 Some(_) => {}
                 None => {
-                    call.properties.insert(
+                    properties.insert(
                         name.clone(),
                         property.default.clone().ok_or_else(|| {
                             Diagnostic::new(
@@ -255,7 +275,7 @@ impl ComponentRegistry {
                 }
             }
         }
-        for name in call.slots.keys() {
+        for name in slots.keys() {
             if !schema.slots.contains_key(name) {
                 return Err(Diagnostic::new(
                     Code::UnknownSlot,
@@ -265,7 +285,7 @@ impl ComponentRegistry {
             }
         }
         for (name, slot) in &schema.slots {
-            let count = call.slots.get(name).map(|children| children.0.len());
+            let count = slots.get(name).copied();
             if count.is_none() && slot.minimum > 0 {
                 return Err(Diagnostic::new(
                     Code::MissingSlot,
@@ -288,7 +308,6 @@ impl ComponentRegistry {
                     format!("slot '{name}' exceeds {} children", slot.maximum),
                 ));
             }
-            call.slots.entry(name.clone()).or_default();
         }
         Ok(())
     }

@@ -22,6 +22,7 @@ pub(super) struct PipelineRun<'a> {
     transaction: Option<output::OutputTransaction>,
     output_root: PathBuf,
     owned_roots: Vec<PathBuf>,
+    consumed_inputs: Vec<receipt::ConsumedInput>,
     // Fields drop in declaration order: release the lock after transaction cleanup.
     lock: Option<output::ProjectLock>,
 }
@@ -44,6 +45,7 @@ impl<'a> PipelineRun<'a> {
             transaction: None,
             output_root: project.root().to_path_buf(),
             owned_roots: Vec::new(),
+            consumed_inputs: Vec::new(),
             lock: None,
         }
     }
@@ -78,11 +80,19 @@ impl<'a> PipelineRun<'a> {
     }
 
     fn prepare(&mut self) -> Result<PreparedPipeline, Error> {
-        let program = crate::pipeline::load_pipeline_program(self.project)?;
+        let (program, inputs) = crate::pipeline::load_pipeline_program_snapshot(self.project)?;
         let plan = program
             .load(self.pipeline)
             .map_err(|error| anyhow::anyhow!(error.to_string()))?;
         plan.validate()?;
+        if plan.nodes().iter().any(|node| {
+            matches!(
+                node.operation,
+                berlin_core::Operation::ComposePublication { .. }
+            )
+        }) {
+            self.consumed_inputs = inputs;
+        }
         if !self.options.dry_run
             && !self.options.allow_tex
             && plan.nodes().iter().any(|node| {
@@ -131,6 +141,7 @@ impl<'a> PipelineRun<'a> {
     fn execute(&mut self, prepared: &PreparedPipeline) -> Result<(), Error> {
         for node in prepared.plan.topological_order()? {
             let artifact = NodeExecutor {
+                consumed_inputs: &mut self.consumed_inputs,
                 project: self.project,
                 artifacts: &self.artifacts,
                 program: &prepared.program,
@@ -204,6 +215,7 @@ impl<'a> PipelineRun<'a> {
         }
         let error_message = outcome.as_ref().err().map(ToString::to_string);
         if let Err(receipt_error) = receipt::write(receipt::ReceiptContext {
+            consumed_inputs: &self.consumed_inputs,
             project: self.project,
             pipeline: self.pipeline,
             started_at: self.started_at,

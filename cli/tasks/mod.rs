@@ -14,6 +14,7 @@ use crate::util::fs::load_files;
 pub(crate) mod announcement;
 mod cache;
 pub(crate) mod check;
+mod composed;
 mod copy_static;
 mod css;
 mod executor;
@@ -25,7 +26,7 @@ mod output;
 pub(crate) mod paper;
 mod production;
 pub(crate) mod publication;
-mod receipt;
+pub(crate) mod receipt;
 pub(crate) mod release;
 mod run;
 pub(crate) mod theme;
@@ -40,6 +41,7 @@ struct SourceFile {
 
 #[derive(Clone, Debug)]
 enum RuntimeArtifact {
+    PublicationAssembly(Box<berlin_publication::PublicationAssembly>),
     LatexSources(Vec<paper::Source>),
     OrgSources(Vec<PathBuf>),
     MarkdownSources(Vec<SourceFile>),
@@ -57,6 +59,7 @@ enum RuntimeArtifact {
 impl RuntimeArtifact {
     fn kind(&self) -> ArtifactKind {
         match self {
+            Self::PublicationAssembly(_) => ArtifactKind::PublicationAssembly,
             Self::LatexSources(_) => ArtifactKind::LatexSources,
             Self::OrgSources(_) => ArtifactKind::OrgSources,
             Self::MarkdownSources(_) => ArtifactKind::MarkdownSources,

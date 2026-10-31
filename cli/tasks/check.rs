@@ -19,6 +19,7 @@ pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<AuthoringRepo
     let required = document_branch(&plan, document_root)?;
     let mut artifacts = HashMap::new();
     let mut diagnostics = Vec::new();
+    let mut consumed_inputs = Vec::new();
 
     // The complete branch has been checked against a read-only allowlist before
     // executing any node. In particular, dry-run Org export is not a substitute
@@ -29,6 +30,7 @@ pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<AuthoringRepo
         .filter(|node| required.contains(&node.id))
     {
         let artifact = NodeExecutor {
+            consumed_inputs: &mut consumed_inputs,
             project,
             artifacts: &artifacts,
             program: &program,

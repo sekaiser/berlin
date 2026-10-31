@@ -111,12 +111,17 @@ artifact!(Stylesheets);
 artifact!(StaticAssets);
 artifact!(Website);
 artifact!(LinkedInDrafts);
+artifact!(PublicationAssembly);
+artifact!(PublicationText);
 
 #[derive(Clone)]
 pub(super) struct PipelineTarget(Fragment);
 
 impl PipelineTarget {
     pub(super) fn from_dynamic(value: Dynamic) -> Option<Self> {
+        if value.is::<PublicationText>() {
+            return value.try_cast().map(|value: PublicationText| Self(value.0));
+        }
         if value.is::<MarkdownSources>() {
             return value.try_cast().map(|value: MarkdownSources| Self(value.0));
         }
@@ -141,6 +146,20 @@ impl PipelineTarget {
 }
 
 pub(super) fn register_operations(engine: &mut Engine) {
+    engine.register_type_with_name::<berlin_publication::PublicationOptions>("PublicationOptions");
+    engine.register_fn("publication_options",|settings:rhai::Map|->Result<berlin_publication::PublicationOptions,Box<rhai::EvalAltResult>>{let options:berlin_publication::PublicationOptions=rhai::serde::from_dynamic(&Dynamic::from(settings))?;options.limits.validate().map_err(|e|Box::<rhai::EvalAltResult>::from(e.to_string()))?;Ok(options)});
+    engine.register_type_with_name::<berlin_publication::TextConfig>("TextConfig");
+    engine.register_fn(
+        "text_config",
+        |settings: rhai::Map| -> Result<berlin_publication::TextConfig, Box<rhai::EvalAltResult>> {
+            rhai::serde::from_dynamic(&Dynamic::from(settings))
+        },
+    );
+    engine.register_fn("compose_publication", compose_publication);
+    engine.register_fn("render_publication_website", render_publication_website);
+    engine.register_fn("render_publication_text", render_publication_text);
+    engine.register_fn("named", PublicationAssembly::named);
+    engine.register_fn("named", PublicationText::named);
     engine.register_fn("load_latex", load_latex);
     engine.register_fn(
         "compile_papers",
@@ -190,6 +209,48 @@ pub(super) fn register_operations(engine: &mut Engine) {
     engine.register_fn("named", StaticAssets::named);
     engine.register_fn("named", Website::named);
     engine.register_fn("named", LinkedInDrafts::named);
+}
+
+fn compose_publication(
+    documents: Documents,
+    composer: FnPtr,
+    options: berlin_publication::PublicationOptions,
+) -> Result<PublicationAssembly, Box<rhai::EvalAltResult>> {
+    if composer.is_curried() || composer.is_anonymous() {
+        return Err("publication composers must be named, uncurried one-argument functions".into());
+    }
+    Ok(PublicationAssembly(documents.0.transform(
+        "publication_assembly",
+        Operation::ComposePublication {
+            composer: FunctionRef::new(composer.fn_name()),
+            options: Box::new(options),
+        },
+        None,
+    )))
+}
+fn render_publication_website(
+    assembly: PublicationAssembly,
+    output: ImmutableString,
+    config: WebsiteConfig,
+) -> Website {
+    Website(assembly.0.transform(
+        "publication_website",
+        Operation::RenderPublicationWebsite {
+            config: Box::new(config),
+        },
+        Some(output.as_str()),
+    ))
+}
+fn render_publication_text(
+    assembly: PublicationAssembly,
+    output: ImmutableString,
+    config: berlin_publication::TextConfig,
+) -> PublicationText {
+    PublicationText(assembly.0.transform(
+        "publication_text",
+        Operation::RenderPublicationText { config },
+        Some(output.as_str()),
+    ))
 }
 
 fn load_org(pattern: ImmutableString) -> OrgSources {

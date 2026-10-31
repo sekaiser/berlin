@@ -14,7 +14,7 @@ mod model;
 mod registry;
 
 pub use assembly::*;
-pub use canonical::{canonical_bytes, fingerprint};
+pub use canonical::{canonical_bytes, fingerprint, input_digest};
 pub use catalog::*;
 pub use components::*;
 pub use diagnostic::{Code, Diagnostic, Result, Stage};

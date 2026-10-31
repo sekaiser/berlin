@@ -15,6 +15,7 @@
 
 mod document_api;
 mod operations;
+mod publication_api;
 mod syntax;
 
 use std::collections::HashMap;
@@ -37,6 +38,15 @@ use syntax::register_pipeline_syntax;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CompileError {
+    #[error("publication composer '{0}' is not defined as a one-argument Rhai function")]
+    UnknownComposer(String),
+    #[error("publication composer '{name}' failed: {source}")]
+    Composition {
+        name: String,
+        source: Box<EvalAltResult>,
+    },
+    #[error("invalid publication: {0}")]
+    InvalidPublication(#[from] berlin_publication::Diagnostic),
     #[error("SOURCE_ROOTS must be a map of simple names to nonempty directory strings")]
     InvalidSourceRoots,
     #[error("DSL parsing failed: {0}")]
@@ -71,6 +81,34 @@ pub struct RhaiPipelineLoader {
 }
 
 impl RhaiPipelineLoader {
+    pub fn compose_publication(
+        &self,
+        composer: &FunctionRef,
+        documents: &DocumentCollection,
+        options: &berlin_publication::PublicationOptions,
+    ) -> Result<berlin_publication::PublicationAssembly, CompileError> {
+        let catalog =
+            berlin_publication::PublicationCatalog::new(documents.clone(), options.clone())?;
+        let state = publication_api::ComposerState::new(options.limits.clone());
+        let spec = self
+            .engine
+            .call_fn_with_options::<berlin_publication::PublicationSpec>(
+                rhai::CallFnOptions::new().with_tag(state),
+                &mut Scope::new(),
+                &self.ast,
+                composer.as_str(),
+                (catalog.clone(),),
+            )
+            .map_err(|source| CompileError::Composition {
+                name: composer.as_str().into(),
+                source,
+            })?;
+        Ok(berlin_publication::PublicationAssembly::resolve(
+            &spec,
+            catalog,
+            &berlin_publication::ComponentRegistry::builtins(),
+        )?)
+    }
     pub fn new(source: &str) -> Result<Self, CompileError> {
         let registry = PipelineRegistry::default();
         let engine = configured_engine(&registry);
@@ -143,6 +181,7 @@ fn configured_engine(registry: &PipelineRegistry) -> Engine {
     let mut engine = Engine::new();
     constrain_engine(&mut engine);
     register_document_api(&mut engine);
+    publication_api::register(&mut engine);
     register_operations(&mut engine);
     register_pipeline_syntax(&mut engine, registry);
     engine
@@ -191,6 +230,13 @@ fn compile_and_evaluate(
 
 fn validate_document_mappers(plan: &PipelinePlan, ast: &AST) -> Result<(), CompileError> {
     for node in plan.nodes() {
+        if let Operation::ComposePublication { composer, .. } = &node.operation
+            && !ast
+                .iter_functions()
+                .any(|f| f.name == composer.as_str() && f.params.len() == 1)
+        {
+            return Err(CompileError::UnknownComposer(composer.as_str().into()));
+        }
         if let Operation::MapDocuments { mapper } = &node.operation {
             let exists = ast
                 .iter_functions()

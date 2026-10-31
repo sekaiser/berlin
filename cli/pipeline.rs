@@ -11,11 +11,24 @@ use crate::args::PlanFlags;
 pub fn load_pipeline_program(
     project: &Project,
 ) -> Result<berlin_pipeline_dsl::RhaiPipelineLoader, Error> {
+    Ok(load_pipeline_program_snapshot(project)?.0)
+}
+
+pub(crate) fn load_pipeline_program_snapshot(
+    project: &Project,
+) -> Result<
+    (
+        berlin_pipeline_dsl::RhaiPipelineLoader,
+        Vec<crate::tasks::receipt::ConsumedInput>,
+    ),
+    Error,
+> {
     let mut source = String::new();
+    let mut snapshots = Vec::new();
     let mut locations = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let mut line = 1;
-    for path in project.pipeline_files() {
+    for (index, path) in project.pipeline_files().iter().enumerate() {
         let text = fs::read_to_string(path)
             .with_context(|| format!("Failed reading Rhai pipeline '{}'", path.display()))?;
         if !seen.insert(path.canonicalize()?) {
@@ -25,9 +38,15 @@ pub fn load_pipeline_program(
         line += text.bytes().filter(|byte| *byte == b'\n').count() + 1;
         source.push_str(&text);
         source.push('\n');
+        snapshots.push(crate::tasks::receipt::ConsumedInput::new(
+            path.clone(),
+            format!("pipelines/{index}.rhai"),
+            text.as_bytes(),
+        ));
     }
-    berlin_pipeline_dsl::RhaiPipelineLoader::new(&source)
-        .map_err(|error| anyhow::anyhow!("{}\nProgram sources: {}", error, locations.join("; ")))
+    let program = berlin_pipeline_dsl::RhaiPipelineLoader::new(&source)
+        .map_err(|error| anyhow::anyhow!("{}\nProgram sources: {}", error, locations.join("; ")))?;
+    Ok((program, snapshots))
 }
 
 pub fn print_current_plan(
@@ -82,6 +101,11 @@ pub fn print_current_plan(
 
 fn operation_name(operation: &Operation) -> String {
     match operation {
+        Operation::ComposePublication { composer, .. } => {
+            format!("compose publication ({})", composer.as_str())
+        }
+        Operation::RenderPublicationWebsite { .. } => "render publication website".into(),
+        Operation::RenderPublicationText { .. } => "render publication text".into(),
         Operation::CompileDiagrams { engine } => format!("compile diagrams ({})", engine.program()),
         Operation::LoadLatex { pattern } => format!("load latex {pattern}"),
         Operation::CompilePapers { .. } => "compile papers".into(),

@@ -60,6 +60,7 @@ struct FileReceipt {
 }
 
 pub(super) struct ReceiptContext<'a> {
+    pub consumed_inputs: &'a [ConsumedInput],
     pub project: &'a crate::project::Project,
     pub pipeline: &'a str,
     pub started_at: SystemTime,
@@ -72,6 +73,37 @@ pub(super) struct ReceiptContext<'a> {
 }
 
 pub(super) fn write(context: ReceiptContext<'_>) -> Result<(), Error> {
+    let inputs = if context
+        .plan
+        .nodes()
+        .iter()
+        .any(|node| matches!(node.operation, Operation::ComposePublication { .. }))
+    {
+        let mut inputs = BTreeMap::new();
+        for snapshot in context.consumed_inputs {
+            let uri = url::Url::from_file_path(&snapshot.path)
+                .map_err(|_| anyhow::anyhow!("invalid consumed input path"))?
+                .to_string();
+            inputs.insert(
+                uri,
+                InputReceipt {
+                    path: display_path(context.project.root(), &snapshot.path),
+                    sha256: snapshot.sha256.clone(),
+                    content_id: None,
+                },
+            );
+        }
+        collect_source_inputs(
+            &mut inputs,
+            context.project.root(),
+            context.plan,
+            context.artifacts,
+        )?;
+        enrich_content_ids(&mut inputs, context.plan, context.artifacts)?;
+        inputs.into_values().collect()
+    } else {
+        input_receipts(context.project, context.plan, context.artifacts)?
+    };
     let receipt = BuildReceipt {
         schema_version: 1,
         berlin_version: crate::version::berlin(),
@@ -87,7 +119,7 @@ pub(super) fn write(context: ReceiptContext<'_>) -> Result<(), Error> {
             .unwrap_or_default()
             .as_secs(),
         duration_ms: context.duration.as_millis().try_into().unwrap_or(u64::MAX),
-        inputs: input_receipts(context.project, context.plan, context.artifacts)?,
+        inputs,
         outputs: if context.error.is_none() {
             output_receipts(context.project.root(), context.owned_roots)?
         } else {
@@ -98,6 +130,22 @@ pub(super) fn write(context: ReceiptContext<'_>) -> Result<(), Error> {
     };
 
     persist(context.project.root(), context.pipeline, &receipt)
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ConsumedInput {
+    pub path: PathBuf,
+    pub logical_name: String,
+    pub sha256: String,
+}
+impl ConsumedInput {
+    pub(crate) fn new(path: PathBuf, logical_name: String, bytes: &[u8]) -> Self {
+        Self {
+            path,
+            logical_name,
+            sha256: digest(bytes),
+        }
+    }
 }
 
 pub(super) fn write_setup_failure(
@@ -241,7 +289,8 @@ fn collect_artifact_inputs(
         RuntimeArtifact::StaticSources { files, .. } => {
             collect_file_inputs(inputs, project_root, files)?
         }
-        RuntimeArtifact::Documents(_)
+        RuntimeArtifact::PublicationAssembly(_)
+        | RuntimeArtifact::Documents(_)
         | RuntimeArtifact::Feed(_)
         | RuntimeArtifact::WebsiteAssembly(_) => {}
     }

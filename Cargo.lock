@@ -177,6 +177,7 @@ dependencies = [
  "berlin_pipeline_dsl",
  "berlin_publication",
  "berlin_publication_html",
+ "berlin_publication_text",
  "clap",
  "csv",
  "env_logger",
@@ -214,6 +215,7 @@ dependencies = [
 name = "berlin_core"
 version = "0.0.0"
 dependencies = [
+ "berlin_publication",
  "serde",
  "url",
 ]
@@ -276,6 +278,7 @@ dependencies = [
  "berlin_content",
  "berlin_core",
  "berlin_document",
+ "berlin_publication",
  "rhai",
  "thiserror",
 ]
@@ -313,6 +316,11 @@ dependencies = [
 [[package]]
 name = "berlin_publication_macros"
 version = "0.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
 
 [[package]]
 name = "berlin_publication_text"

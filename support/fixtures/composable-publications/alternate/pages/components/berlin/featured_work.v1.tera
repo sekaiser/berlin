@@ -1,0 +1,7 @@
+<section class="alternate-work" id="{{ view.anchor }}">
+  <h{{ view.heading_level }}><a href="{{ props.source.url }}">{{ props.source.title }}</a></h{{ view.heading_level }}>
+  {{ render_slot(owner=view.id, name="source_description") }}
+  {% if props.annotation %}<p class="editorial-note">{{ props.annotation }}</p>{% endif %}
+  {% if props.source.published %}<p>Recorded {{ props.source.published }}</p>{% endif %}
+  {% if props.source.tags %}<p>{% for tag in props.source.tags %}{{ tag }}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+</section>

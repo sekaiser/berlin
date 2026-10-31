@@ -16,6 +16,16 @@ pub(crate) struct Theme {
 }
 
 impl Theme {
+    pub(super) fn snapshot(&self) -> Result<ThemeSnapshot, Error> {
+        Ok(ThemeSnapshot {
+            files: self
+                .files
+                .iter()
+                .map(|(name, path)| Ok((name.clone(), fs::read(path)?)))
+                .collect::<Result<_, Error>>()?,
+            paths: self.files.clone(),
+        })
+    }
     pub fn load(project_root: &Path, selected: &Path) -> Result<Self, Error> {
         let root = theme_root(project_root, selected)?;
         let mut files = BTreeMap::new();
@@ -102,6 +112,154 @@ impl Theme {
             bail!("Theme requires at least one styles/entries/*.css entry point");
         }
         Ok(entries)
+    }
+}
+
+/// Immutable consumed bytes. Presentation checks never materialize a workspace.
+pub(super) struct ThemeSnapshot {
+    files: BTreeMap<PathBuf, Vec<u8>>,
+    paths: BTreeMap<PathBuf, PathBuf>,
+}
+impl ThemeSnapshot {
+    pub fn consumed_inputs(&self) -> Vec<super::receipt::ConsumedInput> {
+        self.files
+            .iter()
+            .map(|(name, bytes)| {
+                super::receipt::ConsumedInput::new(
+                    self.paths[name].clone(),
+                    name.to_string_lossy().replace('\\', "/"),
+                    bytes,
+                )
+            })
+            .collect()
+    }
+    pub fn component_templates(&self) -> Result<BTreeMap<String, String>, Error> {
+        self.files
+            .iter()
+            .filter_map(|(name, bytes)| {
+                let relative = name.strip_prefix("pages").ok()?;
+                (relative.extension()? == "tera").then(|| {
+                    Ok((
+                        relative
+                            .to_str()
+                            .context("template path is not UTF-8")?
+                            .replace('\\', "/"),
+                        String::from_utf8(bytes.clone())?,
+                    ))
+                })
+            })
+            .collect()
+    }
+    pub fn validate_entries(
+        &self,
+        entries: &std::collections::BTreeSet<String>,
+    ) -> Result<(), Error> {
+        for entry in entries {
+            if !self
+                .files
+                .contains_key(&Path::new("styles/entries").join(entry))
+            {
+                bail!("missing required component CSS entry '{entry}'");
+            }
+        }
+        Ok(())
+    }
+    pub fn write_assets(&self, output: &Path) -> Result<(), Error> {
+        let workspace = tempfile::Builder::new()
+            .prefix("berlin-publication-theme-")
+            .tempdir()?;
+        for (name, bytes) in &self.files {
+            if name.starts_with("styles") {
+                let destination = workspace.path().join(name);
+                fs::create_dir_all(
+                    destination
+                        .parent()
+                        .context("snapshot path requires a parent")?,
+                )?;
+                fs::write(destination, bytes)?;
+            }
+        }
+        fs::create_dir_all(output.join("assets/css"))?;
+        for name in self.files.keys().filter(|name| {
+            name.parent() == Some(Path::new("styles/entries"))
+                && name.extension().is_some_and(|extension| extension == "css")
+        }) {
+            let css = super::css::compile_stylesheet(
+                &workspace.path().join(name),
+                &workspace.path().join("styles"),
+                None,
+            )?;
+            fs::write(
+                output
+                    .join("assets/css")
+                    .join(name.file_name().context("entry requires filename")?),
+                css,
+            )?;
+        }
+        for (name, bytes) in &self.files {
+            if name.starts_with("static") {
+                let destination = output.join(name);
+                fs::create_dir_all(
+                    destination
+                        .parent()
+                        .context("static path requires a parent")?,
+                )?;
+                fs::write(destination, bytes)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+    #[test]
+    fn publication_theme_uses_captured_bytes_after_files_change() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("project");
+        let theme = root.path().join("theme");
+        for path in [
+            project.clone(),
+            theme.join("defaults"),
+            theme.join("shared/pages"),
+            theme.join("shared/styles/entries"),
+            theme.join("shared/static"),
+        ] {
+            fs::create_dir_all(path).unwrap();
+        }
+        let template = theme.join("shared/pages/example.tera");
+        let css = theme.join("shared/styles/entries/portfolio.css");
+        let asset = theme.join("shared/static/example.txt");
+        fs::write(&template, "old template").unwrap();
+        fs::write(&css, "body {color:red}").unwrap();
+        fs::write(&asset, "old asset").unwrap();
+        let snapshot = Theme::load(&project, &theme).unwrap().snapshot().unwrap();
+        fs::write(&template, "new template").unwrap();
+        fs::write(&css, "body {color:blue}").unwrap();
+        fs::write(&asset, "new asset").unwrap();
+        assert_eq!(
+            snapshot.component_templates().unwrap()["example.tera"],
+            "old template"
+        );
+        let inputs = snapshot.consumed_inputs();
+        assert_eq!(
+            inputs
+                .iter()
+                .find(|input| input.logical_name == "pages/example.tera")
+                .unwrap()
+                .sha256,
+            berlin_publication::input_digest(b"old template")
+        );
+        let output = root.path().join("staged");
+        snapshot.write_assets(&output).unwrap();
+        assert_eq!(
+            fs::read_to_string(output.join("static/example.txt")).unwrap(),
+            "old asset"
+        );
+        let rendered = fs::read_to_string(output.join("assets/css/portfolio.css")).unwrap();
+        assert!(rendered.contains("red"));
+        assert!(!rendered.contains("blue"));
     }
 }
 

@@ -71,35 +71,90 @@ pub enum ArtifactKind {
     StaticAssets,
     Website,
     LinkedInDrafts,
+    PublicationAssembly,
+    PublicationText,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Operation {
-    LoadLatex { pattern: String },
-    CompilePapers { url_prefix: String },
-    CompileDiagrams { engine: crate::TexEngine },
-    LoadOrg { pattern: String },
-    LoadMarkdown { pattern: String },
-    LoadData { pattern: String },
-    LoadCss { pattern: String },
-    LoadAssets { pattern: String },
-    ExportOrg { backend: String, section: String },
+    LoadLatex {
+        pattern: String,
+    },
+    CompilePapers {
+        url_prefix: String,
+    },
+    CompileDiagrams {
+        engine: crate::TexEngine,
+    },
+    LoadOrg {
+        pattern: String,
+    },
+    LoadMarkdown {
+        pattern: String,
+    },
+    LoadData {
+        pattern: String,
+    },
+    LoadCss {
+        pattern: String,
+    },
+    LoadAssets {
+        pattern: String,
+    },
+    ExportOrg {
+        backend: String,
+        section: String,
+    },
     ParseMarkdown,
     ParseDocuments,
     MergeDocuments,
     ParseFeed,
-    MapDocuments { mapper: FunctionRef },
+    MapDocuments {
+        mapper: FunctionRef,
+    },
     AssembleWebsite,
     CompileCss,
     CopyAssets,
-    RenderWebsite { config: Box<WebsiteConfig> },
+    RenderWebsite {
+        config: Box<WebsiteConfig>,
+    },
     RenderLinkedIn,
+    ComposePublication {
+        composer: FunctionRef,
+        options: Box<berlin_publication::PublicationOptions>,
+    },
+    RenderPublicationWebsite {
+        config: Box<WebsiteConfig>,
+    },
+    RenderPublicationText {
+        config: berlin_publication::TextConfig,
+    },
 }
 
 impl Operation {
+    pub fn website_config(&self) -> Option<&WebsiteConfig> {
+        match self {
+            Self::RenderWebsite { config } | Self::RenderPublicationWebsite { config } => {
+                Some(config)
+            }
+            _ => None,
+        }
+    }
     pub fn signature(&self) -> OperationSignature {
         match self {
+            Self::ComposePublication { .. } => OperationSignature::artifact(
+                &[ArtifactKind::Documents],
+                ArtifactKind::PublicationAssembly,
+            ),
+            Self::RenderPublicationWebsite { .. } => OperationSignature::output(
+                &[ArtifactKind::PublicationAssembly],
+                ArtifactKind::Website,
+            ),
+            Self::RenderPublicationText { .. } => OperationSignature::output(
+                &[ArtifactKind::PublicationAssembly],
+                ArtifactKind::PublicationText,
+            ),
             Self::LoadLatex { .. } => OperationSignature::source(ArtifactKind::LatexSources),
             Self::CompileDiagrams { .. } => OperationSignature::output(
                 &[ArtifactKind::DataSources, ArtifactKind::StaticAssets],
@@ -289,7 +344,7 @@ impl PipelinePlan {
             validate_paper_url(node)?;
             validate_output(node, &mut output_paths)?;
             if let Some(target) = &node.deployment {
-                let validation = if matches!(node.operation, Operation::RenderWebsite { .. }) {
+                let validation = if node.operation.website_config().is_some() {
                     target.validate()
                 } else {
                     Err("only website outputs support deployment")
@@ -298,6 +353,31 @@ impl PipelinePlan {
                     node: node.id.clone(),
                     message,
                 })?;
+            }
+        }
+
+        // A composed renderer owns its complete product directory (including
+        // its manifest and theme assets). Other effects cannot silently replace
+        // part of that product after the renderer captured its inputs.
+        for node in self.nodes.iter().filter(|node| {
+            matches!(
+                node.operation,
+                Operation::RenderPublicationWebsite { .. }
+                    | Operation::RenderPublicationText { .. }
+            )
+        }) {
+            let Some(root) = &node.output_path else {
+                continue;
+            };
+            for other in self.nodes.iter().filter(|other| other.id != node.id) {
+                if let Some(path) = &other.output_path
+                    && (path.starts_with(root) || root.starts_with(path))
+                {
+                    return Err(PipelineValidationError::PublicationOutputConflict {
+                        first: node.id.clone(),
+                        second: other.id.clone(),
+                    });
+                }
             }
         }
 
@@ -517,6 +597,10 @@ impl<'a> TopologicalTraversal<'a> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PipelineValidationError {
+    PublicationOutputConflict {
+        first: NodeId,
+        second: NodeId,
+    },
     InvalidPaperUrl {
         node: NodeId,
         prefix: String,
@@ -561,6 +645,10 @@ pub enum PipelineValidationError {
 impl fmt::Display for PipelineValidationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::PublicationOutputConflict { first, second } => write!(
+                f,
+                "OutputConflict: composed output '{first}' overlaps another writer '{second}'; use a separate output root/pipeline"
+            ),
             Self::InvalidPaperUrl { node, prefix } => write!(
                 f,
                 "pipeline paper node '{node}' requires a confined root-relative PDF URL prefix, got '{prefix}'"

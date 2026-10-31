@@ -46,3 +46,11 @@ pub fn fingerprint(domain: &str, value: &impl Serialize) -> Result<String> {
         .map(|byte| format!("{byte:02x}"))
         .collect())
 }
+
+/// Content digest for captured input bytes, distinct from semantic fingerprints.
+pub fn input_digest(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}

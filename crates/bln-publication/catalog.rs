@@ -60,6 +60,7 @@ struct CatalogSnapshot {
     entries: BTreeMap<String, CatalogEntry>,
     drafts: BTreeSet<String>,
     options: PublicationOptions,
+    input_digest: String,
 }
 
 /// One index build and one owned document per source. Clones share the snapshot;
@@ -80,6 +81,23 @@ impl PublicationCatalog {
         mappings: BTreeMap<String, Url>,
     ) -> Result<Self> {
         options.limits.validate()?;
+        let input_digest = fingerprint(
+            "catalog-input/v1",
+            &documents
+                .as_slice()
+                .iter()
+                .map(|doc| {
+                    (
+                        &doc.id,
+                        &doc.kind,
+                        &doc.metadata,
+                        &doc.blocks,
+                        &doc.relations,
+                        &doc.provenance.source_hash,
+                    )
+                })
+                .collect::<Vec<_>>(),
+        )?;
         documents
             .validate()
             .map_err(|e| Diagnostic::new(Code::InvalidSource, Stage::Resolution, e.to_string()))?;
@@ -152,6 +170,7 @@ impl PublicationCatalog {
                 entries,
                 drafts,
                 options,
+                input_digest,
             }),
         })
     }
@@ -161,6 +180,9 @@ impl PublicationCatalog {
     }
     pub fn options(&self) -> &PublicationOptions {
         &self.snapshot.options
+    }
+    pub fn input_digest(&self) -> &str {
+        &self.snapshot.input_digest
     }
     pub fn len(&self) -> usize {
         self.snapshot.entries.len()

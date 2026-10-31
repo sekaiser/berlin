@@ -159,6 +159,32 @@ pub struct ComponentCall {
 }
 
 impl ComponentCall {
+    pub fn measure(&self, limits: &PublicationLimits) -> Result<(usize, usize)> {
+        limits.validate()?;
+        let mut budget = Budget {
+            occurrences: Vec::new(),
+            property_bytes: 0,
+        };
+        budget.visit(self, "root", 1, "constructing", limits)?;
+        Ok((budget.occurrences.len(), budget.property_bytes))
+    }
+    pub fn own_property_bytes(&self, limits: &PublicationLimits) -> Result<usize> {
+        let mut budget = Budget {
+            occurrences: Vec::new(),
+            property_bytes: 0,
+        };
+        if let Some(key) = &self.key {
+            budget.string(key, limits)?;
+        }
+        for (name, value) in &self.properties {
+            budget.string(name, limits)?;
+            budget.property(value, limits, 1)?;
+        }
+        for name in self.slots.keys() {
+            budget.string(name, limits)?;
+        }
+        Ok(budget.property_bytes)
+    }
     pub fn new(component: ComponentKey) -> Self {
         Self {
             component,

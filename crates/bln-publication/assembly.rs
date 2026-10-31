@@ -302,3 +302,47 @@ pub struct PublicationManifest {
     pub render_input_fingerprint: String,
     pub diagnostics: Vec<crate::Diagnostic>,
 }
+impl PublicationManifest {
+    pub fn record_inputs(&mut self, inputs: BTreeMap<String, String>) -> Result<()> {
+        for (name, digest) in &inputs {
+            if name.is_empty()
+                || name.starts_with('/')
+                || name.contains('\\')
+                || name.contains(':')
+                || name.chars().any(char::is_control)
+                || name
+                    .split('/')
+                    .any(|part| part.is_empty() || part == "." || part == "..")
+            {
+                return Err(crate::Diagnostic::new(
+                    crate::Code::UnsafeUrl,
+                    crate::Stage::Presentation,
+                    "manifest input names must be logical relative paths",
+                ));
+            }
+            if digest.len() != 64
+                || !digest
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+            {
+                return Err(crate::Diagnostic::new(
+                    crate::Code::InvalidProperty,
+                    crate::Stage::Presentation,
+                    "manifest input digests must be lowercase SHA-256",
+                ));
+            }
+        }
+        self.render_inputs.extend(inputs);
+        self.render_input_fingerprint = fingerprint(
+            "render-input/v1",
+            &(
+                &self.composition_fingerprint,
+                self.channel,
+                "1",
+                &self.render_inputs,
+                &self.configuration_digest,
+            ),
+        )?;
+        Ok(())
+    }
+}
