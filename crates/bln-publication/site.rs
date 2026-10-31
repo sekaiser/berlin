@@ -118,6 +118,8 @@ fn fail(code: Code, detail: impl Into<String>) -> Diagnostic {
 }
 pub fn validate_site_route(route: &str) -> Result<()> {
     if route.is_empty()
+        || route.starts_with("static/")
+        || route.starts_with("assets/")
         || route.len() > 1024
         || route.split('/').any(|part| {
             part.is_empty()

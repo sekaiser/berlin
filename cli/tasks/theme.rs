@@ -128,6 +128,21 @@ pub(super) struct ThemeSnapshot {
     paths: BTreeMap<PathBuf, PathBuf>,
 }
 impl ThemeSnapshot {
+    pub fn output_paths(&self, entries: &BTreeSet<String>) -> Result<BTreeSet<PathBuf>, Error> {
+        self.validate_entries(entries)?;
+        let mut paths = self
+            .files
+            .keys()
+            .filter(|p| p.starts_with("static"))
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        paths.extend(
+            entries
+                .iter()
+                .map(|name| Path::new("assets/css").join(name)),
+        );
+        Ok(paths)
+    }
     pub fn consumed_inputs(&self) -> Vec<super::receipt::ConsumedInput> {
         self.files
             .iter()

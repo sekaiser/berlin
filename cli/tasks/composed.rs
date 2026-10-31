@@ -7,6 +7,107 @@ use berlin_publication::{ComponentRegistry, PublicationAssembly, TextConfig, can
 use berlin_publication_html::{HtmlBindings, PublicationHtmlRenderer, PublicationSite};
 use std::path::Path;
 
+pub(super) fn site(
+    project: &Project,
+    assembly: &berlin_publication::SiteAssembly,
+    config: &WebsiteConfig,
+    output: &Path,
+    dry_run: bool,
+    consumed_inputs: &mut Vec<super::receipt::ConsumedInput>,
+    assets: &[(std::path::PathBuf, Vec<u8>)],
+) -> Result<(), Error> {
+    if let Some(settings) = &config.giscus {
+        settings.validate().map_err(anyhow::Error::msg)?;
+    }
+    let theme = match config.theme.as_deref() {
+        Some(selected) => super::theme::Theme::load(project.root(), selected)?,
+        None => super::theme::Theme::project_only(project.root())?,
+    };
+    let snapshot = theme.snapshot()?;
+    consumed_inputs.extend(snapshot.consumed_inputs());
+    let renderer =
+        PublicationHtmlRenderer::new(snapshot.component_templates()?, HtmlBindings::builtins())?;
+    let options = berlin_publication_html::SiteHtmlOptions {
+        description: config.description.clone(),
+        github: config.profiles.github.as_ref().map(ToString::to_string),
+        linkedin: config.profiles.linkedin.as_ref().map(ToString::to_string),
+        twitter: config.profiles.twitter.as_ref().map(ToString::to_string),
+        discussion: config.giscus.as_ref().map(|settings| {
+            berlin_publication_html::DiscussionSettings {
+                repo: settings.repo.clone(),
+                repo_id: settings.repo_id.clone(),
+                category: settings.category.clone(),
+                category_id: settings.category_id.clone(),
+                theme: settings.theme.as_ref().map(ToString::to_string),
+            }
+        }),
+    };
+    let mut result = renderer.render_site(
+        assembly,
+        &ComponentRegistry::builtins(),
+        &PublicationSite {
+            url: config
+                .url
+                .as_ref()
+                .context("site requires a destination URL")?
+                .to_string(),
+            title: config.title.clone(),
+            author: config.author.clone(),
+        },
+        &options,
+    )?;
+    if config.external_links_new_tab {
+        for (path, bytes) in &mut result.files {
+            if path.ends_with(".html") {
+                let html = std::str::from_utf8(bytes)?;
+                *bytes = super::website::links::open_external_in_new_tabs_bounded(
+                    html,
+                    config
+                        .url
+                        .as_ref()
+                        .context("external links require a site URL")?,
+                    assembly.catalog().limits().output_bytes,
+                )?
+                .into_bytes();
+            }
+        }
+    }
+    snapshot.validate_entries(&result.stylesheets)?;
+    let mut paths = snapshot.output_paths(&result.stylesheets)?;
+    paths.extend(result.files.keys().map(std::path::PathBuf::from));
+    paths.insert("publication.json".into());
+    validate_assets(&paths, assets)?;
+    result.manifest.render_inputs.extend(
+        consumed_inputs
+            .iter()
+            .map(|input| (input.logical_name.clone(), input.sha256.clone())),
+    );
+    result.manifest.render_input_fingerprint = berlin_publication::fingerprint(
+        "resource-site-operational-input/v1",
+        &(
+            &result.manifest.render_input_fingerprint,
+            &result.manifest.render_inputs,
+            config,
+        ),
+    )?;
+    if dry_run {
+        return Ok(());
+    }
+    std::fs::create_dir_all(output)?;
+    snapshot.write_assets(output, &result.stylesheets)?;
+    for (path, bytes) in result.files {
+        let path = output.join(path);
+        std::fs::create_dir_all(path.parent().context("site file has no parent")?)?;
+        std::fs::write(path, bytes)?;
+    }
+    std::fs::write(
+        output.join("publication.json"),
+        canonical_bytes(&result.manifest)?,
+    )?;
+    write_assets(output, assets)?;
+    Ok(())
+}
+
 pub(super) fn text(
     assembly: &PublicationAssembly,
     config: &TextConfig,
@@ -43,6 +144,7 @@ pub(super) fn website(
     output: &Path,
     dry_run: bool,
     consumed_inputs: &mut Vec<super::receipt::ConsumedInput>,
+    assets: &[(std::path::PathBuf, Vec<u8>)],
 ) -> Result<(), Error> {
     let theme = match config.theme.as_deref() {
         Some(selected) => super::theme::Theme::load(project.root(), selected)?,
@@ -80,6 +182,9 @@ pub(super) fn website(
         &(&result.manifest.configuration_digest, config),
     )?;
     snapshot.validate_entries(&result.stylesheets)?;
+    let mut paths = snapshot.output_paths(&result.stylesheets)?;
+    paths.extend(["index.html".into(), "publication.json".into()]);
+    validate_assets(&paths, assets)?;
     let mut inputs = consumed_inputs
         .iter()
         .map(|input| (input.logical_name.clone(), input.sha256.clone()))
@@ -99,6 +204,56 @@ pub(super) fn website(
         output.join("publication.json"),
         canonical_bytes(&result.manifest)?,
     )?;
+    write_assets(output, assets)?;
+    Ok(())
+}
+
+fn validate_assets(
+    paths: &std::collections::BTreeSet<std::path::PathBuf>,
+    assets: &[(std::path::PathBuf, Vec<u8>)],
+) -> Result<(), Error> {
+    let mut all = std::collections::BTreeSet::<String>::new();
+    for path in paths.iter().chain(assets.iter().map(|(path, _)| path)) {
+        if path
+            .components()
+            .any(|p| !matches!(p, std::path::Component::Normal(_)))
+            || path.as_os_str().is_empty()
+        {
+            anyhow::bail!("asset destination is not confined");
+        }
+        let name = path.to_str().context("asset destination is not UTF-8")?;
+        if name.chars().any(|c| c.is_control() || c == '\\') {
+            anyhow::bail!("asset destination contains unsafe characters");
+        }
+        let name = name.to_ascii_lowercase();
+        let prefix = format!("{name}/");
+        let ancestor = path
+            .ancestors()
+            .skip(1)
+            .filter_map(|p| p.to_str())
+            .any(|p| all.contains(&p.to_ascii_lowercase()));
+        if all.contains(&name)
+            || ancestor
+            || all
+                .range(prefix.clone()..)
+                .next()
+                .is_some_and(|p| p.starts_with(&prefix))
+        {
+            anyhow::bail!(
+                "asset destination conflicts with another output: {}",
+                path.display()
+            );
+        }
+        all.insert(name);
+    }
+    Ok(())
+}
+fn write_assets(root: &Path, assets: &[(std::path::PathBuf, Vec<u8>)]) -> Result<(), Error> {
+    for (path, bytes) in assets {
+        let destination = root.join(path);
+        std::fs::create_dir_all(destination.parent().context("asset has no parent")?)?;
+        std::fs::write(destination, bytes)?;
+    }
     Ok(())
 }
 
@@ -161,7 +316,16 @@ mod tests {
                 ..Default::default()
             };
             assert!(
-                website(&project, &assembly, &config, &staged, false, &mut vec![]).is_err(),
+                website(
+                    &project,
+                    &assembly,
+                    &config,
+                    &staged,
+                    false,
+                    &mut vec![],
+                    &[]
+                )
+                .is_err(),
                 "{failure}"
             );
             assert!(

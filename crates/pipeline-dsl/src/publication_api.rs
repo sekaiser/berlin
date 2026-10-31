@@ -208,6 +208,121 @@ pub(super) fn register(engine: &mut Engine) {
     );
     engine.register_fn("view_component", view_component);
     engine.register_fn("publication", publication);
+    register_helpers(engine);
+}
+
+fn register_helpers(engine: &mut Engine) {
+    engine.register_fn(
+        "map_cards",
+        |context: NativeCallContext<'_>, selection: ResourceSelection| {
+            map_selection(&context, selection, "berlin.resource_card@1", "resource")
+        },
+    );
+    engine.register_fn(
+        "map_featured",
+        |context: NativeCallContext<'_>, selection: ResourceSelection| {
+            map_selection(&context, selection, "berlin.featured_work@1", "source")
+        },
+    );
+    engine.register_fn(
+        "section",
+        |context: NativeCallContext<'_>, title: ImmutableString, children: rhai::Array| {
+            make_view(
+                &context,
+                "berlin.section@1".into(),
+                rhai::Map::from_iter([("title".into(), Dynamic::from(title))]),
+                rhai::Map::from_iter([("body".into(), Dynamic::from(children))]),
+            )
+        },
+    );
+    engine.register_fn(
+        "reading_list",
+        |context: NativeCallContext<'_>, title: ImmutableString, children: rhai::Array| {
+            make_view(
+                &context,
+                "berlin.reading_list@1".into(),
+                rhai::Map::from_iter([("title".into(), Dynamic::from(title))]),
+                rhai::Map::from_iter([("items".into(), Dynamic::from(children))]),
+            )
+        },
+    );
+    engine.register_fn(
+        "publication",
+        |context: NativeCallContext<'_>,
+         id: ImmutableString,
+         mut settings: rhai::Map,
+         children: rhai::Array| {
+            if settings.contains_key("id") {
+                return Err(failure("publication ID must be supplied only once"));
+            }
+            settings.insert("id".into(), Dynamic::from(id));
+            let root = make_view(
+                &context,
+                "berlin.portfolio@1".into(),
+                rhai::Map::new(),
+                rhai::Map::from_iter([("body".into(), Dynamic::from(children))]),
+            )?;
+            make_publication(&context, settings, root)
+        },
+    );
+    engine.register_fn(
+        "home_page",
+        |context: NativeCallContext<'_>,
+         authored: ResourceSelection,
+         reading: ResourceSelection|
+         -> ScriptResult<ScriptPublication> {
+            let mut children = rhai::Array::new();
+            if !authored.is_empty() {
+                let cards = map_selection(&context, authored, "berlin.featured_work@1", "source")?;
+                children.push(Dynamic::from(make_view(
+                    &context,
+                    "berlin.section@1".into(),
+                    rhai::Map::from_iter([("title".into(), Dynamic::from("Notes"))]),
+                    rhai::Map::from_iter([("body".into(), Dynamic::from(cards))]),
+                )?));
+            }
+            if !reading.is_empty() {
+                let cards = map_selection(&context, reading, "berlin.resource_card@1", "resource")?;
+                children.push(Dynamic::from(make_view(
+                    &context,
+                    "berlin.reading_list@1".into(),
+                    rhai::Map::from_iter([("title".into(), Dynamic::from("Reading"))]),
+                    rhai::Map::from_iter([("items".into(), Dynamic::from(cards))]),
+                )?));
+            }
+            let root = make_view(
+                &context,
+                "berlin.portfolio@1".into(),
+                rhai::Map::new(),
+                rhai::Map::from_iter([("body".into(), Dynamic::from(children))]),
+            )?;
+            make_publication(
+                &context,
+                rhai::Map::from_iter([
+                    ("id".into(), Dynamic::from("home")),
+                    ("title".into(), Dynamic::from("Notebook")),
+                ]),
+                root,
+            )
+        },
+    );
+}
+fn map_selection(
+    context: &NativeCallContext<'_>,
+    selection: ResourceSelection,
+    key: &str,
+    property: &str,
+) -> ScriptResult<rhai::Array> {
+    let mut result = Vec::with_capacity(selection.len());
+    for reference in selection {
+        result.push(Dynamic::from(make_view(
+            context,
+            key.into(),
+            rhai::Map::from_iter([(property.into(), Dynamic::from(reference))]),
+            rhai::Map::new(),
+        )?));
+    }
+    Ok(result)
 }
 
 fn register_sites(engine: &mut Engine) {
@@ -456,7 +571,15 @@ fn view_component(
     props: rhai::Map,
     slots: rhai::Map,
 ) -> ScriptResult<ScriptFragment> {
-    let state = state(&context)?;
+    make_view(&context, key, props, slots)
+}
+fn make_view(
+    context: &NativeCallContext<'_>,
+    key: ImmutableString,
+    props: rhai::Map,
+    slots: rhai::Map,
+) -> ScriptResult<ScriptFragment> {
+    let state = state(context)?;
     let mut call = ComponentCall::new(key.as_str().parse().map_err(failure)?);
     for (name, value) in props {
         if name == "key" {
@@ -560,7 +683,14 @@ fn publication(
     metadata: rhai::Map,
     root: ScriptFragment,
 ) -> ScriptResult<ScriptPublication> {
-    let state = state(&context)?;
+    make_publication(&context, metadata, root)
+}
+fn make_publication(
+    context: &NativeCallContext<'_>,
+    metadata: rhai::Map,
+    root: ScriptFragment,
+) -> ScriptResult<ScriptPublication> {
+    let state = state(context)?;
     let mut metadata = metadata;
     metadata
         .entry("description".into())

@@ -68,7 +68,10 @@ pub(super) fn seal(
             .as_ref()
             .context("website has no output directory")?,
     );
-    let documents = if matches!(node.operation, Operation::RenderPublicationWebsite { .. }) {
+    let documents = if matches!(
+        node.operation,
+        Operation::RenderPublicationWebsite { .. } | Operation::RenderHtml { .. }
+    ) {
         // Original-work routes are outside this portfolio. Its own manifest is
         // part of the exact sealed bundle; never invent legacy document routes.
         None

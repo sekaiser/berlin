@@ -89,6 +89,7 @@ impl<'a> PipelineRun<'a> {
             matches!(
                 node.operation,
                 berlin_core::Operation::ComposePublication { .. }
+                    | berlin_core::Operation::Compose { .. }
             )
         }) {
             self.consumed_inputs = inputs;
@@ -143,6 +144,7 @@ impl<'a> PipelineRun<'a> {
             matches!(
                 node.operation,
                 berlin_core::Operation::ComposePublication { .. }
+                    | berlin_core::Operation::Compose { .. }
             )
         });
         for node in prepared.plan.topological_order()? {

@@ -604,6 +604,95 @@ pub struct ExternalResourceCollection {
     input_sources: BTreeMap<(String, String), ResourceInputEvidence>,
 }
 impl ExternalResourceCollection {
+    /// Combine already captured batches without copying metadata payloads.
+    pub fn merge(
+        batches: &[Self],
+        limits: &ResourceLimits,
+        publication: &PublicationLimits,
+    ) -> Result<Self> {
+        limits.validate()?;
+        let count = batches
+            .iter()
+            .try_fold(0usize, |total, batch| total.checked_add(batch.len()))
+            .ok_or_else(|| limit("resource count overflow"))?;
+        if count > limits.catalog_items {
+            return Err(limit("external resource count exceeded"));
+        }
+        let mut result = Self::default();
+        let mut ids = BTreeMap::<ResourceId, ResourceSource>::new();
+        let mut targets = BTreeMap::<String, ResourceId>::new();
+        let mut charged = 0usize;
+        for batch in batches {
+            for input in batch.input_sources.values() {
+                if result.input_sources.len() >= limits.catalog_items
+                    && !result
+                        .input_sources
+                        .contains_key(&(input.namespace.clone(), input.logical_name.clone()))
+                {
+                    return Err(limit("resource source file count exceeded"));
+                }
+                if let Some(old) = result.input_sources.insert(
+                    (input.namespace.clone(), input.logical_name.clone()),
+                    input.clone(),
+                ) && old != *input
+                {
+                    return Err(invalid(
+                        "conflicting snapshots for one logical resource input",
+                    ));
+                }
+            }
+            for record in &batch.records {
+                let id = record.resource.resource_id()?;
+                if let Some(old) = ids.insert(id.clone(), record.source.clone()) {
+                    return Err(Diagnostic::new(
+                        Code::DuplicateResource,
+                        Stage::Resolution,
+                        format!(
+                            "duplicate resource in {} record {} and {} record {}",
+                            old.logical_name,
+                            old.record,
+                            record.source.logical_name,
+                            record.source.record
+                        ),
+                    )
+                    .source(id.as_str(), None));
+                }
+                record.source.validate()?;
+                record
+                    .resource
+                    .as_ref()
+                    .clone()
+                    .normalized(limits, publication)?;
+                charged = charged
+                    .checked_add(
+                        crate::canonical_bytes(&(record.resource.as_ref(), &record.source))?.len(),
+                    )
+                    .ok_or_else(|| limit("resource size overflow"))?;
+                if charged > limits.descriptor_bytes {
+                    return Err(limit("external descriptor collection byte limit exceeded"));
+                }
+                let target =
+                    validate_resource_url(&record.resource.url, limits.url_bytes)?.to_string();
+                if let Some(first) = targets.get(&target) {
+                    result.duplicate_targets.push(DuplicateResourceTarget {
+                        first: first.clone(),
+                        second: id.clone(),
+                    });
+                } else {
+                    targets.insert(target, id);
+                }
+                result.records.push(record.clone());
+            }
+        }
+        result
+            .records
+            .sort_by(|a, b| a.resource.id.cmp(&b.resource.id));
+        result
+            .duplicate_targets
+            .sort_by(|a, b| (&a.first, &a.second).cmp(&(&b.first, &b.second)));
+        // Charge and validate even record-free input snapshots.
+        result.with_input_sources(vec![], limits)
+    }
     pub fn new(
         mut records: Vec<(ExternalResource, ResourceSource)>,
         limits: &ResourceLimits,

@@ -284,7 +284,8 @@ fn compile_and_evaluate(
 
 fn validate_document_mappers(plan: &PipelinePlan, ast: &AST) -> Result<(), CompileError> {
     for node in plan.nodes() {
-        if let Operation::ComposePublication { composer, .. } = &node.operation
+        if let Operation::ComposePublication { composer, .. } | Operation::Compose { composer } =
+            &node.operation
             && !ast
                 .iter_functions()
                 .any(|f| f.name == composer.as_str() && f.params.len() == 1)

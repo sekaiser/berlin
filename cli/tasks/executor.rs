@@ -37,6 +37,126 @@ impl<'a> NodeExecutor<'a> {
             );
         }
         match &node.operation {
+            Operation::AssembleCatalog { options, .. } => {
+                let mut documents = Vec::new();
+                let mut resources = Vec::new();
+                for dependency in &node.dependencies {
+                    match self
+                        .artifacts
+                        .get(dependency)
+                        .context("missing catalog input")?
+                    {
+                        RuntimeArtifact::Documents(batch) => documents.push(batch.clone()),
+                        RuntimeArtifact::ExternalResources(batch) => resources.push(batch.clone()),
+                        _ => anyhow::bail!("catalog accepts only typed document/resource batches"),
+                    }
+                }
+                let resources = berlin_publication::ExternalResourceCollection::merge(
+                    &resources,
+                    &options.resource_limits,
+                    &options.limits,
+                )?;
+                let catalog = berlin_publication::PublicationCatalog::with_document_batches(
+                    documents,
+                    resources,
+                    options.as_ref().clone(),
+                    Default::default(),
+                )?;
+                Ok(Some(RuntimeArtifact::Catalog(catalog)))
+            }
+            Operation::Compose { composer } => {
+                let catalog = self.input(node, 0, |a| match a {
+                    RuntimeArtifact::Catalog(c) => Some(c),
+                    _ => None,
+                })?;
+                let composed = self
+                    .program
+                    .compose_artifact(composer, catalog.clone())
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                Ok(Some(RuntimeArtifact::Composed(composed)))
+            }
+            Operation::RenderHtml {
+                config,
+                asset_mounts,
+            } => {
+                let composed = self.input(node, 0, |a| match a {
+                    RuntimeArtifact::Composed(c) => Some(c),
+                    _ => None,
+                })?;
+                let mut assets = Vec::new();
+                let mut bytes = 0usize;
+                for (index, mount) in asset_mounts.iter().enumerate() {
+                    let (root, files) = self.input(node, index + 1, |a| match a {
+                        RuntimeArtifact::StaticSources { source_root, files } => {
+                            Some((source_root, files))
+                        }
+                        _ => None,
+                    })?;
+                    for input in super::graphics::snapshot_files(root, files)? {
+                        bytes = bytes
+                            .checked_add(input.bytes.len())
+                            .context("asset byte count overflow")?;
+                        if bytes > composed.catalog().limits().fragment_bytes {
+                            anyhow::bail!("HTML asset snapshot byte limit exceeded");
+                        }
+                        let path = root.join(&input.relative);
+                        let logical = crate::util::fs::source_reference(self.project, &path)?;
+                        self.consumed_inputs.push(receipt::ConsumedInput::new(
+                            path,
+                            format!(
+                                "assets/{}",
+                                logical.to_string_lossy().trim_start_matches('@')
+                            ),
+                            &input.bytes,
+                        ));
+                        assets.push((Path::new(mount).join(input.relative), input.bytes));
+                    }
+                }
+                match composed {
+                    berlin_publication::ComposedArtifact::Single(assembly) => {
+                        super::composed::website(
+                            self.project,
+                            assembly,
+                            config,
+                            &self.output_root.join(output_path(node)?),
+                            self.options.dry_run,
+                            self.consumed_inputs,
+                            &assets,
+                        )?
+                    }
+                    berlin_publication::ComposedArtifact::Site(assembly) => super::composed::site(
+                        self.project,
+                        assembly,
+                        config,
+                        &self.output_root.join(output_path(node)?),
+                        self.options.dry_run,
+                        self.consumed_inputs,
+                        &assets,
+                    )?,
+                }
+                Ok(None)
+            }
+            Operation::RenderText { config } => {
+                let composed = self.input(node, 0, |a| match a {
+                    RuntimeArtifact::Composed(c) => Some(c),
+                    _ => None,
+                })?;
+                let warnings = super::composed::text(
+                    composed.single()?,
+                    config,
+                    &self.output_root.join(output_path(node)?),
+                    self.options.dry_run,
+                    self.consumed_inputs,
+                )?;
+                for warning in warnings {
+                    let berlin_document_linkedin::LinkedInDraftDiagnostic::CharacterLimitExceeded {
+                        limit,
+                        actual,
+                    } = warning;
+                    self.diagnostics.push(receipt::Diagnostic{node:node.id.to_string(),content_id:String::new(),code:"character_limit_exceeded".into(),message:format!("LinkedIn draft has {actual} characters; limit is {limit}. Full draft retained.")});
+                }
+                Ok(None)
+            }
             Operation::ComposePublication { composer, options } => {
                 let documents = self.input(node, 0, |artifact| match artifact {
                     RuntimeArtifact::Documents(documents) => Some(documents),
@@ -62,6 +182,7 @@ impl<'a> NodeExecutor<'a> {
                     &self.output_root.join(output_path(node)?),
                     self.options.dry_run,
                     self.consumed_inputs,
+                    &[],
                 )?;
                 Ok(None)
             }
@@ -148,7 +269,7 @@ impl<'a> NodeExecutor<'a> {
                 .collect::<Result<Vec<_>, _>>()?,
         )
         .validated()?;
-        Ok(Some(RuntimeArtifact::Documents(documents)))
+        Ok(Some(RuntimeArtifact::Documents(documents.into())))
     }
 
     fn parse_feed(&self, node: &PipelineNode) -> Result<Option<RuntimeArtifact>, Error> {
@@ -266,7 +387,7 @@ impl<'a> NodeExecutor<'a> {
                 self.options.no_cache,
             )?
         };
-        Ok(Some(RuntimeArtifact::Documents(documents)))
+        Ok(Some(RuntimeArtifact::Documents(documents.into())))
     }
 
     fn parse_documents(&self, node: &PipelineNode) -> Result<Option<RuntimeArtifact>, Error> {
@@ -285,7 +406,7 @@ impl<'a> NodeExecutor<'a> {
             })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Some(RuntimeArtifact::Documents(
-            DocumentCollection::new(documents).validated()?,
+            DocumentCollection::new(documents).validated()?.into(),
         )))
     }
 
@@ -303,7 +424,7 @@ impl<'a> NodeExecutor<'a> {
             .cloned()
             .collect::<Vec<_>>();
         Ok(Some(RuntimeArtifact::Documents(
-            DocumentCollection::new(merged).validated()?,
+            DocumentCollection::new(merged).validated()?.into(),
         )))
     }
 
@@ -320,7 +441,7 @@ impl<'a> NodeExecutor<'a> {
             .program
             .map_documents(mapper, documents)
             .map_err(|error| anyhow::anyhow!(error.to_string()))?;
-        Ok(Some(RuntimeArtifact::Documents(documents)))
+        Ok(Some(RuntimeArtifact::Documents(documents.into())))
     }
 
     fn assemble_website(&self, node: &PipelineNode) -> Result<Option<RuntimeArtifact>, Error> {
@@ -332,7 +453,7 @@ impl<'a> NodeExecutor<'a> {
             RuntimeArtifact::Feed(value) => Some(value),
             _ => None,
         })?;
-        let website = WebsiteAssembly::new(documents.clone(), feed.clone())?;
+        let website = WebsiteAssembly::new(documents.as_ref().clone(), feed.clone())?;
         Ok(Some(RuntimeArtifact::WebsiteAssembly(website)))
     }
 
@@ -527,6 +648,7 @@ pub(super) fn runtime_input<'a, T>(
         .signature()
         .inputs
         .get(index)
+        .copied()
         .with_context(|| format!("pipeline node '{}' has no declared input {index}", node.id))?;
     let dependency = node.dependencies.get(index).with_context(|| {
         format!(
@@ -541,7 +663,7 @@ pub(super) fn runtime_input<'a, T>(
         )
     })?;
     let actual = artifact.kind();
-    if actual != *expected {
+    if actual != expected {
         anyhow::bail!(
             "pipeline node '{}' input {index} from '{dependency}' has kind {actual:?}, expected {expected:?}",
             node.id
@@ -588,7 +710,7 @@ mod tests {
         artifacts: &'a HashMap<NodeId, RuntimeArtifact>,
     ) -> Result<&'a DocumentCollection, Error> {
         runtime_input(node, artifacts, 0, |artifact| match artifact {
-            RuntimeArtifact::Documents(documents) => Some(documents),
+            RuntimeArtifact::Documents(documents) => Some(documents.as_ref()),
             _ => None,
         })
     }
@@ -598,7 +720,7 @@ mod tests {
         let artifacts = HashMap::from([
             (
                 NodeId::from("documents"),
-                RuntimeArtifact::Documents(DocumentCollection::default()),
+                RuntimeArtifact::Documents(DocumentCollection::default().into()),
             ),
             (NodeId::from("feed"), RuntimeArtifact::Feed(Feed::default())),
         ]);

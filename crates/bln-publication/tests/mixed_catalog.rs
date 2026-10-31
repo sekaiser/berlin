@@ -227,6 +227,45 @@ fn c04_repeated_references_share_local_and_external_source_storage() {
 }
 
 #[test]
+fn runtime_catalog_combines_shared_batches_without_copying_document_or_resource_payloads() {
+    let documents = Arc::new(DocumentCollection::new(vec![doc("a")]));
+    let first = collection(vec![external("x")]);
+    let second = collection(vec![external("y")]);
+    let merged = ExternalResourceCollection::merge(
+        &[first.clone(), second],
+        &ResourceLimits::default(),
+        &PublicationLimits::default(),
+    )
+    .unwrap();
+    assert!(Arc::ptr_eq(
+        &first.records()[0].resource,
+        &merged.records()[0].resource
+    ));
+    let catalog = PublicationCatalog::with_document_batches(
+        vec![documents.clone()],
+        merged,
+        options(),
+        Default::default(),
+    )
+    .unwrap();
+    assert!(std::ptr::eq(
+        &documents.as_slice()[0],
+        catalog.entry("a").unwrap().document()
+    ));
+    assert_eq!(catalog.len(), 3);
+    assert_eq!(
+        ExternalResourceCollection::merge(
+            &[first.clone(), first],
+            &ResourceLimits::default(),
+            &PublicationLimits::default()
+        )
+        .unwrap_err()
+        .code,
+        Code::DuplicateResource
+    );
+}
+
+#[test]
 fn c05_c08_catalog_shapes_and_external_targets() {
     assert!(mixed(vec![], ExternalResourceCollection::default()).is_empty());
     assert_eq!(

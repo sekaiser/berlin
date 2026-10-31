@@ -23,7 +23,8 @@ pub struct PublicationOptions {
 
 #[derive(Clone, Debug)]
 pub struct CatalogEntry {
-    document: Arc<Document>,
+    documents: Arc<DocumentCollection>,
+    position: usize,
     pub source_sha256: String,
     pub document_digest: String,
     pub original_url: Option<Url>,
@@ -31,7 +32,7 @@ pub struct CatalogEntry {
 }
 impl CatalogEntry {
     pub fn document(&self) -> &Document {
-        &self.document
+        &self.documents.as_slice()[self.position]
     }
 }
 
@@ -134,10 +135,23 @@ impl PublicationCatalog {
         options: PublicationOptions,
         mappings: BTreeMap<String, Url>,
     ) -> Result<Self> {
+        Self::with_document_batches(vec![Arc::new(documents)], external, options, mappings)
+    }
+    /// Runtime batches retain their captured semantic document storage. Catalog
+    /// construction and repeated composition never clone authored bodies.
+    pub fn with_document_batches(
+        batches: Vec<Arc<DocumentCollection>>,
+        external: ExternalResourceCollection,
+        options: PublicationOptions,
+        mappings: BTreeMap<String, Url>,
+    ) -> Result<Self> {
         options.limits.validate()?;
         options.resource_limits.validate()?;
         if external.len() > options.resource_limits.catalog_items
-            || documents.len()
+            || batches
+                .iter()
+                .try_fold(0usize, |total, batch| total.checked_add(batch.len()))
+                .unwrap_or(usize::MAX)
                 > options
                     .resource_limits
                     .catalog_items
@@ -184,198 +198,206 @@ impl PublicationCatalog {
                 input.clone(),
             );
         }
-        for document in documents.into_vec() {
-            if document.id.0.len() > options.resource_limits.id_bytes {
-                return Err(Diagnostic::new(
-                    Code::ResourceLimit,
-                    Stage::Resolution,
-                    "local resource identity byte limit exceeded",
-                ));
-            }
-            if !seen.insert(document.id.0.clone()) {
-                return Err(Diagnostic::new(
-                    Code::DuplicateResource,
-                    Stage::Resolution,
-                    "duplicate local source identity",
-                ));
-            }
-            if document.metadata.draft {
-                drafts.insert(document.id.0);
-                continue;
-            }
-            let kind = ResourceKind::from_document(&document.kind)?;
-            if document.metadata.tags.len() > options.resource_limits.topics_per_resource
-                || document.metadata.authors.len() > options.resource_limits.authors_per_resource
-            {
-                return Err(Diagnostic::new(
-                    Code::ResourceLimit,
-                    Stage::Resolution,
-                    "local resource topic/author count exceeded",
-                ));
-            }
-            document.validate().map_err(|_| {
-                Diagnostic::new(
-                    Code::InvalidSource,
-                    Stage::Resolution,
-                    "local source failed semantic validation",
-                )
-            })?;
-            for text in document
-                .metadata
-                .title
-                .iter()
-                .chain(document.metadata.description.iter())
-                .chain(document.metadata.authors.iter())
-                .chain(document.metadata.tags.iter())
-            {
-                if text.len() > options.limits.string_bytes {
+        for documents in batches {
+            for (position, document) in documents.as_slice().iter().enumerate() {
+                if document.id.0.len() > options.resource_limits.id_bytes {
                     return Err(Diagnostic::new(
                         Code::ResourceLimit,
                         Stage::Resolution,
-                        "local descriptor string budget exceeded",
+                        "local resource identity byte limit exceeded",
                     ));
                 }
-            }
-            let resource_id = ResourceId::local(&document.id.0)?;
-            if entries.contains_key(&resource_id) {
-                return Err(Diagnostic::new(
-                    Code::DuplicateResource,
-                    Stage::Resolution,
-                    "duplicate local resource identity",
-                ));
-            }
-            let original_url = if let Some(url) = mappings.get(&document.id.0) {
-                if url.as_str().len() > options.resource_limits.url_bytes {
+                if !seen.insert(document.id.0.clone()) {
+                    return Err(Diagnostic::new(
+                        Code::DuplicateResource,
+                        Stage::Resolution,
+                        "duplicate local source identity",
+                    ));
+                }
+                if document.metadata.draft {
+                    drafts.insert(document.id.0.clone());
+                    continue;
+                }
+                let kind = ResourceKind::from_document(&document.kind)?;
+                if document.metadata.tags.len() > options.resource_limits.topics_per_resource
+                    || document.metadata.authors.len()
+                        > options.resource_limits.authors_per_resource
+                {
                     return Err(Diagnostic::new(
                         Code::ResourceLimit,
                         Stage::Resolution,
-                        "original URL byte limit exceeded",
+                        "local resource topic/author count exceeded",
                     ));
                 }
-                validate_public_url(url)?;
-                Some(url.clone())
-            } else if let Some(base) = &base {
-                let route = berlin_content::document_route(&document).map_err(|e| {
-                    Diagnostic::new(Code::InvalidSource, Stage::Resolution, e.to_string())
-                        .source(&document.id.0, None)
+                document.validate().map_err(|_| {
+                    Diagnostic::new(
+                        Code::InvalidSource,
+                        Stage::Resolution,
+                        "local source failed semantic validation",
+                    )
                 })?;
-                Some(base.join(&route).map_err(|e| {
-                    Diagnostic::new(Code::UnsafeUrl, Stage::Resolution, e.to_string())
-                })?)
-            } else {
-                None
-            };
-            if let Some(url) = &original_url {
-                if url.as_str().len() > options.resource_limits.url_bytes {
+                for text in document
+                    .metadata
+                    .title
+                    .iter()
+                    .chain(document.metadata.description.iter())
+                    .chain(document.metadata.authors.iter())
+                    .chain(document.metadata.tags.iter())
+                {
+                    if text.len() > options.limits.string_bytes {
+                        return Err(Diagnostic::new(
+                            Code::ResourceLimit,
+                            Stage::Resolution,
+                            "local descriptor string budget exceeded",
+                        ));
+                    }
+                }
+                let resource_id = ResourceId::local(&document.id.0)?;
+                if entries.contains_key(&resource_id) {
+                    return Err(Diagnostic::new(
+                        Code::DuplicateResource,
+                        Stage::Resolution,
+                        "duplicate local resource identity",
+                    ));
+                }
+                let original_url = if let Some(url) = mappings.get(&document.id.0) {
+                    if url.as_str().len() > options.resource_limits.url_bytes {
+                        return Err(Diagnostic::new(
+                            Code::ResourceLimit,
+                            Stage::Resolution,
+                            "original URL byte limit exceeded",
+                        ));
+                    }
+                    validate_public_url(url)?;
+                    Some(url.clone())
+                } else if let Some(base) = &base {
+                    let route = berlin_content::document_route(document).map_err(|e| {
+                        Diagnostic::new(Code::InvalidSource, Stage::Resolution, e.to_string())
+                            .source(&document.id.0, None)
+                    })?;
+                    Some(base.join(&route).map_err(|e| {
+                        Diagnostic::new(Code::UnsafeUrl, Stage::Resolution, e.to_string())
+                    })?)
+                } else {
+                    None
+                };
+                if let Some(url) = &original_url {
+                    if url.as_str().len() > options.resource_limits.url_bytes {
+                        return Err(Diagnostic::new(
+                            Code::ResourceLimit,
+                            Stage::Resolution,
+                            "original URL byte limit exceeded",
+                        ));
+                    }
+                    charge_catalog(url.as_str(), &options, &mut descriptor_bytes)?;
+                }
+                // Post-mapping semantics include metadata but exclude local source
+                // path/format. Source bytes are pinned separately by source_sha256.
+                let document_digest = fingerprint(
+                    "document/v1",
+                    &(
+                        &document.kind,
+                        &document.metadata,
+                        &document.blocks,
+                        &document.relations,
+                    ),
+                )?;
+                let anchors = document
+                    .anchor_ids()
+                    .map_err(|e| {
+                        Diagnostic::new(Code::InvalidSource, Stage::Resolution, e.to_string())
+                            .source(&document.id.0, None)
+                    })?
+                    .into_iter()
+                    .collect();
+                let local = Arc::new(CatalogEntry {
+                    source_sha256: document.provenance.source_hash.clone(),
+                    document_digest: document_digest.clone(),
+                    original_url,
+                    anchors,
+                    documents: documents.clone(),
+                    position,
+                });
+                let document = local.document();
+                if document.metadata.tags.len() > options.resource_limits.topics_per_resource
+                    || document.metadata.authors.len()
+                        > options.resource_limits.authors_per_resource
+                {
                     return Err(Diagnostic::new(
                         Code::ResourceLimit,
                         Stage::Resolution,
-                        "original URL byte limit exceeded",
+                        "local resource topic/author count exceeded",
                     ));
                 }
-                charge_catalog(url.as_str(), &options, &mut descriptor_bytes)?;
-            }
-            // Post-mapping semantics include metadata but exclude local source
-            // path/format. Source bytes are pinned separately by source_sha256.
-            let document_digest = fingerprint(
-                "document/v1",
-                &(
-                    &document.kind,
-                    &document.metadata,
-                    &document.blocks,
-                    &document.relations,
-                ),
-            )?;
-            let anchors = document
-                .anchor_ids()
-                .map_err(|e| {
-                    Diagnostic::new(Code::InvalidSource, Stage::Resolution, e.to_string())
-                        .source(&document.id.0, None)
-                })?
-                .into_iter()
-                .collect();
-            let local = Arc::new(CatalogEntry {
-                source_sha256: document.provenance.source_hash.clone(),
-                document_digest: document_digest.clone(),
-                original_url,
-                anchors,
-                document: Arc::new(document),
-            });
-            let document = local.document();
-            if document.metadata.tags.len() > options.resource_limits.topics_per_resource
-                || document.metadata.authors.len() > options.resource_limits.authors_per_resource
-            {
-                return Err(Diagnostic::new(
-                    Code::ResourceLimit,
-                    Stage::Resolution,
-                    "local resource topic/author count exceeded",
-                ));
-            }
-            let mut topics = BTreeMap::new();
-            let mut display = document.metadata.tags.clone();
-            display.sort();
-            for tag in display {
-                topics
-                    .entry(topic_key(&tag)?)
-                    .or_insert_with(|| tag.trim().to_owned());
-            }
-            let mut capabilities = BTreeSet::from([
-                ResourceCapability::Excerptable,
-                ResourceCapability::HasSemanticBody,
-            ]);
-            if local.original_url.is_some() {
-                capabilities.insert(ResourceCapability::Linkable);
-            }
-            if document.metadata.preview.is_some() {
-                capabilities.insert(ResourceCapability::HasPreview);
-            }
-            if document.metadata.published.is_some() {
-                capabilities.insert(ResourceCapability::HasDate);
-            }
-            let descriptor = ResourceDescriptor {
-                schema_version: 1,
-                id: resource_id.clone(),
-                origin: ResourceOrigin::Local,
-                kind,
-                title: document.metadata.title.clone().unwrap_or_default(),
-                description: document.metadata.description.clone(),
-                authors: document.metadata.authors.clone(),
-                topics: topics.into_values().collect(),
-                published: document.metadata.published.clone(),
-                added: None,
-                capabilities,
-                revision: document_digest,
-            };
-            let source = ResourceSource {
-                namespace: "documents".into(),
-                logical_name: format!(
-                    "documents/{}",
-                    crate::input_digest(document.id.0.as_bytes())
-                ),
-                sha256: local.source_sha256.clone(),
-                record: 1,
-            };
-            charge_descriptor(&descriptor, &source, &options, &mut descriptor_bytes)?;
-            let input = source.input();
-            if !input_sources.contains_key(&(input.namespace.clone(), input.logical_name.clone())) {
-                if input_sources.len() >= options.resource_limits.catalog_items {
-                    return Err(Diagnostic::new(
-                        Code::ResourceLimit,
-                        Stage::Resolution,
-                        "catalog input source count exceeded",
-                    ));
+                let mut topics = BTreeMap::new();
+                let mut display = document.metadata.tags.clone();
+                display.sort();
+                for tag in display {
+                    topics
+                        .entry(topic_key(&tag)?)
+                        .or_insert_with(|| tag.trim().to_owned());
                 }
-                charge_catalog(&input, &options, &mut descriptor_bytes)?;
-                input_sources.insert((input.namespace.clone(), input.logical_name.clone()), input);
+                let mut capabilities = BTreeSet::from([
+                    ResourceCapability::Excerptable,
+                    ResourceCapability::HasSemanticBody,
+                ]);
+                if local.original_url.is_some() {
+                    capabilities.insert(ResourceCapability::Linkable);
+                }
+                if document.metadata.preview.is_some() {
+                    capabilities.insert(ResourceCapability::HasPreview);
+                }
+                if document.metadata.published.is_some() {
+                    capabilities.insert(ResourceCapability::HasDate);
+                }
+                let descriptor = ResourceDescriptor {
+                    schema_version: 1,
+                    id: resource_id.clone(),
+                    origin: ResourceOrigin::Local,
+                    kind,
+                    title: document.metadata.title.clone().unwrap_or_default(),
+                    description: document.metadata.description.clone(),
+                    authors: document.metadata.authors.clone(),
+                    topics: topics.into_values().collect(),
+                    published: document.metadata.published.clone(),
+                    added: None,
+                    capabilities,
+                    revision: document_digest,
+                };
+                let source = ResourceSource {
+                    namespace: "documents".into(),
+                    logical_name: format!(
+                        "documents/{}",
+                        crate::input_digest(document.id.0.as_bytes())
+                    ),
+                    sha256: local.source_sha256.clone(),
+                    record: 1,
+                };
+                charge_descriptor(&descriptor, &source, &options, &mut descriptor_bytes)?;
+                let input = source.input();
+                if !input_sources
+                    .contains_key(&(input.namespace.clone(), input.logical_name.clone()))
+                {
+                    if input_sources.len() >= options.resource_limits.catalog_items {
+                        return Err(Diagnostic::new(
+                            Code::ResourceLimit,
+                            Stage::Resolution,
+                            "catalog input source count exceeded",
+                        ));
+                    }
+                    charge_catalog(&input, &options, &mut descriptor_bytes)?;
+                    input_sources
+                        .insert((input.namespace.clone(), input.logical_name.clone()), input);
+                }
+                entries.insert(
+                    resource_id,
+                    ResourceEntry {
+                        descriptor,
+                        source,
+                        handle: ResourceHandle::Local(local),
+                    },
+                );
             }
-            entries.insert(
-                resource_id,
-                ResourceEntry {
-                    descriptor,
-                    source,
-                    handle: ResourceHandle::Local(local),
-                },
-            );
         }
         if let Some(id) = mappings.keys().find(|id| {
             ResourceId::local(id).is_err() || !entries.contains_key(&ResourceId::local(id).unwrap())

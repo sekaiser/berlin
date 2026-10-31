@@ -1,0 +1,1 @@
+Synthetic record format: sequence, key, value, checksum.

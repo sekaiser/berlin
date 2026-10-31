@@ -73,12 +73,12 @@ pub(super) struct ReceiptContext<'a> {
 }
 
 pub(super) fn write(context: ReceiptContext<'_>) -> Result<(), Error> {
-    let inputs = if context
-        .plan
-        .nodes()
-        .iter()
-        .any(|node| matches!(node.operation, Operation::ComposePublication { .. }))
-    {
+    let inputs = if context.plan.nodes().iter().any(|node| {
+        matches!(
+            node.operation,
+            Operation::ComposePublication { .. } | Operation::Compose { .. }
+        )
+    }) {
         let mut inputs = BTreeMap::new();
         for snapshot in context.consumed_inputs {
             let uri = url::Url::from_file_path(&snapshot.path)
@@ -290,6 +290,8 @@ fn collect_artifact_inputs(
             collect_file_inputs(inputs, project_root, files)?
         }
         RuntimeArtifact::PublicationAssembly(_)
+        | RuntimeArtifact::Catalog(_)
+        | RuntimeArtifact::Composed(_)
         | RuntimeArtifact::ExternalResources(_)
         | RuntimeArtifact::Documents(_)
         | RuntimeArtifact::Feed(_)
@@ -689,9 +691,9 @@ mod tests {
                         document.id.0 = id.into();
                         (
                             NodeId::from(node),
-                            RuntimeArtifact::Documents(berlin_content::DocumentCollection::new(
-                                vec![document],
-                            )),
+                            RuntimeArtifact::Documents(
+                                berlin_content::DocumentCollection::new(vec![document]).into(),
+                            ),
                         )
                     })
                     .collect();

@@ -101,6 +101,10 @@ pub fn print_current_plan(
 
 fn operation_name(operation: &Operation) -> String {
     match operation {
+        Operation::AssembleCatalog { .. } => "assemble resource catalog".into(),
+        Operation::Compose { composer } => format!("compose {}", composer.as_str()),
+        Operation::RenderHtml { .. } => "render HTML".into(),
+        Operation::RenderText { .. } => "render text".into(),
         Operation::ComposePublication { composer, .. } => {
             format!("compose publication ({})", composer.as_str())
         }

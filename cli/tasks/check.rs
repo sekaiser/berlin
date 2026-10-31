@@ -45,6 +45,8 @@ pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<Report, Error
                 node.operation,
                 Operation::RenderPublicationWebsite { .. }
                     | Operation::RenderPublicationText { .. }
+                    | Operation::RenderHtml { .. }
+                    | Operation::RenderText { .. }
             )
     });
     let required = document_branch(&plan, document_root)?;
@@ -78,6 +80,8 @@ pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<Report, Error
                 node.operation,
                 Operation::RenderPublicationWebsite { .. }
                     | Operation::RenderPublicationText { .. }
+                    | Operation::RenderHtml { .. }
+                    | Operation::RenderText { .. }
             ) {
                 continue;
             }
@@ -93,6 +97,34 @@ pub(crate) fn inspect(project: &Project, pipeline: &str) -> Result<Report, Error
             );
         }
         artifacts.insert(node.id.clone(), artifact);
+    }
+    if let Some(RuntimeArtifact::Composed(composed)) = artifacts
+        .values()
+        .find(|artifact| matches!(artifact, RuntimeArtifact::Composed(_)))
+    {
+        let (publication, placements, sources, composition_fingerprint) = match composed {
+            berlin_publication::ComposedArtifact::Single(assembly) => (
+                assembly.spec().metadata.id.0.clone(),
+                assembly.placements().len(),
+                assembly.sources().len(),
+                assembly.composition_fingerprint().to_owned(),
+            ),
+            berlin_publication::ComposedArtifact::Site(assembly) => (
+                assembly.spec().id.0.clone(),
+                assembly.routes().len(),
+                assembly.catalog().len(),
+                assembly.composition_fingerprint().to_owned(),
+            ),
+        };
+        return Ok(Report::Publication {
+            kind: "publication",
+            schema_version: 2,
+            publication,
+            placements,
+            sources,
+            composition_fingerprint,
+            diagnostics,
+        });
     }
     if let Some(RuntimeArtifact::PublicationAssembly(assembly)) = artifacts
         .values()
@@ -126,6 +158,8 @@ fn publication_documents(plan: &PipelinePlan) -> Result<&NodeId, Error> {
                 Operation::RenderWebsite { .. }
                     | Operation::RenderPublicationWebsite { .. }
                     | Operation::RenderPublicationText { .. }
+                    | Operation::RenderHtml { .. }
+                    | Operation::RenderText { .. }
             )
         })
         .collect();
@@ -166,12 +200,17 @@ fn document_branch(plan: &PipelinePlan, root: &NodeId) -> Result<HashSet<NodeId>
             .context("Document preparation node is missing")?;
         match node.operation {
             Operation::LoadMarkdown { .. }
+            | Operation::LoadAssets { .. }
             | Operation::LoadData { .. }
             | Operation::ParseDocuments
             | Operation::ParseResources { .. }
             | Operation::MergeDocuments
             | Operation::ParseMarkdown
             | Operation::MapDocuments { .. } => {}
+            Operation::AssembleCatalog { .. }
+            | Operation::Compose { .. }
+            | Operation::RenderHtml { .. }
+            | Operation::RenderText { .. } => {}
             Operation::ComposePublication { .. }
             | Operation::RenderPublicationWebsite { .. }
             | Operation::RenderPublicationText { .. } => {}

@@ -13,17 +13,18 @@ use rhai::Dynamic;
 use rhai::Engine;
 use rhai::FnPtr;
 use rhai::ImmutableString;
+use std::sync::Arc;
 
 #[derive(Clone)]
 struct Fragment {
-    nodes: Vec<PipelineNode>,
+    nodes: Arc<Vec<PipelineNode>>,
     output: NodeId,
 }
 
 impl Fragment {
     fn source(id: &str, operation: Operation) -> Self {
         Self {
-            nodes: vec![PipelineNode::new(id, operation)],
+            nodes: Arc::new(vec![PipelineNode::new(id, operation)]),
             output: id.into(),
         }
     }
@@ -39,7 +40,7 @@ impl Fragment {
 
         let nodes = {
             let mut nodes = self.nodes;
-            nodes.push(node);
+            Arc::make_mut(&mut nodes).push(node);
             nodes
         };
 
@@ -62,8 +63,8 @@ impl Fragment {
 
         let nodes = {
             let mut nodes = self.nodes;
-            nodes.extend(other.nodes);
-            nodes.push(node);
+            Arc::make_mut(&mut nodes).extend(other.nodes.iter().cloned());
+            Arc::make_mut(&mut nodes).push(node);
             nodes
         };
 
@@ -75,8 +76,7 @@ impl Fragment {
 
     fn named(mut self, id: &str) -> Self {
         let output = NodeId::new(id);
-        let node = self
-            .nodes
+        let node = Arc::make_mut(&mut self.nodes)
             .iter_mut()
             .find(|node| node.id == self.output)
             .expect("a fragment output always refers to one of its nodes");
@@ -92,8 +92,14 @@ macro_rules! artifact {
         struct $name(Fragment);
 
         impl $name {
-            fn named(self, id: ImmutableString) -> Self {
-                Self(self.0.named(id.as_str()))
+            fn named(self, id: ImmutableString) -> Result<Self, Box<rhai::EvalAltResult>> {
+                if id.is_empty() || id.len() > 256 || id.chars().any(char::is_control) {
+                    return Err(
+                        "graph node identity must be nonempty, control-free and at most 256 bytes"
+                            .into(),
+                    );
+                }
+                Ok(Self(self.0.named(id.as_str())))
             }
         }
     };
@@ -105,6 +111,8 @@ artifact!(MarkdownSources);
 artifact!(Documents);
 artifact!(DataSources);
 artifact!(ExternalResources);
+artifact!(Catalog);
+artifact!(Composed);
 artifact!(Feed);
 artifact!(WebsiteAssembly);
 artifact!(CssSources);
@@ -142,11 +150,24 @@ impl PipelineTarget {
     }
 
     pub(super) fn into_nodes(self) -> Vec<PipelineNode> {
-        self.0.nodes
+        Arc::try_unwrap(self.0.nodes).unwrap_or_else(|nodes| nodes.as_ref().clone())
     }
 }
 
 pub(super) fn register_operations(engine: &mut Engine) {
+    engine.register_fn("catalog", |parts: rhai::Array| {
+        catalog(parts, berlin_publication::PublicationOptions::default())
+    });
+    engine.register_fn("catalog", catalog);
+    engine.register_fn("compose", compose);
+    engine.register_fn("render_html", render_html);
+    engine.register_fn("render_text", render_text);
+    engine.register_fn("with_assets", with_assets);
+    engine.register_fn("html_config", website_config);
+    engine.register_fn("documents", parse_markdown);
+    engine.register_fn("documents", parse_documents);
+    engine.register_fn("named", Catalog::named);
+    engine.register_fn("named", Composed::named);
     engine.register_type_with_name::<berlin_publication::PublicationOptions>("PublicationOptions");
     engine.register_fn("publication_options",|settings:rhai::Map|->Result<berlin_publication::PublicationOptions,Box<rhai::EvalAltResult>>{let options:berlin_publication::PublicationOptions=rhai::serde::from_dynamic(&Dynamic::from(settings))?;options.limits.validate().map_err(|e|Box::<rhai::EvalAltResult>::from(e.to_string()))?;Ok(options)});
     engine.register_type_with_name::<berlin_publication::TextConfig>("TextConfig");
@@ -217,6 +238,143 @@ pub(super) fn register_operations(engine: &mut Engine) {
     engine.register_fn("named", LinkedInDrafts::named);
 }
 
+fn catalog(
+    parts: rhai::Array,
+    options: berlin_publication::PublicationOptions,
+) -> Result<Catalog, Box<rhai::EvalAltResult>> {
+    if parts.is_empty() || parts.len() > 64 {
+        return Err("catalog requires 1..64 typed document/resource inputs".into());
+    }
+    options.limits.validate().map_err(|e| e.to_string())?;
+    options
+        .resource_limits
+        .validate()
+        .map_err(|e| e.to_string())?;
+    let mut fragments = Vec::new();
+    let mut kinds = Vec::new();
+    let mut dependencies = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut node_count = 0usize;
+    for part in parts {
+        let (fragment, kind) = if part.is::<Documents>() {
+            (
+                part.cast::<Documents>().0,
+                berlin_core::ArtifactKind::Documents,
+            )
+        } else if part.is::<ExternalResources>() {
+            (
+                part.cast::<ExternalResources>().0,
+                berlin_core::ArtifactKind::ExternalResources,
+            )
+        } else {
+            return Err("catalog parts must be documents(...) or resources(...)".into());
+        };
+        if !seen.insert(fragment.output.as_str().to_owned()) {
+            return Err("catalog has a duplicate dependency".into());
+        }
+        node_count = node_count
+            .checked_add(fragment.nodes.len())
+            .ok_or("catalog graph size overflow")?;
+        if node_count > 10_000 {
+            return Err("catalog graph node limit exceeded".into());
+        }
+        kinds.push(kind);
+        dependencies.push(fragment.output.clone());
+        fragments.push(fragment);
+    }
+    let mut nodes = Vec::with_capacity(node_count + 1);
+    for fragment in fragments {
+        nodes.extend(fragment.nodes.iter().cloned());
+    }
+    let mut node = PipelineNode::new(
+        "catalog",
+        Operation::AssembleCatalog {
+            parts: kinds,
+            options: Box::new(options),
+        },
+    );
+    node.dependencies = dependencies;
+    nodes.push(node);
+    Ok(Catalog(Fragment {
+        nodes: Arc::new(nodes),
+        output: "catalog".into(),
+    }))
+}
+fn compose(catalog: Catalog, composer: FnPtr) -> Result<Composed, Box<rhai::EvalAltResult>> {
+    if composer.is_curried() || composer.is_anonymous() {
+        return Err("composers must be named, uncurried one-argument functions".into());
+    }
+    Ok(Composed(catalog.0.transform(
+        "composition",
+        Operation::Compose {
+            composer: FunctionRef::new(composer.fn_name()),
+        },
+        None,
+    )))
+}
+fn render_html(composed: Composed, output: ImmutableString, config: WebsiteConfig) -> Website {
+    Website(composed.0.transform(
+        "html",
+        Operation::RenderHtml {
+            config: Box::new(config),
+            asset_mounts: vec![],
+        },
+        Some(&output),
+    ))
+}
+fn with_assets(
+    mut website: Website,
+    assets: StaticAssets,
+    mount: ImmutableString,
+) -> Result<Website, Box<rhai::EvalAltResult>> {
+    if mount.is_empty()
+        || mount.len() > 1024
+        || mount.split('/').any(|p| {
+            p.is_empty()
+                || p == "."
+                || p == ".."
+                || !p
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
+        })
+    {
+        return Err("asset mount must be a confined relative path".into());
+    }
+    let output = website.0.output.clone();
+    let nodes = Arc::make_mut(&mut website.0.nodes);
+    let node = nodes
+        .iter_mut()
+        .find(|n| n.id == output)
+        .expect("website output node");
+    let Operation::RenderHtml { asset_mounts, .. } = &mut node.operation else {
+        return Err("with_assets requires render_html".into());
+    };
+    if asset_mounts.len() >= 64 {
+        return Err("asset mount count exceeds 64".into());
+    }
+    if node.dependencies.contains(&assets.0.output) {
+        return Err("duplicate asset dependency".into());
+    }
+    asset_mounts.push(mount.into());
+    node.dependencies.push(assets.0.output);
+    if nodes.len().saturating_add(assets.0.nodes.len()) > 10_000 {
+        return Err("HTML graph node count exceeded".into());
+    }
+    nodes.extend(assets.0.nodes.iter().cloned());
+    Ok(website)
+}
+fn render_text(
+    composed: Composed,
+    output: ImmutableString,
+    config: berlin_publication::TextConfig,
+) -> PublicationText {
+    PublicationText(
+        composed
+            .0
+            .transform("text", Operation::RenderText { config }, Some(&output)),
+    )
+}
+
 fn compose_publication(
     documents: Documents,
     composer: FnPtr,
@@ -259,22 +417,28 @@ fn render_publication_text(
     ))
 }
 
-fn load_org(pattern: ImmutableString) -> OrgSources {
-    OrgSources(Fragment::source(
+fn load_org(pattern: ImmutableString) -> Result<OrgSources, Box<rhai::EvalAltResult>> {
+    if pattern.len() > 4096 || pattern.contains('\0') {
+        return Err("source pattern exceeds its byte limit or contains NUL".into());
+    }
+    Ok(OrgSources(Fragment::source(
         "org_sources",
         Operation::LoadOrg {
             pattern: pattern.into(),
         },
-    ))
+    )))
 }
 
-fn load_latex(pattern: ImmutableString) -> LatexSources {
-    LatexSources(Fragment::source(
+fn load_latex(pattern: ImmutableString) -> Result<LatexSources, Box<rhai::EvalAltResult>> {
+    if pattern.len() > 4096 || pattern.contains('\0') {
+        return Err("source pattern exceeds its byte limit or contains NUL".into());
+    }
+    Ok(LatexSources(Fragment::source(
         "latex_sources",
         Operation::LoadLatex {
             pattern: pattern.into(),
         },
-    ))
+    )))
 }
 
 fn compile_papers(
@@ -307,13 +471,16 @@ fn export_org(
     ))
 }
 
-fn load_markdown(pattern: ImmutableString) -> MarkdownSources {
-    MarkdownSources(Fragment::source(
+fn load_markdown(pattern: ImmutableString) -> Result<MarkdownSources, Box<rhai::EvalAltResult>> {
+    if pattern.len() > 4096 || pattern.contains('\0') {
+        return Err("source pattern exceeds its byte limit or contains NUL".into());
+    }
+    Ok(MarkdownSources(Fragment::source(
         "markdown_sources",
         Operation::LoadMarkdown {
             pattern: pattern.into(),
         },
-    ))
+    )))
 }
 
 fn parse_markdown(source: MarkdownSources) -> Documents {
@@ -352,13 +519,16 @@ fn compile_diagrams(
     )))
 }
 
-fn load_data(pattern: ImmutableString) -> DataSources {
-    DataSources(Fragment::source(
+fn load_data(pattern: ImmutableString) -> Result<DataSources, Box<rhai::EvalAltResult>> {
+    if pattern.len() > 4096 || pattern.contains('\0') {
+        return Err("source pattern exceeds its byte limit or contains NUL".into());
+    }
+    Ok(DataSources(Fragment::source(
         "feed_data",
         Operation::LoadData {
             pattern: pattern.into(),
         },
-    ))
+    )))
 }
 
 fn parse_feed(source: DataSources) -> Feed {
@@ -440,9 +610,7 @@ fn deploy_website_to(
     mut website: Website,
     target: berlin_core::DeploymentTarget,
 ) -> Result<Website, Box<rhai::EvalAltResult>> {
-    let output = website
-        .0
-        .nodes
+    let output = Arc::make_mut(&mut website.0.nodes)
         .iter_mut()
         .find(|node| node.id == website.0.output)
         .expect("website output refers to a node");
@@ -453,13 +621,16 @@ fn deploy_website_to(
     Ok(website)
 }
 
-fn load_css(pattern: ImmutableString) -> CssSources {
-    CssSources(Fragment::source(
+fn load_css(pattern: ImmutableString) -> Result<CssSources, Box<rhai::EvalAltResult>> {
+    if pattern.len() > 4096 || pattern.contains('\0') {
+        return Err("source pattern exceeds its byte limit or contains NUL".into());
+    }
+    Ok(CssSources(Fragment::source(
         "css_sources",
         Operation::LoadCss {
             pattern: pattern.into(),
         },
-    ))
+    )))
 }
 
 fn compile_css(source: CssSources, output: ImmutableString) -> Stylesheets {
@@ -470,13 +641,16 @@ fn compile_css(source: CssSources, output: ImmutableString) -> Stylesheets {
     )
 }
 
-fn load_assets(pattern: ImmutableString) -> StaticAssets {
-    StaticAssets(Fragment::source(
+fn load_assets(pattern: ImmutableString) -> Result<StaticAssets, Box<rhai::EvalAltResult>> {
+    if pattern.len() > 4096 || pattern.contains('\0') {
+        return Err("source pattern exceeds its byte limit or contains NUL".into());
+    }
+    Ok(StaticAssets(Fragment::source(
         "static_sources",
         Operation::LoadAssets {
             pattern: pattern.into(),
         },
-    ))
+    )))
 }
 
 fn copy_assets(source: StaticAssets, output: ImmutableString) -> StaticAssets {

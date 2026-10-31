@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use crate::WebsiteConfig;
 use serde::Deserialize;
 use serde::Serialize;
+use std::borrow::Cow;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -65,6 +66,8 @@ pub enum ArtifactKind {
     Documents,
     DataSources,
     ExternalResources,
+    Catalog,
+    Composed,
     Feed,
     WebsiteAssembly,
     CssSources,
@@ -114,6 +117,21 @@ pub enum Operation {
     ParseResources {
         namespace: String,
     },
+    AssembleCatalog {
+        parts: Vec<ArtifactKind>,
+        options: Box<berlin_publication::PublicationOptions>,
+    },
+    Compose {
+        composer: FunctionRef,
+    },
+    RenderHtml {
+        config: Box<WebsiteConfig>,
+        #[serde(default)]
+        asset_mounts: Vec<String>,
+    },
+    RenderText {
+        config: berlin_publication::TextConfig,
+    },
     MapDocuments {
         mapper: FunctionRef,
     },
@@ -139,14 +157,36 @@ pub enum Operation {
 impl Operation {
     pub fn website_config(&self) -> Option<&WebsiteConfig> {
         match self {
-            Self::RenderWebsite { config } | Self::RenderPublicationWebsite { config } => {
-                Some(config)
-            }
+            Self::RenderWebsite { config }
+            | Self::RenderPublicationWebsite { config }
+            | Self::RenderHtml { config, .. } => Some(config),
             _ => None,
         }
     }
-    pub fn signature(&self) -> OperationSignature {
+    pub fn signature(&self) -> OperationSignature<'_> {
         match self {
+            Self::AssembleCatalog { parts, .. } => {
+                OperationSignature::artifact(parts, ArtifactKind::Catalog)
+            }
+            Self::Compose { .. } => {
+                OperationSignature::artifact(&[ArtifactKind::Catalog], ArtifactKind::Composed)
+            }
+            Self::RenderHtml { asset_mounts, .. } => OperationSignature {
+                inputs: Cow::Owned(
+                    std::iter::once(ArtifactKind::Composed)
+                        .chain(std::iter::repeat_n(
+                            ArtifactKind::StaticAssets,
+                            asset_mounts.len(),
+                        ))
+                        .collect(),
+                ),
+                output: ArtifactKind::Website,
+                produces_value: false,
+                writes_output: true,
+            },
+            Self::RenderText { .. } => {
+                OperationSignature::output(&[ArtifactKind::Composed], ArtifactKind::PublicationText)
+            }
             Self::ComposePublication { .. } => OperationSignature::artifact(
                 &[ArtifactKind::Documents],
                 ArtifactKind::PublicationAssembly,
@@ -235,38 +275,38 @@ impl Operation {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct OperationSignature {
-    pub inputs: &'static [ArtifactKind],
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OperationSignature<'a> {
+    pub inputs: Cow<'a, [ArtifactKind]>,
     pub output: ArtifactKind,
     pub produces_value: bool,
     pub writes_output: bool,
 }
 
-impl OperationSignature {
-    const fn source(output: ArtifactKind) -> Self {
+impl<'a> OperationSignature<'a> {
+    fn source(output: ArtifactKind) -> Self {
         Self::artifact(&[], output)
     }
 
-    const fn artifact(inputs: &'static [ArtifactKind], output: ArtifactKind) -> Self {
+    fn artifact(inputs: &'a [ArtifactKind], output: ArtifactKind) -> Self {
         Self {
-            inputs,
+            inputs: Cow::Borrowed(inputs),
             output,
             produces_value: true,
             writes_output: false,
         }
     }
 
-    const fn artifact_and_output(inputs: &'static [ArtifactKind], output: ArtifactKind) -> Self {
+    fn artifact_and_output(inputs: &'a [ArtifactKind], output: ArtifactKind) -> Self {
         Self {
             writes_output: true,
             ..Self::artifact(inputs, output)
         }
     }
 
-    const fn output(inputs: &'static [ArtifactKind], output: ArtifactKind) -> Self {
+    fn output(inputs: &'a [ArtifactKind], output: ArtifactKind) -> Self {
         Self {
-            inputs,
+            inputs: Cow::Borrowed(inputs),
             output,
             produces_value: false,
             writes_output: true,
@@ -340,10 +380,25 @@ impl PipelinePlan {
     }
 
     fn validate_nodes(&self) -> Result<HashMap<NodeId, &PipelineNode>, PipelineValidationError> {
+        if self.nodes.len() > 10_000 {
+            return Err(PipelineValidationError::InvalidCatalog {
+                node: NodeId::new("graph"),
+                message: "graph node count exceeds 10000",
+            });
+        }
         let mut nodes_by_id = HashMap::with_capacity(self.nodes.len());
         let mut output_paths = HashMap::new();
 
         for node in &self.nodes {
+            if node.id.as_str().is_empty()
+                || node.id.as_str().len() > 256
+                || node.id.as_str().chars().any(char::is_control)
+            {
+                return Err(PipelineValidationError::InvalidCatalog {
+                    node: NodeId::new("graph"),
+                    message: "invalid or oversized graph node identity",
+                });
+            }
             if nodes_by_id.insert(node.id.clone(), node).is_some() {
                 return Err(PipelineValidationError::DuplicateNode(node.id.clone()));
             }
@@ -372,6 +427,8 @@ impl PipelinePlan {
                 node.operation,
                 Operation::RenderPublicationWebsite { .. }
                     | Operation::RenderPublicationText { .. }
+                    | Operation::RenderHtml { .. }
+                    | Operation::RenderText { .. }
             )
         }) {
             let Some(root) = &node.output_path else {
@@ -420,7 +477,7 @@ impl PipelinePlan {
 fn validate_source_pattern(node: &PipelineNode) -> Result<(), PipelineValidationError> {
     if let Some(pattern) = node.operation.source_pattern() {
         let path = Path::new(pattern);
-        if !is_confined_relative_path(path) {
+        if pattern.len() > 4096 || !is_confined_relative_path(path) {
             return Err(PipelineValidationError::UnsafeSourcePattern {
                 node: node.id.clone(),
                 pattern: pattern.into(),
@@ -500,6 +557,59 @@ fn validate_node_inputs(
     node: &PipelineNode,
     nodes_by_id: &HashMap<NodeId, &PipelineNode>,
 ) -> Result<(), PipelineValidationError> {
+    if let Operation::RenderHtml { asset_mounts, .. } = &node.operation {
+        let mut mounts = Vec::<PathBuf>::new();
+        if asset_mounts.len() > 64 {
+            return Err(PipelineValidationError::InvalidCatalog {
+                node: node.id.clone(),
+                message: "HTML asset mount count exceeds 64",
+            });
+        }
+        for mount in asset_mounts {
+            let path = Path::new(mount);
+            if mount.len() > 1024
+                || !is_confined_relative_path(path)
+                || mounts
+                    .iter()
+                    .any(|other| other.starts_with(path) || path.starts_with(other))
+            {
+                return Err(PipelineValidationError::InvalidCatalog {
+                    node: node.id.clone(),
+                    message: "HTML asset mounts must be confined, nonoverlapping relative paths",
+                });
+            }
+            mounts.push(path.to_owned());
+        }
+    }
+    if let Operation::AssembleCatalog { parts, options } = &node.operation {
+        if parts.is_empty()
+            || parts.len() > 64
+            || parts.iter().any(|kind| {
+                !matches!(
+                    kind,
+                    ArtifactKind::Documents | ArtifactKind::ExternalResources
+                )
+            })
+        {
+            return Err(PipelineValidationError::InvalidCatalog {
+                node: node.id.clone(),
+                message: "catalog requires 1..64 typed document/resource parts",
+            });
+        }
+        if options.limits.validate().is_err() || options.resource_limits.validate().is_err() {
+            return Err(PipelineValidationError::InvalidCatalog {
+                node: node.id.clone(),
+                message: "invalid catalog resource limits",
+            });
+        }
+        let mut seen = HashSet::new();
+        if node.dependencies.iter().any(|id| !seen.insert(id)) {
+            return Err(PipelineValidationError::InvalidCatalog {
+                node: node.id.clone(),
+                message: "catalog has a duplicate dependency",
+            });
+        }
+    }
     let signature = node.operation.signature();
     if !signature.inputs.is_empty() && node.dependencies.is_empty() {
         return Err(PipelineValidationError::MissingInput(node.id.clone()));
@@ -511,7 +621,7 @@ fn validate_node_inputs(
         .map(|dependency| dependency_output_kind(node, dependency, nodes_by_id))
         .collect::<Result<Vec<_>, _>>()?;
 
-    if input_kinds != signature.inputs {
+    if input_kinds.as_slice() != signature.inputs.as_ref() {
         return Err(PipelineValidationError::InvalidInputs {
             node: node.id.clone(),
             expected: signature.inputs.to_vec(),
@@ -605,6 +715,10 @@ impl<'a> TopologicalTraversal<'a> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PipelineValidationError {
+    InvalidCatalog {
+        node: NodeId,
+        message: &'static str,
+    },
     PublicationOutputConflict {
         first: NodeId,
         second: NodeId,
@@ -653,6 +767,9 @@ pub enum PipelineValidationError {
 impl fmt::Display for PipelineValidationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidCatalog { node, message } => {
+                write!(f, "pipeline catalog '{node}': {message}")
+            }
             Self::PublicationOutputConflict { first, second } => write!(
                 f,
                 "OutputConflict: composed output '{first}' overlaps another writer '{second}'; use a separate output root/pipeline"
@@ -712,6 +829,10 @@ impl fmt::Display for PipelineValidationError {
 }
 
 impl Error for PipelineValidationError {}
+
+#[cfg(test)]
+#[path = "pipeline/unified_tests.rs"]
+mod unified_tests;
 
 #[cfg(test)]
 mod tests {

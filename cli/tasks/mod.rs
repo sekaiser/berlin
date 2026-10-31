@@ -42,11 +42,13 @@ struct SourceFile {
 
 #[derive(Clone, Debug)]
 enum RuntimeArtifact {
+    Catalog(berlin_publication::PublicationCatalog),
+    Composed(berlin_publication::ComposedArtifact),
     PublicationAssembly(Box<berlin_publication::PublicationAssembly>),
     LatexSources(Vec<paper::Source>),
     OrgSources(Vec<PathBuf>),
     MarkdownSources(Vec<SourceFile>),
-    Documents(DocumentCollection),
+    Documents(std::sync::Arc<DocumentCollection>),
     DataSources(Vec<SourceFile>),
     ExternalResources(berlin_publication::ExternalResourceCollection),
     Feed(ContentFeed),
@@ -61,6 +63,8 @@ enum RuntimeArtifact {
 impl RuntimeArtifact {
     fn kind(&self) -> ArtifactKind {
         match self {
+            Self::Catalog(_) => ArtifactKind::Catalog,
+            Self::Composed(_) => ArtifactKind::Composed,
             Self::PublicationAssembly(_) => ArtifactKind::PublicationAssembly,
             Self::LatexSources(_) => ArtifactKind::LatexSources,
             Self::OrgSources(_) => ArtifactKind::OrgSources,
@@ -228,7 +232,7 @@ mod runtime_tests {
             ArtifactKind::MarkdownSources
         );
         assert_eq!(
-            RuntimeArtifact::Documents(DocumentCollection::default()).kind(),
+            RuntimeArtifact::Documents(DocumentCollection::default().into()).kind(),
             ArtifactKind::Documents
         );
         assert_eq!(

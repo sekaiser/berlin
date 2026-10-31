@@ -1,8 +1,15 @@
 # Unified resources synthetic project
 
-This fixture is being built as part of the unified catalog migration. Current
-data files exercise explicit, offline metadata ingestion; publishing pipelines
-and product acceptance are added in the later composition phases.
+The fixture exercises mixed catalog ingestion, selection, a multipage notebook,
+a system-design portfolio, repeated local excerpts, and direct plain/LinkedIn
+text. Run `support/check-unified-resources` from the Berlin checkout after building
+`bln`. The runner copies this project into a fresh temporary directory.
+
+`sources()` declares the original-site mount in catalog options. HTML pipelines
+choose their destination separately; text uses the same original-resource URLs.
+The site renderer owns its entire output directory. Its `.with_assets(...)`
+declaration adds attachments to that transaction instead of using another writer
+to overwrite part of the rendered site.
 
 Every external record loaded into a publication catalog is publication-eligible.
 Do not mix private bookmarks into these inputs. Metadata is authored, not fetched
