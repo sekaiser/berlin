@@ -329,6 +329,72 @@ fn p09_preview_selects_the_output_and_watches_overrides_without_output_loops() {
         );
         std::thread::sleep(Duration::from_millis(100));
     }
+    let body = |path: &str| {
+        get(path)
+            .split_once("\r\n\r\n")
+            .map(|(_, body)| body.to_owned())
+            .unwrap_or_default()
+    };
+    let original_css = body("/assets/css/portfolio.css");
+    assert!(!original_css.is_empty());
+    let original_manifest: Value = serde_json::from_str(&body("/publication.json")).unwrap();
+    assert!(original_manifest["composition_fingerprint"].is_string());
+    assert!(original_manifest["render_input_fingerprint"].is_string());
+    let css_directory = root.join("styles/publications");
+    fs::create_dir_all(&css_directory).unwrap();
+    let css_override = css_directory.join("portfolio.css");
+    let css_source = fs::read_to_string(
+        repository().join("themes/notebook/shared/styles/publications/portfolio.css"),
+    )
+    .unwrap();
+    let wait_css = |expected: &str| {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            if body("/assets/css/portfolio.css").contains(expected) {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "CSS override did not show {expected}"
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    };
+    fs::write(
+        &css_override,
+        format!("{css_source}\n:root {{ --publication-watch-probe: watch-created; }}"),
+    )
+    .unwrap();
+    wait_css("watch-created");
+    let created_manifest: Value = serde_json::from_str(&body("/publication.json")).unwrap();
+    assert_eq!(
+        original_manifest["composition_fingerprint"],
+        created_manifest["composition_fingerprint"]
+    );
+    assert_ne!(
+        original_manifest["render_input_fingerprint"],
+        created_manifest["render_input_fingerprint"]
+    );
+    fs::write(
+        &css_override,
+        format!("{css_source}\n:root {{ --publication-watch-probe: watch-modified; }}"),
+    )
+    .unwrap();
+    wait_css("watch-modified");
+    fs::remove_file(&css_override).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while body("/assets/css/portfolio.css") != original_css {
+        assert!(
+            Instant::now() < deadline,
+            "removed CSS override did not restore theme bytes"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let restored_manifest: Value = serde_json::from_str(&body("/publication.json")).unwrap();
+    assert_eq!(
+        original_manifest["render_input_fingerprint"],
+        restored_manifest["render_input_fingerprint"]
+    );
     assert!(server.0.try_wait().unwrap().is_none());
     let script = root.join("berlin.pipeline.rhai");
     fs::write(
