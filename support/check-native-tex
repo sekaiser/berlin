@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Opt-in functional qualification. Run inside the approved pinned papers shell.
+# This script installs nothing, fetches nothing and uses synthetic fixtures only.
+set -euo pipefail
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
+repository=$PWD
+case "${1:-}" in
+  ""|--preflight) ;;
+  *) echo 'Usage: support/check-native-tex [--preflight]' >&2; exit 2 ;;
+esac
+missing=0
+for tool in rustc cargo node pdflatex lualatex dvisvgm pandoc pdftocairo kpsewhich bibtex; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "Missing native qualification prerequisite: $tool" >&2
+    missing=1
+  fi
+done
+if ((missing)); then
+  echo 'BLOCKED: no native tests ran. Prepare the approved pinned papers toolchain first.' >&2
+  exit 2
+fi
+for tool in rustc cargo node pdflatex lualatex dvisvgm pandoc kpsewhich bibtex; do
+  version_output=$("$tool" --version 2>&1)
+  printf '%s: %s\n' "$tool" "${version_output%%$'\n'*}"
+done
+version_output=$(pdftocairo -v 2>&1)
+printf 'pdftocairo: %s\n' "${version_output%%$'\n'*}"
+for package in standalone.cls tikz.sty pgfplots.sty fontspec.sty; do
+  if ! package_path=$(kpsewhich "$package") || [[ -z "$package_path" ]]; then
+    echo "BLOCKED: missing TeX package $package; no native tests ran." >&2
+    exit 2
+  fi
+  printf '%s: %s\n' "$package" "$package_path"
+done
+if [[ "${1:-}" == --preflight ]]; then
+  echo 'Native prerequisites found; compilation and tests were not run.'
+  exit 0
+fi
+# --ignored is deliberate: the ordinary suite already covers non-TeX cases.
+cargo test --offline --locked -p berlin --test papers --test graphics -- --ignored --test-threads=1 --nocapture
+cargo build --offline --locked --bin bln
+target_directory=$(cargo metadata --offline --locked --no-deps --format-version 1 | node -pe 'JSON.parse(require("node:fs").readFileSync(0,"utf8")).target_directory')
+BERLIN_TEST_BINARY="$target_directory/debug/bln" BERLIN_TEST_TEX=1 \
+  node --test themes/notebook/tests/pgfplots.test.cjs
