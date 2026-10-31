@@ -5,6 +5,7 @@
 
 mod announcement;
 mod draft;
+pub mod fragment;
 mod renderer;
 mod text;
 
