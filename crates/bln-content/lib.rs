@@ -14,7 +14,9 @@ use serde::Deserialize;
 use serde::Serialize;
 
 mod references;
+mod routes;
 pub use references::{Backlink, ReferenceAnalysis, ReferenceIndex, UnresolvedReference};
+pub use routes::{RouteError, document_route, validated_document_slug};
 
 mod authoring;
 pub use authoring::{

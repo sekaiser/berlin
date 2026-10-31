@@ -323,33 +323,12 @@ fn register_route(
 
 /// Returns the document's output-relative route, also used for public links.
 pub(super) fn document_route(document: &Document) -> Result<String, Error> {
-    let title = document
-        .metadata
-        .title
-        .as_deref()
-        .filter(|title| !title.trim().is_empty())
-        .with_context(|| format!("Document '{}' has no title", document.id.0))?;
-    let slug = match document.metadata.slug.as_deref() {
-        Some(slug) => validated_slug(document, slug)?.to_owned(),
-        None => route_component(title, "document")?,
-    };
-    Ok(format!("notes/{slug}.html"))
+    Ok(berlin_content::document_route(document)?)
 }
 
 /// Authored slugs are exact identifiers, not text to be silently rewritten.
 fn validated_slug<'a>(document: &Document, slug: &'a str) -> Result<&'a str, Error> {
-    if !slug.split('-').all(|part| {
-        !part.is_empty()
-            && part
-                .bytes()
-                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
-    }) {
-        anyhow::bail!(
-            "Document '{}' has invalid slug '{slug}'; use lowercase ASCII letters, digits, and single hyphens",
-            document.id.0
-        );
-    }
-    Ok(slug)
+    Ok(berlin_content::validated_document_slug(document, slug)?)
 }
 
 fn previous_routes(document: &Document) -> Result<Vec<String>, Error> {

@@ -13,3 +13,4 @@ path = "lib.rs"
 [dependencies]
 berlin_document.workspace = true
 serde.workspace = true
+slugify.workspace = true
