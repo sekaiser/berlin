@@ -13,6 +13,7 @@ node --test cli/tools/serve/live.test.cjs
 cargo build --quiet --bin bln
 support/check-publications
 support/check-unified-resources
+support/check-sqlite
 export BERLIN_THEME_DIR="$repository/themes"
 node --test themes/notebook/test.cjs themes/notebook/tests/*.test.cjs
 BERLIN_TEST_BINARY="$repository/target/debug/bln" BERLIN_TEST_REPOSITORY="$repository" \

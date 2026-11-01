@@ -8,6 +8,8 @@ use std::{
 
 #[path = "document_releases/announcements.rs"]
 mod announcements;
+#[path = "document_releases/lifecycle.rs"]
+mod lifecycle;
 #[path = "document_releases/manual_announcements.rs"]
 mod manual_announcements;
 #[path = "document_releases/production.rs"]

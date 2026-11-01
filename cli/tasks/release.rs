@@ -206,13 +206,21 @@ fn seal_output(
     let id = digest(&serde_json::to_vec(&manifest)?);
     let directory = releases.join(&id);
     if directory.try_exists()? {
-        return open(project, &id);
+        return register(project, open(project, &id)?);
     }
     sync_tree(&site)?;
     atomic_json(&temporary.path().join("manifest.json"), &manifest)?;
     fs::rename(temporary.path(), &directory)?;
     sync_directory(&releases)?;
-    open(project, &id)
+    register(project, open(project, &id)?)
+}
+
+fn register(project: &Project, release: WebsiteRelease) -> Result<WebsiteRelease, Error> {
+    if super::state::active(project.root())? {
+        super::state::Store::open(project.root())?.record_release(&release)
+            .context("bundle is sealed but could not be indexed; retry the release or run 'bln state index-releases'")?;
+    }
+    Ok(release)
 }
 
 pub(super) fn add_notices(site: &Path) -> Result<(), Error> {
@@ -239,12 +247,7 @@ pub(crate) fn open(project: &Project, id: &str) -> Result<WebsiteRelease, Error>
     let manifest_path = directory.join("manifest.json");
     ensure_file(&manifest_path)?;
     let manifest: Manifest = serde_json::from_slice(&fs::read(manifest_path)?)?;
-    validate_document_inventory(&manifest)?;
-    if digest(&serde_json::to_vec(&manifest)?) != id {
-        bail!("release manifest does not match its ID");
-    }
-    validate_url(&manifest.url)?;
-    manifest.destination.validate().map_err(Error::msg)?;
+    validate_manifest(&manifest, id)?;
     let site = directory.join("site");
     let files = inventory(&site)?;
     if files != manifest.files {
@@ -256,6 +259,17 @@ pub(crate) fn open(project: &Project, id: &str) -> Result<WebsiteRelease, Error>
         manifest,
         directory,
     })
+}
+
+pub(super) fn validate_manifest(manifest: &Manifest, id: &str) -> Result<(), Error> {
+    validate_id(id)?;
+    validate_document_inventory(manifest)?;
+    if digest(&serde_json::to_vec(manifest)?) != id {
+        bail!("release manifest does not match its ID");
+    }
+    validate_url(&manifest.url)?;
+    manifest.destination.validate().map_err(Error::msg)?;
+    Ok(())
 }
 
 fn validate_document_inventory(manifest: &Manifest) -> Result<(), Error> {

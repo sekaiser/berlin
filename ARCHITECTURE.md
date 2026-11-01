@@ -187,6 +187,27 @@ Effective theme inputs are recorded in receipts and watched by the preview serve
 No registry or download is involved. The synthetic theme specimen is separate from the
 minimal publishing fixture and the ignored personal website.
 
+## Durable lifecycle storage
+
+Projects can explicitly activate `.berlin/state.sqlite` with `bln state migrate`.
+The first migration covers website publication records, exact-text announcement
+approvals and user-reported social publications. Existing domain validation and
+publication reconciliation remain in place. After activation, SQLite is the sole
+writer for those records; the old JSON files are retained as archives. Versioned
+schema checks, transactionally paired website status/history, and online snapshot
+backup/restore are implemented in [lifecycle state](docs/lifecycle-state.md).
+Schema version 2 appends build receipts and observed catalog descriptors/revisions.
+These observations never become implicit composer inputs. Runtime indexes and
+output recovery retain their existing execution model.
+Schema version 3 indexes verified sealed manifests and document revisions, linking
+article observations to recorded website state and user-reported announcements.
+Sealed bundles remain authoritative for artifact bytes; indexing never rewrites them.
+Schema version 4 provides the typed metrics storage boundary: immutable definition
+versions and append-only observations tied to known article/publication context,
+with exact count values, reporting periods and collector provenance. Collectors
+and engagement imports remain deferred; see [metrics](docs/metrics.md).
+The file-store descriptions below also document unmigrated projects.
+
 ## Output transactions and receipts
 
 A project lock serializes non-dry-run builds. Outputs are written to a staging
@@ -213,7 +234,8 @@ implicit producer scheduling occurs. Missing generated source matches fail
 with a request to build the producer. Org must be re-exported after source edits.
 Typed documents and other runtime values remain in memory.
 
-Receipts are written on a best-effort basis to
+Receipts are recorded on a best-effort basis in SQLite after migration, with a
+separate ID per attempt. Unmigrated projects replace
 `.berlin/receipts/<pipeline>.json`. They record the Berlin version, status,
 duration, input/output hashes, content IDs where available, and diagnostics.
 Failed executions record the error and an empty output list; setup failures use

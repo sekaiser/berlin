@@ -28,6 +28,7 @@ pub(crate) mod receipt;
 pub(crate) mod release;
 mod resources;
 mod run;
+pub(crate) mod state;
 pub(crate) mod theme;
 
 #[derive(Clone, Debug)]

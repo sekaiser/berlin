@@ -483,3 +483,56 @@ fn symlinked_locks_and_saved_records_are_never_followed() {
         "regular file",
     );
 }
+
+#[test]
+fn sqlite_migration_preserves_approvals_and_uses_one_authoritative_history() {
+    let root = prepare();
+    fs::write(text_file(root.path()), "Exact approved text.\r\n").unwrap();
+    let id = approve(root.path());
+    success(record(root.path(), &id, POST));
+    let before = status(root.path());
+    let legacy = root
+        .path()
+        .join(format!(".berlin/announcements/approvals/{id}.json"));
+    let bytes = fs::read(&legacy).unwrap();
+    success(run(root.path(), &["state", "migrate"]));
+    assert_eq!(status(root.path()), before);
+    let document: Value =
+        serde_json::from_str(&success(run(root.path(), &["state", "document", "note"]))).unwrap();
+    let observations = document["observations"].as_array().unwrap();
+    assert_eq!(observations.len(), 2);
+    let reports = observations
+        .iter()
+        .flat_map(|o| o["reported_announcements"].as_array().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0]["review_id"], id);
+    assert_eq!(reports[0]["account"], "personal");
+    assert_eq!(reports[0]["post_url"], POST);
+    assert_eq!(reports[0]["evidence"], "user_reported");
+    assert_eq!(document["remote_verified"], false);
+    assert_eq!(fs::read(&legacy).unwrap(), bytes);
+    success(run(root.path(), &["state", "migrate"]));
+    success(record(root.path(), &id, POST));
+    // Editing archived state cannot change SQLite's authoritative records.
+    fs::write(&legacy, "broken archive").unwrap();
+    assert_eq!(status(root.path()), before);
+    fs::write(text_file(root.path()), "A different reviewable text.\n").unwrap();
+    let next = approve(root.path());
+    assert!(
+        !root
+            .path()
+            .join(format!(".berlin/announcements/approvals/{next}.json"))
+            .exists()
+    );
+    fails(
+        record(root.path(), &next, "https://linkedin.com/posts/other"),
+        "already has a reported announcement",
+    );
+    assert_eq!(status(root.path())["history"].as_array().unwrap().len(), 2);
+    success(run(root.path(), &["state", "backup", "backup.sqlite"]));
+    fails(
+        run(root.path(), &["state", "restore", "backup.sqlite"]),
+        "never overwritten",
+    );
+}

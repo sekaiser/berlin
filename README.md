@@ -43,6 +43,7 @@ Current capabilities include:
 - [Pipeline-driven LaTeX publishing](docs/papers.md), with checked references and citations, notebook HTML and a downloadable PDF.
 - LinkedIn draft text and manifests, with character-limit diagnostics; [release announcements](docs/announcement-workflow.md) with exact-text approvals and local records of user-reported posts.
 - Local build receipts recording input/output hashes, provenance, and diagnostics.
+- [Project-local SQLite lifecycle history](docs/lifecycle-state.md) for build attempts, sealed article revisions, and recorded publications.
 - [Dependency-checked build caching](docs/build-caching.md) for CSS and supported LaTeX papers.
 - Staged output replacement with recovery support, plus a local preview server.
 - [Sealed website releases and explicit GitHub Pages publishing](docs/website-releases.md), with optional native production URL/asset preparation, file and document revision comparisons, and recoverable publication records.
@@ -99,6 +100,16 @@ BERLIN_DIR="$berlin_project" target/debug/bln build --pipeline linkedin
 Website files are written to `$berlin_project/_site`, LinkedIn drafts to
 `$berlin_project/.berlin/linkedin`, and receipts to `$berlin_project/.berlin/receipts`.
 Hosting the resulting website is a separate deployment step.
+
+Projects can opt into SQLite with `bln state migrate`. Subsequent build attempts
+append to `.berlin/state.sqlite`; existing JSON receipts remain archived.
+`bln state builds` lists build attempts, while `bln state documents` and
+`bln state document CONTENT-ID` inspect article revisions from sealed releases and
+their recorded publication status. These commands perform no remote operations.
+See [lifecycle storage](docs/lifecycle-state.md) for upgrades and backup/restore.
+The [metrics storage foundation](docs/metrics.md) reserves typed definitions and
+observations for future collectors. Article inspection includes metric coverage;
+engagement collection and imports are not enabled.
 
 Org intermediates live under `.berlin/generated/org/`. The export operation takes
 an output workspace and an explicit Hugo section:

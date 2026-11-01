@@ -38,7 +38,15 @@ impl PagesRemote for FakeRemote {
         })
     }
     fn push(&mut self, commit: &Commit) -> Result<(), Error> {
-        let record: Publication = serde_json::from_slice(&fs::read(&self.path)?).unwrap();
+        let record: Publication = if state_root(&self.path).is_some() {
+            read(
+                &self.path,
+                &self.path.file_stem().unwrap().to_string_lossy(),
+            )?
+            .unwrap()
+        } else {
+            serde_json::from_slice(&fs::read(&self.path)?)?
+        };
         assert_eq!(record.status, Status::Prepared, "intent must precede push");
         assert_eq!(&record.commit, commit);
         assert_eq!(
@@ -371,4 +379,31 @@ fn preflight_failure_leaves_existing_records_and_remote_branch_untouched() {
     assert!(publish_with(&release, &path, &mut remote).is_err());
     assert_eq!(fs::read(&path).unwrap(), original);
     assert_eq!(remote.pushes, 0);
+}
+
+#[test]
+fn sqlite_intent_and_lost_acknowledgment_survive_reopening_without_duplicate_push() {
+    let root = tempfile::tempdir().unwrap();
+    let project = crate::project::Project::new(root.path().to_path_buf(), vec![]);
+    crate::tasks::state::migrate(&project).unwrap();
+    let (release, mut remote) = fixture(root.path());
+    let directory = release::state_directory(root.path(), "publications").unwrap();
+    remote.path = directory.join(format!("{}.json", release.id));
+    let path = remote.path.clone();
+    remote.fail_after_push = true;
+    assert!(publish_with(&release, &path, &mut remote).is_err());
+    assert_eq!(
+        read(&path, &release.id).unwrap().unwrap().status,
+        Status::Unknown
+    );
+    assert!(!path.exists(), "SQLite is the only writer after migration");
+    assert_eq!(
+        publish_with(&release, &path, &mut remote).unwrap().status,
+        Status::Live
+    );
+    assert_eq!(remote.pushes, 1);
+    assert_eq!(
+        crate::tasks::state::status(&project).unwrap()["counts"]["publication_events"],
+        3
+    );
 }

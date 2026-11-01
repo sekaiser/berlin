@@ -139,7 +139,7 @@ impl AnnouncementDraft {
 /// Treat the release URL's path as a site prefix, including when it lacks a
 /// trailing slash. Encode each literal output component, never interpret it as
 /// an absolute URL, query, fragment, or traversal instruction.
-fn document_url(base: &Url, path: &str) -> Result<Url, Error> {
+pub(crate) fn document_url(base: &Url, path: &str) -> Result<Url, Error> {
     let mut url = base.clone();
     let mut segments = url
         .path_segments_mut()

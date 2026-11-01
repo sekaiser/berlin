@@ -161,7 +161,9 @@ pub(crate) fn inspect(project: &Project, id: &str, refresh: bool) -> Result<Publ
     let _lock = ProjectLock::acquire(project.root())?;
     let release = release::open(project, id)?;
     let directory = project.root().join(".berlin/publications");
-    release::ensure_directory(&directory)?;
+    if !super::state::active(project.root())? {
+        release::ensure_directory(&directory)?;
+    }
     let path = directory.join(format!("{id}.json"));
     let mut record = read(&path, id)?.context("release has no publication record")?;
     if refresh {
@@ -181,17 +183,39 @@ fn save(path: &Path, record: &mut Publication) -> Result<(), Error> {
     if record.status == Status::Live && record.live_observed_at_unix_seconds.is_none() {
         record.live_observed_at_unix_seconds = Some(now);
     }
+    if let Some(root) = state_root(path)
+        && super::state::active(&root)?
+    {
+        return super::state::Store::open(&root)?.save_publication(&record.release, record);
+    }
     release::atomic_json(path, record)
 }
 
+fn state_root(path: &Path) -> Option<std::path::PathBuf> {
+    let parent = path.parent()?;
+    let state = parent.parent()?;
+    (parent.file_name()? == "publications" && state.file_name()? == ".berlin")
+        .then(|| state.parent().unwrap().to_path_buf())
+}
 fn read(path: &Path, id: &str) -> Result<Option<Publication>, Error> {
+    if let Some(root) = state_root(path)
+        && super::state::active(&root)?
+    {
+        return super::state::Store::open(&root)?.publication(id);
+    }
+    read_file(path, id)
+}
+pub(crate) fn read_file(path: &Path, id: &str) -> Result<Option<Publication>, Error> {
     match fs::symlink_metadata(path) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error.into()),
         Ok(metadata) if !metadata.is_file() => bail!("publication record is not a regular file"),
         Ok(_) => {}
     }
-    let record: Publication = serde_json::from_slice(&fs::read(path)?)?;
+    decode(&fs::read(path)?, id).map(Some)
+}
+pub(crate) fn decode(bytes: &[u8], id: &str) -> Result<Publication, Error> {
+    let record: Publication = serde_json::from_slice(bytes)?;
     if record.schema_version != 1 || record.release != id {
         bail!("publication record does not match this release");
     }
@@ -200,7 +224,7 @@ fn read(path: &Path, id: &str) -> Result<Option<Publication>, Error> {
             bail!("invalid publication commit ID");
         }
     }
-    Ok(Some(record))
+    Ok(record)
 }
 
 #[cfg(test)]

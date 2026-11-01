@@ -1,5 +1,9 @@
 # Review and track manual announcements
 
+For projects migrated with `bln state migrate`, SQLite owns publication and
+approval records. JSON storage paths below describe unmigrated projects; see
+[lifecycle state and backup/restore](lifecycle-state.md).
+
 Berlin can approve exact LinkedIn announcement text and record your report of
 posting it manually. These commands run locally: they do not authenticate to
 LinkedIn, publish, schedule posts, fetch URLs, or verify remote delivery.

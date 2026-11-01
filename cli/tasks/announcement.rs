@@ -1,6 +1,6 @@
 //! Exact-text approvals and user-reported manual publication, without remote I/O.
 mod review;
-mod store;
+pub(crate) mod store;
 
 use super::release::{self, documents::DocumentRevision};
 use crate::{args::announcement::Source, project::Project};
@@ -41,6 +41,11 @@ pub(crate) struct Snapshot {
 }
 
 impl Snapshot {
+    pub(crate) fn channel(&self) -> &'static str {
+        match self.channel {
+            Channel::LinkedIn => "linkedin",
+        }
+    }
     fn id(&self) -> Result<String, Error> {
         Ok(release::digest(&serde_json::to_vec(self)?))
     }

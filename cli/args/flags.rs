@@ -84,6 +84,7 @@ pub struct PublicationFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BerlinSubcommand {
+    State(super::state::Action),
     RenderDiagram(super::diagram::Options),
     Announcement(super::announcement::Action),
     Release(ReleaseFlags),
@@ -136,6 +137,7 @@ fn clap_root() -> Command {
         .subcommand(plan_subcommand())
         .subcommand(check_subcommand())
         .subcommand(serve_subcommand())
+        .subcommand(super::state::command())
         .subcommand(super::announcement::command())
         .subcommand(super::diagram::command())
         .subcommand(
@@ -331,6 +333,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
 
     let subcommand = match matches.subcommand().expect("subcommand is required") {
         ("render-diagram", args) => BerlinSubcommand::RenderDiagram(super::diagram::parse(args)),
+        ("state", args) => BerlinSubcommand::State(super::state::parse(args)),
         ("announcement", args) => BerlinSubcommand::Announcement(super::announcement::parse(args)),
         ("release", args) => BerlinSubcommand::Release(ReleaseFlags {
             no_cache: args.get_flag("no-cache"),

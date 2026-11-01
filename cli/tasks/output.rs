@@ -18,6 +18,13 @@ pub(super) struct ProjectLock {
 
 impl ProjectLock {
     pub fn acquire(project_root: &Path) -> Result<Self, Error> {
+        let lock = Self::acquire_without_recovery(project_root)?;
+        recover_interrupted_commit(project_root)?;
+        Ok(lock)
+    }
+
+    // State maintenance shares the publisher lock without changing website output.
+    pub fn acquire_without_recovery(project_root: &Path) -> Result<Self, Error> {
         let file = OpenOptions::new()
             .create(true)
             .truncate(false)
@@ -26,7 +33,6 @@ impl ProjectLock {
             .open(project_root.join(".berlin.lock"))?;
         file.lock()
             .context("Unable to acquire the Berlin project build lock")?;
-        recover_interrupted_commit(project_root)?;
         Ok(Self { _file: file })
     }
 }

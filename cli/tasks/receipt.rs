@@ -11,7 +11,7 @@ use std::time::UNIX_EPOCH;
 
 use anyhow::Context;
 use anyhow::Error;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use sha2::Sha256;
 
@@ -23,7 +23,7 @@ use berlin_core::PipelinePlan;
 use super::RuntimeArtifact;
 use super::SourceFile;
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct Diagnostic {
     pub node: String,
     pub content_id: String,
@@ -31,31 +31,38 @@ pub(crate) struct Diagnostic {
     pub message: String,
 }
 
-#[derive(Serialize)]
-struct BuildReceipt<'a> {
-    schema_version: u8,
-    berlin_version: String,
-    pipeline: &'a str,
-    status: &'static str,
-    started_at_unix_seconds: u64,
-    duration_ms: u64,
-    inputs: Vec<InputReceipt>,
-    outputs: Vec<FileReceipt>,
-    diagnostics: &'a [Diagnostic],
-    error: Option<&'a str>,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct BuildReceipt {
+    pub schema_version: u8,
+    pub berlin_version: String,
+    pub pipeline: String,
+    pub status: String,
+    pub started_at_unix_seconds: u64,
+    pub duration_ms: u64,
+    pub inputs: Vec<InputReceipt>,
+    pub outputs: Vec<FileReceipt>,
+    pub diagnostics: Vec<Diagnostic>,
+    pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub catalogs: Vec<super::state::builds::CatalogSnapshot>,
 }
 
-#[derive(Clone, Serialize)]
-struct InputReceipt {
-    path: String,
-    sha256: String,
-    content_id: Option<String>,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct InputReceipt {
+    pub path: String,
+    pub sha256: String,
+    pub content_id: Option<String>,
 }
 
-#[derive(Serialize)]
-struct FileReceipt {
-    path: String,
-    sha256: String,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FileReceipt {
+    pub path: String,
+    pub sha256: String,
 }
 
 pub(super) struct ReceiptContext<'a> {
@@ -99,12 +106,13 @@ pub(super) fn write(context: ReceiptContext<'_>) -> Result<(), Error> {
     let receipt = BuildReceipt {
         schema_version: 1,
         berlin_version: crate::version::berlin(),
-        pipeline: context.pipeline,
+        pipeline: context.pipeline.into(),
         status: if context.error.is_some() {
             "failed"
         } else {
             "succeeded"
-        },
+        }
+        .into(),
         started_at_unix_seconds: context
             .started_at
             .duration_since(UNIX_EPOCH)
@@ -117,8 +125,20 @@ pub(super) fn write(context: ReceiptContext<'_>) -> Result<(), Error> {
         } else {
             Vec::new()
         },
-        diagnostics: context.diagnostics,
-        error: context.error,
+        diagnostics: context.diagnostics.to_vec(),
+        error: context.error.map(str::to_owned),
+        stage: Some("execution".into()),
+        catalogs: context
+            .plan
+            .nodes()
+            .iter()
+            .filter_map(|node| match context.artifacts.get(&node.id) {
+                Some(RuntimeArtifact::Catalog(catalog)) => Some(
+                    super::state::builds::CatalogSnapshot::capture(node.id.to_string(), catalog),
+                ),
+                _ => None,
+            })
+            .collect(),
     };
 
     persist(context.project.root(), context.pipeline, &receipt)
@@ -159,8 +179,8 @@ pub(super) fn write_setup_failure(
     let receipt = BuildReceipt {
         schema_version: 1,
         berlin_version: crate::version::berlin(),
-        pipeline,
-        status: "failed",
+        pipeline: pipeline.into(),
+        status: "failed".into(),
         started_at_unix_seconds: started_at
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -168,13 +188,18 @@ pub(super) fn write_setup_failure(
         duration_ms: duration.as_millis().try_into().unwrap_or(u64::MAX),
         inputs: inputs.into_values().collect(),
         outputs: Vec::new(),
-        diagnostics: &[],
-        error: Some(error),
+        diagnostics: vec![],
+        error: Some(error.into()),
+        stage: Some("setup".into()),
+        catalogs: vec![],
     };
     persist(project_root, pipeline, &receipt)
 }
 
-fn persist(project_root: &Path, pipeline: &str, receipt: &BuildReceipt<'_>) -> Result<(), Error> {
+fn persist(project_root: &Path, pipeline: &str, receipt: &BuildReceipt) -> Result<(), Error> {
+    if super::state::active(project_root)? {
+        return super::state::Store::open(project_root)?.record_build(receipt);
+    }
     let directory = project_root.join(".berlin/receipts");
     fs::create_dir_all(&directory)?;
     let destination = directory.join(receipt_filename(pipeline));
@@ -453,6 +478,7 @@ mod tests {
         use berlin_core::PipelineLoader;
         let root = tempfile::tempdir().unwrap();
         let project = crate::project::Project::new(root.path().to_owned(), vec![]);
+        super::super::state::migrate(&project).unwrap();
         let script = root.path().join("berlin.pipeline.rhai");
         let template = root.path().join("page.tera");
         let source = root.path().join("source.md");
@@ -502,10 +528,12 @@ mod tests {
             error: None,
         })
         .unwrap();
-        let receipt: serde_json::Value = serde_json::from_slice(
-            &fs::read(root.path().join(".berlin/receipts/text.json")).unwrap(),
-        )
-        .unwrap();
+        let receipt = super::super::state::Store::open(root.path())
+            .unwrap()
+            .build(1)
+            .unwrap()["receipt"]
+            .clone();
+        assert!(!root.path().join(".berlin/receipts").exists());
         let inputs = receipt["inputs"].as_array().unwrap();
         for (name, bytes) in [
             ("berlin.pipeline.rhai", b"consumed script".as_slice()),

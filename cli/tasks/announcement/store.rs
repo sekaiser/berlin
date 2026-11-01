@@ -12,7 +12,7 @@ use std::{
 
 const MAX_RECORD_BYTES: usize = 128 * 1024;
 
-pub(super) fn lock(project: &Project) -> Result<File, Error> {
+pub(crate) fn lock(project: &Project) -> Result<File, Error> {
     let directory = release::state_directory(project.root(), "announcements")?;
     let path = directory.join(".lock");
     if exists(&path)? {
@@ -30,6 +30,13 @@ pub(super) fn lock(project: &Project) -> Result<File, Error> {
 }
 
 pub(super) fn load(project: &Project) -> Result<Vec<HistoryEntry>, Error> {
+    if crate::tasks::state::active(project.root())? {
+        let db = crate::tasks::state::Store::open(project.root())?;
+        return db.history();
+    }
+    load_legacy(project)
+}
+pub(crate) fn load_legacy(project: &Project) -> Result<Vec<HistoryEntry>, Error> {
     let state = project.root().join(".berlin");
     for directory in [&state, &state.join("announcements")] {
         if !exists(directory)? {
@@ -38,7 +45,13 @@ pub(super) fn load(project: &Project) -> Result<Vec<HistoryEntry>, Error> {
         release::ensure_directory(directory)?;
     }
     let approvals = read_records::<Approval>(&state.join("announcements/approvals"))?;
-    let mut publications = read_records::<Publication>(&state.join("announcements/reported"))?;
+    let publications = read_records::<Publication>(&state.join("announcements/reported"))?;
+    validate(approvals, publications)
+}
+pub(crate) fn validate(
+    approvals: BTreeMap<String, Approval>,
+    mut publications: BTreeMap<String, Publication>,
+) -> Result<Vec<HistoryEntry>, Error> {
     let mut history = Vec::<HistoryEntry>::new();
     for (id, approval) in approvals {
         approval.snapshot.validate()?;
@@ -77,6 +90,13 @@ pub(super) fn load(project: &Project) -> Result<Vec<HistoryEntry>, Error> {
 }
 
 pub(super) fn approve(project: &Project, approval: &Approval) -> Result<(), Error> {
+    if crate::tasks::state::active(project.root())? {
+        return crate::tasks::state::Store::open(project.root())?.insert(
+            "approvals",
+            &approval.review_id,
+            approval,
+        );
+    }
     let directory = release::state_directory(project.root(), "announcements/approvals")?;
     write_new(
         &directory.join(format!("{}.json", approval.review_id)),
@@ -85,6 +105,13 @@ pub(super) fn approve(project: &Project, approval: &Approval) -> Result<(), Erro
 }
 
 pub(super) fn record(project: &Project, publication: &Publication) -> Result<(), Error> {
+    if crate::tasks::state::active(project.root())? {
+        return crate::tasks::state::Store::open(project.root())?.insert(
+            "reports",
+            &publication.review_id,
+            publication,
+        );
+    }
     let directory = release::state_directory(project.root(), "announcements/reported")?;
     write_new(
         &directory.join(format!("{}.json", publication.review_id)),

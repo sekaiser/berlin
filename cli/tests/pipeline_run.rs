@@ -34,6 +34,105 @@ pipeline test {
 }
 "#;
 
+fn state(root: &Path, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_bln"))
+        .current_dir(root)
+        .env("BERLIN_DIR", root)
+        .arg("state")
+        .args(args)
+        .output()
+        .unwrap()
+}
+fn state_json(root: &Path, args: &[&str]) -> serde_json::Value {
+    let output = state(root, args);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).unwrap()
+}
+
+#[test]
+fn sqlite_retains_attempts_catalogs_and_archived_receipts_without_recording_dry_runs() {
+    let root = fixture(
+        r#"
+fn page(c) {publication("page",#{title:"Opening"},[view_component("berlin.introduction@1",#{text:"Opening"},#{})])}
+pipeline test {
+    output render_text(compose(catalog([documents(load_markdown("article.md"))]),Fn("page")),"public",text_config(#{}));
+}
+"#,
+    );
+    fs::write(
+        root.path().join("article.md"),
+        "---\nid: article\ntitle: Original\n---\nOriginal text.",
+    )
+    .unwrap();
+    assert!(build(root.path(), false).status.success());
+    let archived = fs::read(root.path().join(".berlin/receipts/test.json")).unwrap();
+    state_json(root.path(), &["migrate"]);
+    assert!(build(root.path(), false).status.success());
+    assert!(build(root.path(), true).status.success());
+    fs::write(
+        root.path().join("article.md"),
+        "---\nid: article\ntitle: Changed\n---\nNew text.",
+    )
+    .unwrap();
+    assert!(build(root.path(), false).status.success());
+    fs::write(root.path().join("berlin.pipeline.rhai"), "invalid pipeline").unwrap();
+    assert!(!build(root.path(), false).status.success());
+    let history = state_json(root.path(), &["builds", "--pipeline", "test"]);
+    let runs = history["builds"].as_array().unwrap();
+    assert_eq!(runs.len(), 4); // One imported receipt, two executions, one setup failure.
+    assert_eq!(runs[0]["stage"], "setup");
+    assert_eq!(runs[0]["outputs"], 0);
+    assert_eq!(runs[0]["status"], "failed");
+    let original = state_json(root.path(), &["build", "2"]);
+    let changed = state_json(root.path(), &["build", "3"]);
+    let old = &original["receipt"]["catalogs"][0];
+    let new = &changed["receipt"]["catalogs"][0];
+    assert_eq!(old["resources"][0]["descriptor"]["title"], "Original");
+    assert_eq!(new["resources"][0]["descriptor"]["title"], "Changed");
+    assert_ne!(old["input_digest"], new["input_digest"]);
+    assert_ne!(
+        old["resources"][0]["document_digest"],
+        new["resources"][0]["document_digest"]
+    );
+    assert_eq!(
+        fs::read(root.path().join(".berlin/receipts/test.json")).unwrap(),
+        archived
+    );
+    assert_eq!(state_json(root.path(), &["status"])["integrity"], "ok");
+}
+
+#[test]
+fn sqlite_receipt_failure_preserves_committed_output_and_never_falls_back_to_json() {
+    let root = fixture(COPY);
+    fs::create_dir(root.path().join("assets")).unwrap();
+    fs::write(root.path().join("assets/example.txt"), "example").unwrap();
+    state_json(root.path(), &["migrate"]);
+    let db = rusqlite::Connection::open(root.path().join(".berlin/state.sqlite")).unwrap();
+    db.execute_batch("CREATE TRIGGER refuse_build BEFORE INSERT ON build_runs BEGIN SELECT RAISE(ABORT,'test refusal'); END;").unwrap();
+    let output = build(root.path(), false);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("test refusal"));
+    assert_eq!(
+        fs::read_to_string(root.path().join("public/example.txt")).unwrap(),
+        "example"
+    );
+    assert!(!root.path().join(".berlin/receipts").exists());
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM build_runs", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+}
+
 #[test]
 fn successful_run_commits_outputs_and_records_success() {
     let root = fixture(COPY);

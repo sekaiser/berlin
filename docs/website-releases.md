@@ -1,5 +1,9 @@
 # Website releases and GitHub Pages
 
+For projects migrated with `bln state migrate`, SQLite owns publication and
+approval records. JSON storage paths below describe unmigrated projects; see
+[lifecycle state and backup/restore](lifecycle-state.md).
+
 Berlin can seal a website build and explicitly publish that exact bundle to an
 existing GitHub.com Pages site. This adapter uses a dedicated `gh-pages` branch,
 not a custom Actions artifact workflow. It does not configure the repository,
