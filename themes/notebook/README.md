@@ -174,7 +174,7 @@ retain a 42px fallback for print, where the screen-only tokens are not loaded.
 | `vendor.css` | Shared Normalize.css and GitHub Light foundation, loaded first (screen only) |
 | `notebook.css` | Palette, typography, code, tags, shared reading layout and environment |
 | `overview.css` | Homepage and collection compositions |
-| `article.css` | Article backlinks |
+| `article.css` | Article utility row and backlinks |
 | `reading.css` | Reading-list controls |
 | `search.css` | Search controls and results |
 | `comments.css` | Optional article discussion controls |
@@ -207,6 +207,7 @@ belong in `styles/entries/project.css` and remain a separate compiled entry.
 | Tag link | `macros/tag.tera`; real destination, visible focus, unclipped focus ring |
 | Tag toggle | Reading script; button with `aria-pressed`, uncolored when off, 44px touch target |
 | Article metadata | Native `time` elements; publication and optional modification date |
+| Article utilities | Ruled row below the introduction: estimated reading time left, LinkedIn/X/email/copy icons right. Tooltips and accessible names identify actions; links use the canonical URL. No third-party requests until clicked |
 | Introduction | Source-owned `.frontmatter > .abstract`; all paragraphs preserved |
 | Contents | Source-owned `.toc`; progressive relocation, current-section marker, mobile disclosure |
 | Entry / bookmark | Macros with escaped labels, optional artwork and authored annotation; entries can opt into a selected treatment |
@@ -444,6 +445,17 @@ The complete example uses Org's named code reference, `(ref:recorded-value)` and
 from the source. The `-r` switch removes the reference marker from published code.
 The component does not create references, execute code, or invent annotations.
 Print retains the observation and omits its action row.
+
+### Article utility row
+
+The shared article layout includes `partials/article-sharing.tera` below the
+introduction. Override the `article_sharing` block to replace or omit the row.
+Its links work without JavaScript; without introduction relocation, the row
+appears above the source introduction. `article-actions.js` progressively adds
+an estimated duration at 220 prose words per minute, excluding code listings,
+and enables Copy link when the Clipboard API is available. Copy feedback is
+announced through a live status region, including permission failures. The row
+does not add bookmarks, audio playback, tracking scripts or platform SDKs.
 
 ### CSS ownership
 

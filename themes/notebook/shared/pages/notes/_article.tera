@@ -4,7 +4,8 @@
    introductions and contents lists are authored in the Org document. #}
 {% block page_styles %}
   {{ super() }}
-  <script src="{{config_site_url}}/static/js/study.js?v=6" defer></script>
+  <script src="{{config_site_url}}/static/js/study.js?v=7" defer></script>
+  <script src="{{config_site_url}}/static/js/article-actions.js?v=1" defer></script>
   <link rel="stylesheet" href="{{config_site_url}}/assets/css/article.css">
   {% if page_comments %}
   <link rel="stylesheet" href="{{config_site_url}}/assets/css/comments.css">
@@ -26,7 +27,7 @@
           {% if page_tags | length > 0 %}<nav class="study-topics" aria-label="Article topics">{% for tag in page_tags %}{% if tag.target %}{{ tags::tag(label=tag.name, target=tag.target) }}{% else %}<span>{{ tag.name }}</span>{% endif %}{% endfor %}</nav>{% endif %}
         </div>
       </div>
-      <div class="study-introduction"></div>
+      <div class="study-introduction">{% block article_sharing %}{% include "partials/article-sharing.tera" %}{% endblock article_sharing %}</div>
     </div>
   </header>
   <div class="study-layout">

@@ -1,3 +1,24 @@
+.article-utilities {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 0 8px; margin-top: 28px; padding-block: 8px; border-block: 1px solid var(--rule);
+}
+.article-reading-time { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font: .82rem/1.7 var(--font-interface); white-space: nowrap; }
+.article-sharing { display: flex; align-items: center; margin-inline-start: auto; }
+.article-share-link {
+  display: inline-flex; align-items: center; justify-content: center;
+  box-sizing: border-box; flex: 0 0 44px; width: 44px; min-height: 44px; padding: 0;
+  border: 0; border-radius: 2px; background: transparent; color: var(--ink); text-decoration: none; cursor: pointer;
+}
+.article-share-link svg { flex-shrink: 0; }
+.article-reading-time[hidden], .article-share-link[hidden] { display: none; }
+.article-share-link:hover, .article-share-link:focus-visible {
+  color: var(--accent); text-decoration: none;
+}
+.article-share-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.article-action-status { flex-basis: 100%; text-align: end; color: var(--muted); font: .82rem/1.5 var(--font-interface); overflow-wrap: anywhere; }
+.article-action-status:empty { display: none; }
+@media print { .article-utilities { display: none; } }
+
 .article-backlinks { margin: 0 0 2.25rem; }
 .article-backlinks h2 { margin: 0 0 1.2rem; font-size: 1.45rem; color: var(--ink); }
 .article-backlinks ul { list-style: none; padding: 0; margin: 0; }

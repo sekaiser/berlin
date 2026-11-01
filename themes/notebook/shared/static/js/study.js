@@ -6,7 +6,7 @@
 
   const abstract = page.querySelector(".frontmatter > .abstract");
   const introduction = page.querySelector(".study-introduction");
-  if (abstract && introduction) introduction.append(abstract);
+  if (abstract && introduction) introduction.prepend(abstract);
 
   const toc = page.querySelector(".frontmatter .toc");
   const contents = page.querySelector(".study-contents");

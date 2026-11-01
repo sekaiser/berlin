@@ -15,7 +15,7 @@ function setup({ wide = false, hasAbstract = true, hasToc = true, hasOtherConten
     get textContent() { return hasOtherContent ? "Keep this source note" : ""; },
     remove() { removed = true; },
   };
-  const introduction = { append(node) { moved.push(node); } };
+  const introduction = { prepend(node) { moved.push(node); } };
   const navigation = { append(node) { moved.push(node); }, querySelectorAll: () => [] };
   const contents = { hidden: true, open: false, querySelector: () => navigation };
   const elements = {
