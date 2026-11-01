@@ -132,3 +132,56 @@ fn native_publication_lowering_cannot_be_repeated_outside_the_logical_budget() {
         .unwrap_err();
     assert!(error.to_string().contains("lowering budget"), "{error}");
 }
+
+#[test]
+fn declarative_presets_are_captured_and_match_native_composition() {
+    use berlin_core::{Composer, Operation, PipelineLoader};
+    let source = r#"
+        pipeline site {
+            let c=catalog([documents(load_markdown("content/*.md"))]);
+            output render_html(compose(c,notebook(#{title:"My notebook",pages:[#{id:"about",route:"about.html",title:"About"}]})),"_site",html_config(#{}));
+        }
+    "#;
+    let loader = RhaiPipelineLoader::new(source).unwrap();
+    let plan = loader.load("site").unwrap();
+    let composer = plan
+        .nodes()
+        .iter()
+        .find_map(|node| match &node.operation {
+            Operation::Compose { composer } => Some(composer),
+            _ => None,
+        })
+        .unwrap();
+    assert!(matches!(composer, Composer::Standard(_)));
+    let dynamic = loader.compose(composer, catalog()).unwrap();
+    let config = NotebookConfig {
+        title: "My notebook".into(),
+        pages: vec![NotebookPage {
+            id: "about".into(),
+            route: "about.html".into(),
+            title: "About".into(),
+            introduction: String::new(),
+        }],
+        ..Default::default()
+    };
+    let typed = StandardComposition::Notebook((config).into())
+        .resolve(catalog(), &ComponentRegistry::builtins())
+        .unwrap();
+    let (ComposedArtifact::Site(dynamic), ComposedArtifact::Site(typed)) = (dynamic, typed) else {
+        panic!("site")
+    };
+    assert_eq!(dynamic.spec(), typed.spec());
+    assert_eq!(
+        dynamic.composition_fingerprint(),
+        typed.composition_fingerprint()
+    );
+    assert!(
+        serde_json::to_string(&plan)
+            .unwrap()
+            .contains("My notebook")
+    );
+    let bad = source.replace("title:\"My notebook\"", "unknown:true");
+    assert!(RhaiPipelineLoader::new(&bad).is_err());
+    let draft_source = r#"pipeline draft {output render_text(compose(catalog([documents(load_markdown("content/*.md"))]),article_draft()),"_draft",text_config(#{}));}"#;
+    assert!(RhaiPipelineLoader::new(draft_source).is_ok());
+}

@@ -217,6 +217,66 @@ impl PipelineTarget {
     }
 }
 
+// Inspect shared Rhai values by borrowing them before serde can expand a reused
+// string/array into many owned configuration values.
+fn preflight_preset(settings: &rhai::Map) -> Result<(), Box<rhai::EvalAltResult>> {
+    fn charge(remaining: &mut usize, bytes: usize) -> Result<(), Box<rhai::EvalAltResult>> {
+        *remaining = remaining
+            .checked_sub(bytes)
+            .ok_or("ResourceLimit: preset configuration byte budget exceeded before decoding")?;
+        Ok(())
+    }
+    fn map(
+        values: &rhai::Map,
+        remaining: &mut usize,
+        depth: usize,
+    ) -> Result<(), Box<rhai::EvalAltResult>> {
+        if depth > 32 {
+            return Err("ResourceLimit: preset configuration nesting exceeded".into());
+        }
+        for (name, value) in values {
+            charge(remaining, name.len().saturating_add(16))?;
+            visit(value, remaining, depth + 1)?;
+        }
+        Ok(())
+    }
+    fn visit(
+        value: &Dynamic,
+        remaining: &mut usize,
+        depth: usize,
+    ) -> Result<(), Box<rhai::EvalAltResult>> {
+        if depth > 32 {
+            return Err("ResourceLimit: preset configuration nesting exceeded".into());
+        }
+        charge(remaining, 16)?;
+        if let Some(text) = value.read_lock::<ImmutableString>() {
+            if text.len() > 1_000_000 {
+                return Err("ResourceLimit: preset string budget exceeded before decoding".into());
+            }
+            charge(remaining, text.len())
+        } else if let Some(values) = value.read_lock::<rhai::Array>() {
+            if values.len() > 10_000 {
+                return Err("ResourceLimit: preset array budget exceeded before decoding".into());
+            }
+            for value in values.iter() {
+                visit(value, remaining, depth + 1)?;
+            }
+            Ok(())
+        } else if let Some(values) = value.read_lock::<rhai::Map>() {
+            map(&values, remaining, depth + 1)
+        } else if value.is::<bool>() || value.is::<rhai::INT>() || value.is_unit() {
+            Ok(())
+        } else {
+            Err("InvalidProperty: preset options require plain configuration values".into())
+        }
+    }
+    map(
+        settings,
+        &mut berlin_publication::PublicationLimits::default().property_bytes,
+        0,
+    )
+}
+
 pub(super) fn register_operations(engine: &mut Engine) {
     let budget = GraphBudget::default();
     engine.register_fn("catalog", |parts: rhai::Array| {
@@ -224,6 +284,52 @@ pub(super) fn register_operations(engine: &mut Engine) {
     });
     engine.register_fn("catalog", catalog);
     engine.register_fn("compose", compose);
+    engine
+        .register_type_with_name::<berlin_publication::StandardComposition>("StandardComposition");
+    engine.register_fn("notebook", || {
+        berlin_publication::StandardComposition::Notebook(Default::default())
+    });
+    engine.register_fn("article_draft", || {
+        berlin_publication::StandardComposition::ArticleDraft(Default::default())
+    });
+    let preset_budget = budget.clone();
+    engine.register_fn(
+        "notebook",
+        move |settings: rhai::Map| -> Result<berlin_publication::StandardComposition, Box<rhai::EvalAltResult>> {
+            preflight_preset(&settings)?;
+            let value = berlin_publication::StandardComposition::Notebook(
+                rhai::serde::from_dynamic(&Dynamic::from(settings))?,
+            );
+            preset_budget.charge(&value)?;
+            Ok(value)
+        },
+    );
+    let preset_budget = budget.clone();
+    engine.register_fn(
+        "article_draft",
+        move |settings: rhai::Map| -> Result<berlin_publication::StandardComposition, Box<rhai::EvalAltResult>> {
+            preflight_preset(&settings)?;
+            let value = berlin_publication::StandardComposition::ArticleDraft(
+                rhai::serde::from_dynamic(&Dynamic::from(settings))?,
+            );
+            preset_budget.charge(&value)?;
+            Ok(value)
+        },
+    );
+    engine.register_fn(
+        "compose",
+        |catalog: Catalog,
+         preset: berlin_publication::StandardComposition|
+         -> Result<Composed, Box<rhai::EvalAltResult>> {
+            Ok(Composed(catalog.0.transform(
+                "composition",
+                Operation::Compose {
+                    composer: berlin_core::Composer::Standard(preset),
+                },
+                None,
+            )?))
+        },
+    );
     engine.register_fn("render_html", render_html);
     engine.register_fn("render_text", render_text);
     engine.register_fn("with_assets", with_assets);
@@ -408,7 +514,7 @@ fn compose(catalog: Catalog, composer: FnPtr) -> Result<Composed, Box<rhai::Eval
     Ok(Composed(catalog.0.transform(
         "composition",
         Operation::Compose {
-            composer: FunctionRef::new(composer.fn_name()),
+            composer: FunctionRef::new(composer.fn_name()).into(),
         },
         None,
     )?))
@@ -767,6 +873,30 @@ mod allocation_tests {
             budget.0.load(std::sync::atomic::Ordering::Relaxed),
             GraphBudget::MAX_BYTES
         );
+    }
+
+    #[test]
+    fn preset_configuration_preflight_bounds_shared_payloads_before_decoding() {
+        // Exercise the native boundary directly, independently of interpreter
+        // checks that can also refuse large compound values earlier.
+        let text = ImmutableString::from("x".repeat(65_536));
+        let page = rhai::Map::from_iter([
+            ("id".into(), Dynamic::from("about")),
+            ("title".into(), Dynamic::from("About")),
+            ("route".into(), Dynamic::from("about.html")),
+            ("introduction".into(), Dynamic::from(text)),
+        ]);
+        let small = rhai::Map::from_iter([(
+            "pages".into(),
+            Dynamic::from(vec![Dynamic::from(page.clone())]),
+        )]);
+        assert!(preflight_preset(&small).is_ok());
+        let shared = rhai::Map::from_iter([(
+            "pages".into(),
+            Dynamic::from(vec![Dynamic::from(page); 200]),
+        )]);
+        let error = preflight_preset(&shared).unwrap_err();
+        assert!(error.to_string().contains("before decoding"));
     }
 
     #[test]

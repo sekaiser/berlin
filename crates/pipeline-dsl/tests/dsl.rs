@@ -45,8 +45,11 @@ fn paper_compilation_is_typed_and_validates_public_pdf_paths() {
 
 #[test]
 fn deployment_is_typed_metadata_not_an_executed_operation() {
-    let source = SCRIPT.replace("render_html(compose(sources(),Fn(\"notebook\")),\"_site\",presentation)",
-        "render_html(compose(sources(),Fn(\"notebook\")),\"_site\",presentation).deploy_to(github_pages(\"owner/notebook\"))");
+    let source = SCRIPT.replace(
+        ".with_assets(",
+        ".deploy_to(github_pages(\"owner/notebook\")).with_assets(",
+    );
+    assert_ne!(source, SCRIPT, "fixture must contain an HTML asset mount");
     let plans = compile(&source).unwrap();
     assert_eq!(plans["site"].nodes().len(), 8);
     let target = plans["site"]

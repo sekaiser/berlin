@@ -70,7 +70,7 @@ impl<'a> NodeExecutor<'a> {
                 })?;
                 let composed = self
                     .program
-                    .compose_artifact(composer, catalog.clone())
+                    .compose(composer, catalog.clone())
                     .map_err(|e| anyhow::anyhow!(e.to_string()))?;
                 Ok(Some(RuntimeArtifact::Composed(composed)))
             }

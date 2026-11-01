@@ -711,3 +711,47 @@ pipeline site {
     wait("Reattached root edit observed");
     assert!(server.0.try_wait().unwrap().is_none());
 }
+
+#[test]
+fn standard_notebook_and_draft_need_no_user_functions_and_keep_transaction_safety() {
+    let project = project();
+    let root = project.path();
+    fs::write(root.join("berlin.pipeline.rhai"), r#"
+        let sources=catalog([documents(load_markdown("content/*.md"))],publication_options(#{source_site_url:"https://example.test"}));
+        pipeline site {
+            output render_html(compose(sources,notebook(#{title:"My notebook",pages:[#{id:"about",title:"About",route:"about.html",introduction:"An authored page."}]})),"_site",html_config(#{theme:"@notebook",url:"https://example.test",title:"My notebook"}));
+        }
+        pipeline draft {
+            output render_text(compose(sources,article_draft(#{selection:#{ids:["local:queues"]}})),"_draft",text_config(#{profile:"linkedin_draft"}));
+        }
+    "#).unwrap();
+    let before = snapshot(root);
+    success(run(root, &["check", "--pipeline", "site"]));
+    assert_eq!(snapshot(root), before, "check must not write output");
+    success(run(root, &["build", "--pipeline", "site"]));
+    success(run(root, &["build", "--pipeline", "draft"]));
+    for route in [
+        "index.html",
+        "notes.html",
+        "feed.html",
+        "about.html",
+        "search.html",
+        "search/index.json",
+    ] {
+        assert!(root.join("_site").join(route).exists(), "{route}");
+    }
+    let installed = snapshot(&root.join("_site"));
+    let pipeline = root.join("berlin.pipeline.rhai");
+    let source = fs::read_to_string(&pipeline).unwrap();
+    fs::write(
+        &pipeline,
+        source.replace("route:\"about.html\"", "route:\"notes.html\""),
+    )
+    .unwrap();
+    assert!(!run(root, &["build", "--pipeline", "site"]).status.success());
+    assert_eq!(
+        snapshot(&root.join("_site")),
+        installed,
+        "refused composition must preserve installed output"
+    );
+}

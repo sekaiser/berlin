@@ -24,7 +24,7 @@ fn html_owns_its_root_but_accepts_disjoint_upstream_paper_assets() {
             PipelineNode::new(
                 "compose",
                 Operation::Compose {
-                    composer: FunctionRef::new("notebook"),
+                    composer: FunctionRef::new("notebook").into(),
                 },
             )
             .depends_on("catalog"),
@@ -63,7 +63,7 @@ fn html_owns_its_root_but_accepts_disjoint_upstream_paper_assets() {
             PipelineNode::new(
                 "compose",
                 Operation::Compose {
-                    composer: FunctionRef::new("notebook"),
+                    composer: FunctionRef::new("notebook").into(),
                 },
             )
             .depends_on("catalog"),

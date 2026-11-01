@@ -127,22 +127,90 @@ See [component contracts](component-contracts.md), [Rust `view!`](view-macro.md)
 and [Tera slots](tera-components.md). Portable excerpts reject raw HTML and
 unregistered source components instead of silently dropping them.
 
-## Compose a notebook
+## Compose a notebook without custom functions
 
-Return `site(id, metadata)` from the composer and add only the entries needed:
+Standard notebook publishing uses a reusable composition. A custom Rhai function
+is optional, for publications with a different editorial structure.
 
-- `add_page(key, route, publication)` for home, notes, reading, about, or another composition.
+```rhai
+let content = catalog([
+    documents(load_markdown("content/notes/*.md")),
+    resources(load_data("data/resources.yaml"))
+], publication_options(#{source_site_url: "https://example.com"}));
+
+pipeline site {
+    output render_html(compose(content, notebook()), "_site", html_config(#{
+        theme: "@notebook", url: "https://example.com", title: "My notebook"
+    }));
+}
+
+pipeline linkedin {
+    output render_text(compose(content, article_draft()), "_draft",
+        text_config(#{profile: "linkedin_draft"}));
+}
+```
+
+`notebook()` supplies home (`index.html`), notes (`notes.html`), Reading
+(`feed.html`), local document pages, mixed-resource tags, search and previous-slug
+redirects. Local documents are ordered by publication date, external references
+by added date. Draft sources remain excluded. Empty collections have usable
+empty states. It uses ordinary typed components and the same validation,
+rendering, input provenance and output transaction as custom compositions.
+
+Override only the choices that differ:
+
+```rhai
+notebook(#{
+    title: "Engineering notebook",
+    home_title: "Things I am working through",
+    documents: #{origins_any: ["local"], topics_all: ["systems"], order: "published_desc"},
+    pages: [#{id: "about", route: "about.html", title: "About"}]
+})
+```
+
+Options are `id`, `title`, `home_title`, `documents`, `reading`, `document_prefix`,
+`notes_route`, `reading_route`, and `pages`. Queries use the existing resource
+query schema; `documents` must select local work. These queries select listings
+and generated documents without shrinking the complete local source scope.
+Page declarations contain `id`, `route`, `title`, and an optional plain-text
+`introduction`. Substantial presentation-owned page content belongs in project
+Tera files, included by the site's `publications/site_page.tera` override; it does
+not need to be embedded as strings in the pipeline. The renderer-owned body slot
+must still be consumed. Authored documents continue through the catalog.
+
+`article_draft()` selects the most recent eligible local document and composes
+its summary/link as one explicit draft. To select specific work:
+
+```rhai
+article_draft(#{selection: #{ids: ["local:stable-content-id"]}})
+```
+
+The selection must resolve to exactly one local document. This is a metadata
+draft, not a full-body conversion. Text remains subject to the selected profile's
+existing diagnostics; no remote submission occurs.
+
+Both presets are captured typed configuration, executed after the catalog is
+prepared. They do not inject hidden scripts or read additional files. Rust uses
+`NotebookConfig`, `ArticleDraftConfig` and `StandardComposition::resolve`.
+Unknown options, invalid queries, route collisions and resource limits fail
+through the same contracts as custom compositions.
+
+### Custom compositions
+
+For a different page structure, pass a named function to `compose(content,
+Fn("chosen"))`. Return `site(id, metadata)` and add the entries needed:
+
+- `add_page(key, route, publication)` for a composed page.
 - `add_document_pages(selection, prefix)` for complete local articles and papers.
 - `add_tag_pages(selection)` for mixed-resource tag collections.
-- `add_search(selection)` for local semantic text and external public metadata.
+- `add_search(selection)` for semantic text and external public metadata.
 - `add_redirects(selection)` for explicit previous-slug redirects.
 
 Routes share one collision registry, including case-folded collisions. Source
-scope remains distinct from selected generated pages. The maintained notebook
-fixture shows a complete composer with navigation, metadata, comments opt-in,
-backlinks, listings, attachments, tags and search. Reading-list components retain
-local search and multi-tag intersection with progressive enhancement; without
-JavaScript all references remain available.
+scope remains distinct from selected generated pages. Reading-list components
+retain local search and multi-tag intersection with progressive enhancement;
+without JavaScript all references remain available. Themes still control HTML;
+neither preset embeds markup or substitutes a separate website renderer.
 
 ## Presentation, outputs and evidence
 

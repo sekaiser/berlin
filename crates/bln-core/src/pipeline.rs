@@ -57,6 +57,28 @@ impl FunctionRef {
     }
 }
 
+/// A captured composition choice. Presets use the same execution and assembly
+/// boundary as an optional user-defined function.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Composer {
+    Function(FunctionRef),
+    Standard(berlin_publication::StandardComposition),
+}
+impl From<FunctionRef> for Composer {
+    fn from(value: FunctionRef) -> Self {
+        Self::Function(value)
+    }
+}
+impl Composer {
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Function(f) => f.as_str(),
+            Self::Standard(s) => s.name(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ArtifactKind {
@@ -117,7 +139,7 @@ pub enum Operation {
         options: Box<berlin_publication::PublicationOptions>,
     },
     Compose {
-        composer: FunctionRef,
+        composer: Composer,
     },
     RenderHtml {
         config: Box<WebsiteConfig>,
@@ -884,7 +906,7 @@ mod tests {
                 PipelineNode::new(
                     "composed",
                     Operation::Compose {
-                        composer: FunctionRef::new("notebook"),
+                        composer: FunctionRef::new("notebook").into(),
                     },
                 )
                 .depends_on("website_assembly"),

@@ -8,6 +8,7 @@ pub use tex::TexEngine;
 mod website;
 
 pub use pipeline::ArtifactKind;
+pub use pipeline::Composer;
 pub use pipeline::FunctionRef;
 pub use pipeline::NodeId;
 pub use pipeline::Operation;
