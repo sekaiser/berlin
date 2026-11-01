@@ -71,7 +71,7 @@ pub(super) fn schema(tx: &rusqlite::Transaction<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-fn payload(receipt: &BuildReceipt) -> Result<String, Error> {
+pub(super) fn payload(receipt: &BuildReceipt) -> Result<String, Error> {
     if receipt.schema_version != 1 || !matches!(receipt.status.as_str(), "succeeded" | "failed") {
         bail!("unsupported build receipt schema/status");
     }

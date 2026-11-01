@@ -105,7 +105,9 @@ Projects can opt into SQLite with `bln state migrate`. Subsequent build attempts
 append to `.berlin/state.sqlite`; existing JSON receipts remain archived.
 `bln state builds` lists build attempts, while `bln state documents` and
 `bln state document CONTENT-ID` inspect article revisions from sealed releases and
-their recorded publication status. These commands perform no remote operations.
+their recorded publication status. `bln state release-attempts` and
+`bln state release-attempt ID` connect captured release preparations to their
+sealed bundles. These commands perform no remote operations.
 See [lifecycle storage](docs/lifecycle-state.md) for upgrades and backup/restore.
 The [metrics storage foundation](docs/metrics.md) reserves typed definitions and
 observations for future collectors. Article inspection includes metric coverage;

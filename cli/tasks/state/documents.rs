@@ -215,7 +215,8 @@ impl Store {
                     "post_url":p.post_url,"evidence":"user_reported","recorded_at_unix_seconds":p.recorded_at_unix_seconds}))).collect::<Vec<_>>();
             observations.push(serde_json::json!({"release":release_id,"document":entry,"fingerprint_version":version,
                 "website_url":manifest.url,"destination":manifest.destination,"pipeline":manifest.pipeline,
-                "website_publication":self.publication(&release_id)?,"reported_announcements":reports}));
+                "website_publication":self.publication(&release_id)?,"reported_announcements":reports,
+                "build_lineage":self.release_lineage(&release_id,limit)?}));
         }
         let metrics = self.metric_coverage(id)?;
         tx.commit()?;

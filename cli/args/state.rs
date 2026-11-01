@@ -11,6 +11,11 @@ pub enum Action {
         limit: usize,
     },
     Build(i64),
+    ReleaseAttempts {
+        pipeline: Option<String>,
+        limit: usize,
+    },
+    ReleaseAttempt(i64),
     IndexReleases,
     Documents {
         limit: usize,
@@ -37,6 +42,21 @@ pub(super) fn command() -> Command {
             ),
         )
         .subcommand(Command::new("status").about("Inspect backend and verify database integrity"))
+        .subcommand(
+            Command::new("release-attempts")
+                .about("List captured release preparations, newest first")
+                .arg(Arg::new("pipeline").long("pipeline"))
+                .arg(history_limit()),
+        )
+        .subcommand(
+            Command::new("release-attempt")
+                .about("Inspect captured inputs and a sealed-release association")
+                .arg(
+                    Arg::new("id")
+                        .required(true)
+                        .value_parser(clap::value_parser!(i64).range(1..)),
+                ),
+        )
         .subcommand(
             Command::new("metric-definitions")
                 .about("Inspect registered metric definitions; no collection")
@@ -103,6 +123,11 @@ pub(super) fn parse(args: &ArgMatches) -> Action {
     match args.subcommand().unwrap() {
         ("migrate", _) => Action::Migrate,
         ("status", _) => Action::Status,
+        ("release-attempts", a) => Action::ReleaseAttempts {
+            pipeline: a.get_one::<String>("pipeline").cloned(),
+            limit: *a.get_one::<u16>("limit").unwrap() as usize,
+        },
+        ("release-attempt", a) => Action::ReleaseAttempt(*a.get_one::<i64>("id").unwrap()),
         ("metric-definitions", a) => Action::MetricDefinitions {
             limit: *a.get_one::<u16>("limit").unwrap() as usize,
         },

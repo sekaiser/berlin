@@ -51,6 +51,10 @@ const status = state(project, 'status');
 assert.equal(status.integrity, 'ok');
 assert.equal(status.counts.build_runs, 3);
 assert.equal(status.counts.sealed_releases, 1);
+assert.equal(status.counts.release_attempts, 1);
+const attempt = state(project, 'release-attempt', '1');
+assert.equal(attempt.attempt.release, release);
+assert.equal(attempt.attempt.receipt.status, 'succeeded');
 assert.equal(status.counts.publications, 0, 'local sealing must not create publication evidence');
 for (const table of ['metric_definitions', 'metric_publications', 'metric_observations']) {
     assert.equal(status.counts[table], 0, 'acceptance must not seed metrics');
@@ -61,6 +65,7 @@ for (const document of documents.documents) {
     const inspected = state(project, 'document', document.id);
     assert.equal(inspected.metrics.status, 'no_observations');
     assert.equal(inspected.metrics.last_observed_at_unix_seconds, null);
+    assert.equal(inspected.observations[0].build_lineage.status, 'captured_build');
 }
 
 const backup = path.join(project, 'lifecycle.sqlite');
@@ -71,4 +76,5 @@ assert.deepEqual(state(restored, 'status'), status);
 assert.deepEqual(state(restored, 'builds'), state(project, 'builds'));
 assert.deepEqual(state(restored, 'documents'), documents);
 assert.deepEqual(state(restored, 'metrics'), state(project, 'metrics'));
+assert.deepEqual(state(restored, 'release-attempt', '1'), attempt);
 console.log(`SQLite acceptance passed; synthetic projects retained at ${project} and ${restored}`);

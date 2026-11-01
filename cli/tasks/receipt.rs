@@ -58,7 +58,7 @@ pub(crate) struct InputReceipt {
     pub content_id: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct FileReceipt {
     pub path: String,
@@ -73,12 +73,24 @@ pub(super) struct ReceiptContext<'a> {
     pub duration: Duration,
     pub plan: &'a PipelinePlan,
     pub artifacts: &'a HashMap<NodeId, RuntimeArtifact>,
-    pub owned_roots: &'a [PathBuf],
+    pub outputs: Outputs<'a>,
     pub diagnostics: &'a [Diagnostic],
     pub error: Option<&'a str>,
 }
 
+pub(super) enum Outputs<'a> {
+    Installed(&'a [PathBuf]),
+    Sealed(&'a super::release::WebsiteRelease),
+}
+
 pub(super) fn write(context: ReceiptContext<'_>) -> Result<(), Error> {
+    let root = context.project.root();
+    let pipeline = context.pipeline;
+    let receipt = capture(context)?;
+    persist(root, pipeline, &receipt)
+}
+
+pub(super) fn capture(context: ReceiptContext<'_>) -> Result<BuildReceipt, Error> {
     let inputs = {
         let mut inputs = BTreeMap::new();
         for snapshot in context.consumed_inputs {
@@ -121,7 +133,10 @@ pub(super) fn write(context: ReceiptContext<'_>) -> Result<(), Error> {
         duration_ms: context.duration.as_millis().try_into().unwrap_or(u64::MAX),
         inputs,
         outputs: if context.error.is_none() {
-            output_receipts(context.project.root(), context.owned_roots)?
+            match context.outputs {
+                Outputs::Installed(roots) => output_receipts(context.project.root(), roots)?,
+                Outputs::Sealed(release) => sealed_outputs(&release.id, &release.manifest),
+            }
         } else {
             Vec::new()
         },
@@ -141,7 +156,18 @@ pub(super) fn write(context: ReceiptContext<'_>) -> Result<(), Error> {
             .collect(),
     };
 
-    persist(context.project.root(), context.pipeline, &receipt)
+    Ok(receipt)
+}
+
+pub(crate) fn sealed_outputs(id: &str, manifest: &super::release::Manifest) -> Vec<FileReceipt> {
+    manifest
+        .files
+        .iter()
+        .map(|file| FileReceipt {
+            path: format!(".berlin/releases/{id}/site/{}", file.path),
+            sha256: file.sha256.clone(),
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug)]
@@ -167,6 +193,17 @@ pub(super) fn write_setup_failure(
     duration: Duration,
     error: &str,
 ) -> Result<(), Error> {
+    let receipt = capture_setup_failure(project, pipeline, started_at, duration, error)?;
+    persist(project.root(), pipeline, &receipt)
+}
+
+pub(super) fn capture_setup_failure(
+    project: &crate::project::Project,
+    pipeline: &str,
+    started_at: SystemTime,
+    duration: Duration,
+    error: &str,
+) -> Result<BuildReceipt, Error> {
     let project_root = project.root();
     let mut inputs = BTreeMap::new();
     for pipeline_file in project
@@ -193,7 +230,7 @@ pub(super) fn write_setup_failure(
         stage: Some("setup".into()),
         catalogs: vec![],
     };
-    persist(project_root, pipeline, &receipt)
+    Ok(receipt)
 }
 
 fn persist(project_root: &Path, pipeline: &str, receipt: &BuildReceipt) -> Result<(), Error> {
@@ -523,7 +560,7 @@ mod tests {
             duration: Duration::ZERO,
             plan: &plan,
             artifacts: &artifacts,
-            owned_roots: &[],
+            outputs: Outputs::Installed(&[]),
             diagnostics: &[],
             error: None,
         })

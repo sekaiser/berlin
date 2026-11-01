@@ -369,7 +369,7 @@ fn schema_three_upgrade_is_atomic_and_does_not_reimport_archives_or_require_bund
     let (root, db, release) = fixture();
     let old_history = db.document("note", 20).unwrap();
     let old_manifest = db.manifest(&release).unwrap();
-    db.connection.execute_batch("DROP TABLE metric_observations; DROP TABLE metric_publications; DROP TABLE metric_definitions; PRAGMA user_version=3;").unwrap();
+    db.connection.execute_batch("DROP TABLE release_attempts; DROP TABLE metric_observations; DROP TABLE metric_publications; DROP TABLE metric_definitions; PRAGMA user_version=3;").unwrap();
     let project = Project::new(root.path().into(), vec![]);
     let backup_file = root.path().join("schema-three.sqlite");
     backup(&project, &backup_file).unwrap();

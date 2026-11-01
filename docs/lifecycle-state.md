@@ -92,6 +92,10 @@ reporting semantics; observations preserve source provenance and measurement tim
 No collectors, imports or provider definitions are enabled. See the
 [metrics storage contract](metrics.md).
 
+Schema version 5 adds completed release-preparation attempts. Their captured
+inputs, catalogs and diagnostics link successful pipeline executions to the exact
+sealed manifest. Existing releases acquire no invented build provenance.
+
 The store uses bundled SQLite, WAL, foreign-key enforcement, FULL synchronization
 and a bounded busy timeout. Publication transactions end before network requests.
 The existing prepared/unknown/uploaded/live reconciliation protocol remains in
@@ -117,7 +121,8 @@ original evidence and may have no stage or catalog observation. New execution
 receipts distinguish setup failures from prepared execution. Setup-failure input
 hashes describe files inspected during failure reporting, not executed snapshots.
 Dry runs and authoring checks create no build-history entries. Sealed-release
-preparation retains its existing manifests; it does not add a build-run receipt.
+preparation records a separate release-attempt receipt after schema 5 migration;
+it does not add an ordinary build-run receipt or replace preview output.
 
 Receipts remain best effort: they are recorded after the existing output commit.
 An output commit and its receipt are not one transaction. If recording fails,
@@ -132,6 +137,44 @@ Before upgrading an existing database, make a backup with `state backup`. Versio
 restored database for normal operations. An invalid legacy receipt aborts the
 upgrade without changing the old schema. Repair the receipt or preserve it outside
 the receipt directory before retrying; migration never silently discards it.
+
+## Release preparation history
+
+```sh
+bln state release-attempts --pipeline site --limit 20
+bln state release-attempt 7
+```
+
+After migration, `bln release` pipeline executions record completed attempts. The
+receipt captures the consumed inputs and runtime catalog observations. Successful
+attempts identify the sealed release and its output hashes under
+`.berlin/releases/<id>/site/`; they never inspect the old preview directory as
+though it were the new output. Repeating the same release records another actual
+execution without duplicating the sealed manifest.
+
+Failed attempts distinguish setup, execution and sealing. Setup-failure hashes
+retain the reduced evidence described above; they are not executed snapshots.
+Failed attempts have no claimed release or output inventory. This does not prove
+that no bundle exists: sealing can complete before a later indexing failure.
+Review the recorded error and use the existing verification/indexing tools.
+
+Attempts are best effort and recorded while the project lock is held. Recording
+failure logs a warning without replacing the release outcome. A process crash,
+lock-acquisition or output-recovery failure can leave no attempt record. The
+attempt transaction does not make filesystem installation atomic with SQLite.
+
+Schema-5 migration creates an empty history. It does not reconstruct attempts from
+existing files, modification times, manifests or ordinary build receipts. Imports
+using `release --from-directory` remain explicit imports with no captured pipeline
+execution; no release-attempt receipt is fabricated for them. Unmigrated projects
+retain their existing behavior and do not write JSON release-attempt files.
+
+Article inspection includes `build_lineage` on each sealed placement: either
+`not_recorded` or `captured_build`, with matching attempt IDs and a total. Follow
+those IDs through `state release-attempt`. This is local execution evidence, not
+proof of remote deployment or a fully hermetic authoring process. History remains
+available after a database-only restore; bundles are not reverified by inspection.
+Back up before migrating. Schema 1–4 backups remain inspectable and restorable.
 
 ## Article history across releases
 

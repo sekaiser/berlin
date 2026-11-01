@@ -206,6 +206,9 @@ Schema version 4 provides the typed metrics storage boundary: immutable definiti
 versions and append-only observations tied to known article/publication context,
 with exact count values, reporting periods and collector provenance. Collectors
 and engagement imports remain deferred; see [metrics](docs/metrics.md).
+Schema version 5 connects completed release-preparation attempts to captured
+inputs and sealed output hashes. It preserves the existing preview transaction and
+publication semantics; recording a receipt remains best effort.
 The file-store descriptions below also document unmigrated projects.
 
 ## Output transactions and receipts

@@ -6,6 +6,25 @@ pub fn run(action: Action, files: Vec<PathBuf>) -> Result<(), Error> {
     match action {
         Action::Migrate => state::migrate(&project)?,
         Action::Status => {}
+        Action::ReleaseAttempts { pipeline, limit } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &state::Store::open(project.root())?
+                        .release_attempts(pipeline.as_deref(), limit)?
+                )?
+            );
+            return Ok(());
+        }
+        Action::ReleaseAttempt(id) => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &state::Store::open(project.root())?.release_attempt(id)?
+                )?
+            );
+            return Ok(());
+        }
         Action::MetricDefinitions { limit } => {
             println!(
                 "{}",

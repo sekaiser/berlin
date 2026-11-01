@@ -7,6 +7,145 @@ fn state(root: &Path, args: &[&str]) -> Value {
 }
 
 #[test]
+fn release_attempts_link_captured_inputs_to_sealed_bytes_without_installing_preview_output() {
+    let root = fixture();
+    state(root.path(), &["migrate"]);
+    fs::create_dir(root.path().join("_site")).unwrap();
+    fs::write(root.path().join("_site/keep.txt"), "preview remains intact").unwrap();
+    let source = fs::read(root.path().join("content/note.md")).unwrap();
+    let first = release(root.path());
+    assert_eq!(release(root.path()), first);
+    let attempt = state(root.path(), &["release-attempt", "1"]);
+    let receipt = &attempt["attempt"]["receipt"];
+    assert_eq!(attempt["attempt"]["release"], first);
+    assert_eq!(attempt["attempt"]["phase"], "sealing");
+    assert_eq!(receipt["status"], "succeeded");
+    assert_eq!(receipt["stage"], "execution");
+    let inputs = receipt["inputs"].as_array().unwrap();
+    assert_eq!(
+        inputs
+            .iter()
+            .find(|i| i["path"] == "content/note.md")
+            .unwrap()["sha256"],
+        digest(&source)
+    );
+    assert!(!receipt["catalogs"].as_array().unwrap().is_empty());
+    let sealed = manifest(root.path(), &first);
+    let expected=sealed["files"].as_array().unwrap().iter().map(|f|serde_json::json!({
+        "path":format!(".berlin/releases/{first}/site/{}",f["path"].as_str().unwrap()),"sha256":f["sha256"]
+    })).collect::<Vec<_>>();
+    assert_eq!(receipt["outputs"], serde_json::json!(expected));
+    assert_eq!(
+        fs::read_to_string(root.path().join("_site/keep.txt")).unwrap(),
+        "preview remains intact"
+    );
+    assert_eq!(fs::read_dir(root.path().join("_site")).unwrap().count(), 1);
+    note(root.path(), "note", "Note", "", "Edited after release.");
+    let second = release(root.path());
+    assert_ne!(first, second);
+    assert_eq!(state(root.path(), &["release-attempt", "1"]), attempt);
+    let list = state(
+        root.path(),
+        &["release-attempts", "--pipeline", "site", "--limit", "1"],
+    );
+    assert_eq!(list["total"], 3);
+    assert_eq!(list["attempts"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        state(root.path(), &["release-attempts", "--pipeline", "other"])["total"],
+        0
+    );
+    let inspected = state(root.path(), &["document", "note"]);
+    let first_observation = inspected["observations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["release"] == first)
+        .unwrap();
+    assert_eq!(
+        first_observation["build_lineage"]["status"],
+        "captured_build"
+    );
+    assert_eq!(first_observation["build_lineage"]["total"], 2);
+    assert_eq!(state(root.path(), &["status"])["counts"]["build_runs"], 0);
+    assert!(!root.path().join(".berlin/receipts").exists());
+    fs::remove_dir_all(root.path().join(".berlin/releases")).unwrap();
+    assert_eq!(state(root.path(), &["release-attempt", "1"]), attempt);
+    let backup = root.path().join("attempts.sqlite");
+    state(root.path(), &["backup", backup.to_str().unwrap()]);
+    let restored = tempfile::tempdir().unwrap();
+    state(restored.path(), &["restore", backup.to_str().unwrap()]);
+    assert_eq!(state(restored.path(), &["release-attempt", "1"]), attempt);
+    assert_eq!(state(restored.path(), &["document", "note"]), inspected);
+}
+
+#[test]
+fn release_failures_record_the_phase_and_never_claim_installed_outputs() {
+    for (pipeline, phase) in [
+        ("invalid configuration".to_owned(), "setup"),
+        (
+            PIPELINE.replace(
+                "fn edit(document) { document }",
+                "fn edit(document) { throw \"synthetic execution refusal\"; }",
+            ),
+            "execution",
+        ),
+        (
+            PIPELINE.replace(".deploy_to(github_pages(\"owner/site\"))", ""),
+            "sealing",
+        ),
+    ] {
+        let root = fixture();
+        state(root.path(), &["migrate"]);
+        fs::write(root.path().join("berlin.pipeline.rhai"), pipeline).unwrap();
+        assert!(!run(root.path(), &["release"]).status.success());
+        let attempt = state(root.path(), &["release-attempt", "1"]);
+        assert_eq!(attempt["attempt"]["phase"], phase);
+        assert_eq!(attempt["attempt"]["receipt"]["status"], "failed");
+        assert_eq!(
+            attempt["attempt"]["receipt"]["outputs"],
+            serde_json::json!([])
+        );
+        assert!(attempt["attempt"]["release"].is_null());
+        assert!(attempt["attempt"]["receipt"]["error"].is_string());
+        assert!(!root.path().join("_site").exists());
+    }
+}
+
+#[test]
+fn release_attempt_recording_failure_does_not_turn_a_sealed_release_into_a_failed_build() {
+    let root = fixture();
+    state(root.path(), &["migrate"]);
+    let db = rusqlite::Connection::open(root.path().join(".berlin/state.sqlite")).unwrap();
+    db.execute_batch("CREATE TRIGGER refuse_attempt BEFORE INSERT ON release_attempts BEGIN SELECT RAISE(ABORT,'synthetic attempt refusal'); END;").unwrap();
+    let result = run(root.path(), &["release"]);
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(String::from_utf8_lossy(&result.stderr).contains("synthetic attempt refusal"));
+    let first = String::from_utf8(result.stdout).unwrap().trim().to_owned();
+    assert_eq!(
+        state(root.path(), &["status"])["counts"]["sealed_releases"],
+        1
+    );
+    assert_eq!(state(root.path(), &["release-attempts"])["total"], 0);
+    state(root.path(), &["index-releases"]);
+    assert_eq!(state(root.path(), &["release-attempts"])["total"], 0);
+    db.execute_batch("DROP TRIGGER refuse_attempt").unwrap();
+    assert_eq!(release(root.path()), first);
+    assert_eq!(state(root.path(), &["release-attempts"])["total"], 1);
+    db.execute("UPDATE release_attempts SET pipeline='forged'", [])
+        .unwrap();
+    assert!(
+        !run(root.path(), &["state", "release-attempt", "1"])
+            .status
+            .success()
+    );
+    assert!(!run(root.path(), &["state", "status"]).status.success());
+}
+
+#[test]
 fn metrics_queries_are_offline_read_only_and_do_not_manufacture_engagement_data() {
     let root = fixture();
     state(root.path(), &["migrate"]);

@@ -68,16 +68,79 @@ impl<'a> PipelineRun<'a> {
 
     pub(super) fn release(mut self) -> Result<super::release::WebsiteRelease, Error> {
         self.lock = Some(output::ProjectLock::acquire(self.project.root())?);
-        let prepared = self.prepare()?;
-        self.execute(&prepared)?;
-        // Seal the complete staged site; never install over the preview output.
-        super::release::seal(
-            &prepared.project,
-            self.pipeline,
-            &prepared.plan,
-            &self.output_root,
-            &self.artifacts,
-        )
+        let prepared = match self.prepare() {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                let outcome = Err(error);
+                self.record_release_attempt(None, super::state::attempts::Phase::Setup, &outcome);
+                return outcome;
+            }
+        };
+        let mut phase = super::state::attempts::Phase::Execution;
+        let outcome = self.execute(&prepared).and_then(|()| {
+            phase = super::state::attempts::Phase::Sealing;
+            // Seal the complete staged site; never install over the preview output.
+            super::release::seal(
+                &prepared.project,
+                self.pipeline,
+                &prepared.plan,
+                &self.output_root,
+                &self.artifacts,
+            )
+        });
+        self.record_release_attempt(Some(&prepared), phase, &outcome);
+        outcome
+    }
+
+    fn record_release_attempt(
+        &self,
+        prepared: Option<&PreparedPipeline>,
+        phase: super::state::attempts::Phase,
+        outcome: &Result<super::release::WebsiteRelease, Error>,
+    ) {
+        let persisted = (|| -> Result<(), Error> {
+            if !super::state::active(self.project.root())? {
+                return Ok(());
+            }
+            let error = outcome.as_ref().err().map(ToString::to_string);
+            let receipt = match prepared {
+                Some(prepared) => receipt::capture(receipt::ReceiptContext {
+                    consumed_inputs: &self.consumed_inputs,
+                    project: &prepared.project,
+                    pipeline: self.pipeline,
+                    started_at: self.started_at,
+                    duration: self.timer.elapsed(),
+                    plan: &prepared.plan,
+                    artifacts: &self.artifacts,
+                    outputs: match outcome {
+                        Ok(release) => receipt::Outputs::Sealed(release),
+                        Err(_) => receipt::Outputs::Installed(&[]),
+                    },
+                    diagnostics: &self.diagnostics,
+                    error: error.as_deref(),
+                })?,
+                None => receipt::capture_setup_failure(
+                    self.project,
+                    self.pipeline,
+                    self.started_at,
+                    self.timer.elapsed(),
+                    error
+                        .as_deref()
+                        .context("release setup failure has no error")?,
+                )?,
+            };
+            super::state::Store::open(self.project.root())?.record_release_attempt(
+                &super::state::attempts::Attempt {
+                    schema_version: 1,
+                    phase,
+                    receipt,
+                    release: outcome.as_ref().ok().map(|r| r.id.clone()),
+                },
+            )
+        })();
+        if let Err(error) = persisted {
+            log::warn!("Unable to record release attempt: {error}");
+        }
     }
 
     fn prepare(&mut self) -> Result<PreparedPipeline, Error> {
@@ -263,7 +326,7 @@ impl<'a> PipelineRun<'a> {
             duration: self.timer.elapsed(),
             plan: &prepared.plan,
             artifacts: &self.artifacts,
-            owned_roots: &self.owned_roots,
+            outputs: receipt::Outputs::Installed(&self.owned_roots),
             diagnostics: &self.diagnostics,
             error: error_message.as_deref(),
         }) {

@@ -11,11 +11,12 @@ use std::{
     time::Duration,
 };
 
+pub(crate) mod attempts;
 pub(crate) mod builds;
 pub(crate) mod documents;
 pub(crate) mod metrics;
 
-const VERSION: i64 = 4;
+const VERSION: i64 = 5;
 const APPLICATION: i64 = 0x424c4e31;
 const LIMIT: usize = 128 * 1024;
 
@@ -126,7 +127,10 @@ impl Store {
             documents::schema(&tx)?;
             Store::import_releases(&tx, &releases)?;
         }
-        metrics::schema(&tx)?;
+        if version < 4 {
+            metrics::schema(&tx)?;
+        }
+        attempts::schema(&tx)?;
         tx.pragma_update(None, "user_version", VERSION)?;
         tx.commit()?;
         Ok(())
@@ -263,6 +267,9 @@ impl Store {
         }
         if version >= 4 {
             self.validate_metrics()?;
+        }
+        if version >= 5 {
+            self.validate_attempts()?;
         }
         tx.commit()?;
         Ok(())
@@ -402,6 +409,9 @@ pub(crate) fn status(project: &Project) -> Result<serde_json::Value, Error> {
             "metric_publications",
             "metric_observations",
         ]);
+    }
+    if version >= 5 {
+        tables.push("release_attempts");
     }
     for table in tables {
         let count: i64 =
