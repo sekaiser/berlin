@@ -2,9 +2,14 @@
 use super::*;
 use berlin_document::{Block, ContentId, Inline, plain_text};
 
+#[path = "rss.rs"]
+mod rss;
+pub const RSS_PATH: &str = "rss.xml";
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SiteHtmlOptions {
+    pub rss: bool,
     pub description: Option<String>,
     pub github: Option<String>,
     pub linkedin: Option<String>,
@@ -144,6 +149,20 @@ impl PublicationHtmlRenderer {
         }
         let mut files = BTreeMap::new();
         let mut total_bytes = 0usize;
+        if options.rss {
+            if assembly.routes().keys().any(|route| {
+                let route = route.to_ascii_lowercase();
+                route == RSS_PATH || route.starts_with("rss.xml/")
+            }) {
+                return Err(failure(
+                    Code::OutputConflict,
+                    "RSS path conflicts with a site route",
+                ));
+            }
+            let bytes = rss::render(assembly, site, options, &mount)?;
+            total_bytes = bytes.len();
+            files.insert(RSS_PATH.into(), bytes);
+        }
         let mut stylesheets = BTreeSet::from([
             "vendor.css".into(),
             "notebook.css".into(),
@@ -421,6 +440,12 @@ fn base_context(
     c.insert("twitter", &options.twitter);
     c.insert("config_giscus", &options.discussion);
     c.insert("has_search", &assembly.routes().contains_key("search.html"));
+    c.insert(
+        "rss_url",
+        &options
+            .rss
+            .then(|| mount.join(RSS_PATH).expect("fixed RSS path").to_string()),
+    );
     c.insert(
         "page_path",
         &if route == "index.html" {

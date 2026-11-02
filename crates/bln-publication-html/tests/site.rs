@@ -4,6 +4,27 @@ use berlin_publication::*;
 use berlin_publication_html::*;
 use std::collections::BTreeMap;
 
+fn xml_values(xml: &str, name: &str) -> Vec<String> {
+    use quick_xml::{Reader, events::Event};
+    let mut reader = Reader::from_str(xml);
+    let mut values = vec![];
+    loop {
+        match reader.read_event().unwrap() {
+            Event::Start(element) if element.name().as_ref() == name.as_bytes() => {
+                let value = reader.read_text(element.name()).unwrap();
+                values.push(
+                    quick_xml::escape::unescape(&value.decode().unwrap())
+                        .unwrap()
+                        .into_owned(),
+                );
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    values
+}
+
 fn templates() -> BTreeMap<String, String> {
     fn visit(
         root: &std::path::Path,
@@ -324,4 +345,234 @@ fn comments_require_explicit_configuration_and_profiles_are_not_unsafe_links() {
             .render_site(&assembly, &ComponentRegistry::builtins(), &site, &invalid)
             .is_err()
     );
+}
+
+#[test]
+fn rss_uses_only_included_document_pages_and_is_opt_in() {
+    let (assembly, site, mut options) = fixture();
+    let renderer = PublicationHtmlRenderer::new(templates(), HtmlBindings::builtins()).unwrap();
+    let before = renderer
+        .render_site(&assembly, &ComponentRegistry::builtins(), &site, &options)
+        .unwrap();
+    assert!(!before.files.contains_key(RSS_PATH));
+    assert!(!String::from_utf8_lossy(&before.files["index.html"]).contains("application/rss+xml"));
+    options.rss = true;
+    let result = renderer
+        .render_site(&assembly, &ComponentRegistry::builtins(), &site, &options)
+        .unwrap();
+    let rss = String::from_utf8_lossy(&result.files[RSS_PATH]);
+    assert_eq!(
+        xml_values(&rss, "title"),
+        vec!["Notebook", "Work a", "Work c"]
+    );
+    assert_eq!(xml_values(&rss, "guid").len(), 2);
+    assert!(
+        xml_values(&rss, "pubDate").is_empty(),
+        "undated documents must stay undated"
+    );
+    for excluded in [
+        "Work b",
+        "DRAFT_SENTINEL",
+        "UNSELECTED_BODY_SENTINEL",
+        "A paper &amp; its evidence",
+        "/private/sentinel",
+        "An argument",
+    ] {
+        assert!(!rss.contains(excluded), "feed leaked {excluded}");
+    }
+    assert!(result.manifest.routes.contains(&RSS_PATH.into()));
+    let html = String::from_utf8_lossy(&result.files["index.html"]);
+    assert!(html.contains("type=\"application/rss+xml\""));
+    assert!(html.contains("Subscribe via RSS"));
+    assert!(
+        html_escape::decode_html_entities(&html).contains("https://example.test/portfolio/rss.xml")
+    );
+    let again = renderer
+        .render_site(&assembly, &ComponentRegistry::builtins(), &site, &options)
+        .unwrap();
+    assert_eq!(result.files[RSS_PATH], again.files[RSS_PATH]);
+    assert_ne!(
+        before.manifest.render_input_fingerprint,
+        result.manifest.render_input_fingerprint
+    );
+}
+
+fn rss_assembly(
+    mut first: Document,
+    mut other: Document,
+    limit: usize,
+    prefix: &str,
+) -> SiteAssembly {
+    first.metadata.comments = false;
+    other.metadata.comments = false;
+    let catalog = PublicationCatalog::new(
+        DocumentCollection::new(vec![first, other]),
+        PublicationOptions {
+            limits: PublicationLimits {
+                output_bytes: limit,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let mut spec = SiteSpec::new(PublicationId("rss-test".into()), "Notebook");
+    spec.add_page(
+        "home",
+        "index.html",
+        PublicationSpec::new(
+            PublicationMetadata {
+                id: PublicationId("home".into()),
+                title: "Home".into(),
+                description: None,
+            },
+            view! { Portfolio() { Introduction(text: "My notebook.".to_string()) } },
+        )
+        .unwrap(),
+    );
+    spec.add_document_pages(query(&["local:a", "local:b"]), prefix);
+    SiteAssembly::resolve(&spec, catalog, &ComponentRegistry::builtins()).unwrap()
+}
+
+#[test]
+fn rss_escapes_summaries_preserves_identity_and_sorts_authored_dates() {
+    let mut a = doc("a");
+    let mut b = doc("b");
+    a.metadata.title = Some("A < B & \"C\" 🪶".into());
+    a.metadata.description = Some("<img src=x onerror=alert(1)> & ]]>".into());
+    a.metadata.authors = vec!["Author & colleague".into()];
+    a.metadata.tags = vec!["architecture".into(), "go".into()];
+    a.metadata.published = Some("2026-10-31".parse().unwrap());
+    b.metadata.published = Some("2026-11-01".parse().unwrap());
+    let renderer = PublicationHtmlRenderer::new(templates(), HtmlBindings::builtins()).unwrap();
+    let site = PublicationSite {
+        url: "https://example.test/notebook".into(),
+        title: Some("Notes & examples".into()),
+        author: None,
+    };
+    let options = SiteHtmlOptions {
+        rss: true,
+        ..Default::default()
+    };
+    let render = |a: Document, b: Document| {
+        let assembly = rss_assembly(a, b, PublicationLimits::default().output_bytes, "notes");
+        String::from_utf8(
+            renderer
+                .render_site(&assembly, &ComponentRegistry::builtins(), &site, &options)
+                .unwrap()
+                .files[RSS_PATH]
+                .clone(),
+        )
+        .unwrap()
+    };
+    let rss = render(a.clone(), b.clone());
+    assert_eq!(
+        xml_values(&rss, "title"),
+        vec!["Notes & examples", "Work b", "A < B & \"C\" 🪶"]
+    );
+    assert_eq!(
+        xml_values(&rss, "pubDate"),
+        vec![
+            "Sun, 01 Nov 2026 00:00:00 GMT",
+            "Sat, 31 Oct 2026 00:00:00 GMT"
+        ]
+    );
+    assert!(
+        xml_values(&rss, "description")
+            .contains(&"&lt;img src=x onerror=alert(1)&gt; &amp; ]]&gt;".into())
+    );
+    assert_eq!(xml_values(&rss, "dc:creator"), vec!["Author & colleague"]);
+    assert!(xml_values(&rss, "category").contains(&"go".into()));
+    assert!(!rss.contains("<img"));
+    let ids = xml_values(&rss, "guid");
+    a.metadata.title = Some("A better title".into());
+    a.metadata.slug = Some("new-slug".into());
+    a.metadata.modified = Some("2026-11-02".parse().unwrap());
+    a.blocks = vec![Block::Paragraph {
+        content: vec![Inline::Text {
+            value: "Changed body text".into(),
+        }],
+    }];
+    let revised = render(a, b);
+    assert_eq!(ids, xml_values(&revised, "guid"));
+    assert_eq!(xml_values(&rss, "pubDate"), xml_values(&revised, "pubDate"));
+    assert!(
+        xml_values(&revised, "link")
+            .contains(&"https://example.test/notebook/notes/new-slug.html".into())
+    );
+}
+
+#[test]
+fn rss_respects_output_limits_and_refuses_a_route_using_its_directory() {
+    let renderer = PublicationHtmlRenderer::new(templates(), HtmlBindings::builtins()).unwrap();
+    let site = PublicationSite {
+        url: "https://example.test/notebook".into(),
+        ..Default::default()
+    };
+    let options = SiteHtmlOptions {
+        rss: true,
+        ..Default::default()
+    };
+    let assembly = rss_assembly(doc("a"), doc("b"), 200, "notes");
+    assert_eq!(
+        renderer
+            .render_site(&assembly, &ComponentRegistry::builtins(), &site, &options)
+            .err()
+            .unwrap()
+            .code,
+        Code::ResourceLimit
+    );
+    let assembly = rss_assembly(
+        doc("a"),
+        doc("b"),
+        PublicationLimits::default().output_bytes,
+        "RSS.XML",
+    );
+    assert_eq!(
+        renderer
+            .render_site(&assembly, &ComponentRegistry::builtins(), &site, &options)
+            .err()
+            .unwrap()
+            .code,
+        Code::OutputConflict
+    );
+}
+
+#[test]
+fn rss_can_represent_a_site_without_published_documents() {
+    let catalog =
+        PublicationCatalog::new(DocumentCollection::default(), Default::default()).unwrap();
+    let mut spec = SiteSpec::new(PublicationId("empty".into()), "Empty notebook");
+    spec.add_page(
+        "home",
+        "index.html",
+        PublicationSpec::new(
+            PublicationMetadata {
+                id: PublicationId("home".into()),
+                title: "Home".into(),
+                description: None,
+            },
+            view! { Portfolio() { Introduction(text: "No published notes yet.".to_string()) } },
+        )
+        .unwrap(),
+    );
+    let assembly = SiteAssembly::resolve(&spec, catalog, &ComponentRegistry::builtins()).unwrap();
+    let result = PublicationHtmlRenderer::new(templates(), HtmlBindings::builtins())
+        .unwrap()
+        .render_site(
+            &assembly,
+            &ComponentRegistry::builtins(),
+            &PublicationSite {
+                url: "https://example.test/".into(),
+                ..Default::default()
+            },
+            &SiteHtmlOptions {
+                rss: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let xml = String::from_utf8_lossy(&result.files[RSS_PATH]);
+    assert_eq!(xml_values(&xml, "title"), vec!["Empty notebook"]);
+    assert!(xml_values(&xml, "guid").is_empty());
 }

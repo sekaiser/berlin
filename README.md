@@ -37,6 +37,7 @@ Current capabilities include:
 - Static HTML through Tera templates, CSS compilation, and asset copying.
 - [Composable publications](docs/composable-publications.md): curated/query-based portfolios and structural excerpts, composed in Rust or execution-time Rhai, with replaceable Tera HTML and independent text output.
 - [Stable article URLs](docs/stable-urls.md), with optional static redirects from previous slugs.
+- [RSS subscriptions](docs/rss.md) with stable entry IDs, authored dates, article summaries and automatic discovery.
 - Syntax-highlighted code with named listings, line references, captions, and highlights.
 - [TeX equations](docs/mathematics.md) from Org or Markdown, rendered as static MathML without JavaScript.
 - [LaTeX graphics](docs/diagrams.md): shared Org/CLI/pipeline rendering, including TikZ, PGFPlots and LuaLaTeX graph layouts.

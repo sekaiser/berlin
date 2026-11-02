@@ -24,5 +24,6 @@ html-escape.workspace = true
 slugify.workspace = true
 
 [dev-dependencies]
+quick-xml = "0.41.0"
 berlin_content.workspace = true
 berlin_publication_text.workspace = true

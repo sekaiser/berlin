@@ -315,6 +315,7 @@ dependencies = [
  "html-escape",
  "lol_html",
  "markdown",
+ "quick-xml",
  "serde",
  "serde_json",
  "slugify",

@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% if rss_url is defined and rss_url %}<link rel="alternate" type="application/rss+xml" title="{{ title }} — RSS" href="{{ rss_url }}">{% endif %}
   <link rel="stylesheet" href="{{config_site_url}}/assets/css/vendor.css" media="screen">
   <link rel="stylesheet" href="{{config_site_url}}/assets/css/notebook.css">
   {% block page_styles %}{% endblock page_styles %}

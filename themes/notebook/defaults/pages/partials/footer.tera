@@ -7,6 +7,14 @@
     <p>Built with Berlin.</p>
   </div>
   <nav aria-label="Elsewhere">
+    {% if rss_url is defined and rss_url %}
+      <a class="footer-icon" href="{{rss_url}}" type="application/rss+xml" aria-label="Subscribe via RSS" title="Subscribe via RSS">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false">
+          <circle cx="5" cy="19" r="1.5" fill="currentColor" stroke="none"/>
+          <path d="M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16"/>
+        </svg>
+      </a>
+    {% endif %}
     {% if github %}
       <a class="footer-icon" href="{{github}}" aria-label="GitHub" title="GitHub">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false">

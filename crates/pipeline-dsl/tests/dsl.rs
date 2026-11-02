@@ -125,7 +125,7 @@ fn website_settings_are_typed_and_scoped_to_render_nodes() {
         fn notebook(c) {throw "not executed";}
         pipeline first {
             let website = compose(catalog([documents(load_markdown("*.md"))]),Fn("notebook"));
-            output render_html(website, "_first", html_config(#{title: "First", theme: "../themes/notebook", url: "https://first.example", external_links_new_tab: true, profiles: #{github: "https://github.com/first"}}));
+            output render_html(website, "_first", html_config(#{title: "First", theme: "../themes/notebook", url: "https://first.example", rss: true, external_links_new_tab: true, profiles: #{github: "https://github.com/first"}}));
         }
         pipeline second {
             let website = compose(catalog([documents(load_markdown("*.md"))]),Fn("notebook"));
@@ -146,6 +146,7 @@ fn website_settings_are_typed_and_scoped_to_render_nodes() {
             .unwrap();
         assert_eq!(config.title.as_deref(), Some(title));
         assert_eq!(config.external_links_new_tab, name == "first");
+        assert_eq!(config.rss, name == "first");
         if name == "first" {
             assert_eq!(
                 config.theme.as_deref(),
@@ -180,6 +181,7 @@ fn website_settings_reject_unknown_fields_wrong_types_and_invalid_urls() {
         "#{title: 42}",
         "#{theme: 42}",
         "#{external_links_new_tab: \"true\"}",
+        "#{rss: \"true\"}",
         "#{url: \"not an absolute URL\"}",
         "#{profiles: #{gitub: \"https://github.com/example\"}}",
         "#{profiles: #{github: \"not a URL\"}}",

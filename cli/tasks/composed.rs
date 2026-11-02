@@ -110,6 +110,7 @@ pub(super) fn site(
     let renderer =
         PublicationHtmlRenderer::new(snapshot.component_templates()?, HtmlBindings::builtins())?;
     let html_options = berlin_publication_html::SiteHtmlOptions {
+        rss: config.rss,
         description: config.description.clone(),
         github: config.profiles.github.as_ref().map(ToString::to_string),
         linkedin: config.profiles.linkedin.as_ref().map(ToString::to_string),
@@ -234,6 +235,9 @@ pub(super) fn website(
     consumed_inputs: &mut Vec<super::receipt::ConsumedInput>,
     assets: &[(std::path::PathBuf, Vec<u8>)],
 ) -> Result<(), Error> {
+    if config.rss {
+        anyhow::bail!("RSS requires a multi-page site composition, such as notebook()");
+    }
     let theme = match config.theme.as_deref() {
         Some(selected) => super::theme::Theme::load(project.root(), selected)?,
         None => super::theme::Theme::project_only(project.root())?,

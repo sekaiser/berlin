@@ -14,6 +14,8 @@ pub struct WebsiteConfig {
     /// Open off-origin HTTP(S) links in a new tab when rendering website pages.
     /// Requires `url` so internal absolute links remain in the current tab.
     pub external_links_new_tab: bool,
+    /// Generate a summary RSS feed from the site's included local documents.
+    pub rss: bool,
     pub title: Option<String>,
     pub author: Option<String>,
     pub description: Option<String>,

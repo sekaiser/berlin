@@ -102,7 +102,10 @@ impl ProductionSite<'_> {
         if value.trim().starts_with('#') {
             return Ok(value.to_owned());
         }
-        if !self.pages.contains_key(&reference.path) {
+        // A subscription endpoint must stay stable as new items arrive.
+        if !self.pages.contains_key(&reference.path)
+            && reference.path != berlin_publication_html::RSS_PATH
+        {
             let hash = self.asset_hash(&reference.path)?;
             let query = reference
                 .url
