@@ -139,7 +139,7 @@ fn declarative_presets_are_captured_and_match_native_composition() {
     let source = r#"
         pipeline site {
             let c=catalog([documents(load_markdown("content/*.md"))]);
-            output render_html(compose(c,notebook(#{title:"My notebook",pages:[#{id:"about",route:"about.html",title:"About"}]})),"_site",html_config(#{}));
+            output render_html(compose(c,notebook(#{title:"My notebook",home_limit:1,pages:[#{id:"about",route:"about.html",title:"About"}]})),"_site",html_config(#{}));
         }
     "#;
     let loader = RhaiPipelineLoader::new(source).unwrap();
@@ -156,6 +156,7 @@ fn declarative_presets_are_captured_and_match_native_composition() {
     let dynamic = loader.compose(composer, catalog()).unwrap();
     let config = NotebookConfig {
         title: "My notebook".into(),
+        home_limit: Some(1),
         pages: vec![NotebookPage {
             id: "about".into(),
             route: "about.html".into(),

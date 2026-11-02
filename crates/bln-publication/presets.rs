@@ -49,6 +49,8 @@ pub struct NotebookConfig {
     pub id: String,
     pub title: String,
     pub home_title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub home_limit: Option<usize>,
     pub documents: ResourceQuery,
     pub reading: ResourceQuery,
     pub document_prefix: String,
@@ -78,6 +80,7 @@ impl Default for NotebookConfig {
             id: "notebook".into(),
             title: "Notebook".into(),
             home_title: "Notebook".into(),
+            home_limit: None,
             documents: local_documents(),
             reading: ResourceQuery {
                 origins_any: Some(vec![ResourceOrigin::External]),
@@ -154,6 +157,9 @@ impl NotebookConfig {
     pub fn compose(&self, catalog: &PublicationCatalog) -> Result<SiteSpec> {
         let limits = catalog.limits();
         encoded_size(self, limits.property_bytes)?;
+        if self.home_limit == Some(0) {
+            return Err(invalid("home_limit must be greater than zero"));
+        }
         let strings = [
             &self.id,
             &self.title,
@@ -182,7 +188,7 @@ impl NotebookConfig {
             || catalog
                 .len()
                 .max(1)
-                .checked_mul(3)
+                .checked_mul(3 + usize::from(self.home_limit.is_some()))
                 .is_none_or(|n| n > catalog.options().resource_limits.query_work)
         {
             return Err(Diagnostic::new(
@@ -199,6 +205,15 @@ impl NotebookConfig {
         validate_site_route(&format!("{}/example.html", self.document_prefix))?;
         let authored = catalog.select(&self.documents)?;
         authored.local_documents()?;
+        let home_selection = self
+            .home_limit
+            .map(|limit| {
+                let mut query = self.documents.clone();
+                query.limit = Some(query.limit.map_or(limit, |existing| existing.min(limit)));
+                catalog.select(&query)
+            })
+            .transpose()?;
+        let home_authored = home_selection.as_ref().unwrap_or(&authored);
         let reading = catalog.select(&self.reading)?;
         let all = catalog.select(&ResourceQuery {
             order: ResourceOrder::IdAsc,
@@ -213,7 +228,7 @@ impl NotebookConfig {
         // subsequently enforce exact cumulative nodes, properties and routes.
         let nodes = authored
             .len()
-            .saturating_mul(2)
+            .saturating_add(home_authored.len())
             .saturating_add(reading.len().saturating_mul(2))
             .saturating_add(self.pages.len().saturating_mul(2))
             .saturating_add(16)
@@ -229,6 +244,9 @@ impl NotebookConfig {
         for selected in [&authored, &reading, &all] {
             result.record_selection(selected, limits)?;
         }
+        if let Some(selected) = &home_selection {
+            result.record_selection(selected, limits)?;
+        }
         let mut home = vec![];
         if !guides.is_empty() {
             home.push(
@@ -239,8 +257,8 @@ impl NotebookConfig {
                 .into_call(),
             );
         }
-        if !authored.is_empty() {
-            home.push(section("From the notebook", featured(&authored)));
+        if !home_authored.is_empty() {
+            home.push(section("From the notebook", featured(home_authored)));
         }
         home.push(
             RelatedWork {

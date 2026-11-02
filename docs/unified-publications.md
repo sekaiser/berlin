@@ -163,15 +163,22 @@ Override only the choices that differ:
 notebook(#{
     title: "Engineering notebook",
     home_title: "Things I am working through",
+    home_limit: 6,
     documents: #{origins_any: ["local"], topics_all: ["systems"], order: "published_desc"},
     pages: [#{id: "about", route: "about.html", title: "About"}]
 })
 ```
 
-Options are `id`, `title`, `home_title`, `documents`, `reading`, `document_prefix`,
+Options are `id`, `title`, `home_title`, `home_limit`, `documents`, `reading`, `document_prefix`,
 `notes_route`, `reading_route`, and `pages`. Queries use the existing resource
 query schema; `documents` must select local work. These queries select listings
 and generated documents without shrinking the complete local source scope.
+`home_limit` is an optional positive integer that limits only the homepage's
+recent-writing selection. It preserves the document query's ordering and any
+stricter limit. Without it, the homepage lists all selected documents. The full
+notes index, guide navigation, document routes, tags, search, and RSS retain their
+existing scope. The homepage query and its selected revisions are recorded in
+the normal selection evidence.
 Page declarations contain `id`, `route`, `title`, and an optional plain-text
 `introduction`. Substantial presentation-owned page content belongs in project
 Tera files, included by the site's `publications/site_page.tera` override; it does

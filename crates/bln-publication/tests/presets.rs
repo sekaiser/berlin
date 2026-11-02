@@ -157,14 +157,96 @@ fn empty_notebook_is_valid_and_filters_do_not_shrink_source_scope() {
     );
 }
 #[test]
+fn home_limit_preserves_the_archive_guides_routes_and_selection_evidence() {
+    let options = NotebookConfig {
+        home_limit: Some(1),
+        ..Default::default()
+    };
+    let ComposedArtifact::Site(site) = StandardComposition::Notebook(options.into())
+        .resolve(catalog(), &ComponentRegistry::builtins())
+        .unwrap()
+    else {
+        panic!("site")
+    };
+    let cards = |route: &str| {
+        let SiteRoute::Composed { assembly, .. } = &site.routes()[route] else {
+            panic!("composed page")
+        };
+        assembly.spec().root.slots["body"]
+            .0
+            .iter()
+            .flat_map(|section| section.slots.values().flat_map(|slot| slot.0.iter()))
+            .filter_map(|call| match call.properties.get("source") {
+                Some(Property::Resource(r)) => Some(r.id.as_str().to_owned()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(cards("index.html"), ["local:recent"]);
+    assert_eq!(
+        cards("notes.html"),
+        ["local:recent", "local:guide", "local:old"]
+    );
+    let SiteRoute::Composed { assembly, .. } = &site.routes()["index.html"] else {
+        panic!("home")
+    };
+    let Some(Property::List(guides)) = assembly.spec().root.slots["body"].0[0]
+        .properties
+        .get("sources")
+    else {
+        panic!("guides")
+    };
+    assert!(matches!(&guides[0], Property::Resource(r) if r.id.as_str() == "local:guide"));
+    for route in [
+        "notes/work-old.html",
+        "notes/work-guide.html",
+        "notes/former-title.html",
+        "tags/storage.html",
+        "search/index.json",
+    ] {
+        assert!(site.routes().contains_key(route), "{route}");
+    }
+    let evidence = site
+        .spec()
+        .queries
+        .values()
+        .find(|evidence| evidence.query.limit == Some(1))
+        .unwrap();
+    assert_eq!(evidence.selected.len(), 1);
+    assert_eq!(evidence.selected[0].id.as_str(), "local:recent");
+
+    let options = NotebookConfig {
+        home_limit: Some(5),
+        documents: ResourceQuery {
+            limit: Some(1),
+            ..NotebookConfig::default().documents
+        },
+        ..Default::default()
+    };
+    let spec = options.compose(&catalog()).unwrap();
+    assert!(spec.queries.values().all(|e| e.query.limit != Some(5)));
+}
+#[test]
 fn presets_refuse_bad_routes_types_collisions_and_resource_budgets() {
     for value in [
         json!({"typo":true}),
         json!({"pages":[{"id":"x","title":"X","route":"x.html","unknown":true}]}),
         json!({"documents":{"limit":"all"}}),
+        json!({"home_limit":-1}),
+        json!({"home_limit":"six"}),
     ] {
         assert!(serde_json::from_value::<NotebookConfig>(value).is_err());
     }
+    assert_eq!(
+        NotebookConfig {
+            home_limit: Some(0),
+            ..Default::default()
+        }
+        .compose(&catalog())
+        .unwrap_err()
+        .code,
+        Code::InvalidProperty
+    );
     for route in ["../escape.html", "notes.html"] {
         let config = NotebookConfig {
             pages: vec![NotebookPage {
