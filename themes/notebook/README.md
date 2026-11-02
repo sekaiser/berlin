@@ -192,6 +192,12 @@ retain a 42px fallback for print, where the screen-only tokens are not loaded.
 | `project.css` | Personal overrides, loaded last |
 | `giscus.css` | Standalone discussion iframe theme, never loaded by the main page |
 
+The standard notebook composition places a `Start here` guide group before
+recent writing. A homepage can render that group as a direct `.journal-guides`
+child of `.journal-spread`: `overview.css` keeps it in the desktop margin and
+above the writing column at 900px and below. Document and keyboard order remain
+the same with JavaScript disabled. The project/tag margin follows the writing.
+
 Templates load the shared vendor foundation first, then the common entry,
 relevant page entries, and project overrides. A project can add its own entries
 and link them explicitly.

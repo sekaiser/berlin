@@ -84,6 +84,23 @@ fn notebook_preserves_document_identity_and_builds_mixed_indexes_and_redirects()
             .iter()
             .any(|r| r.id.origin() == ResourceOrigin::External)
     );
+    let SiteRoute::Composed { assembly: home, .. } = &site.routes()["index.html"] else {
+        panic!("home")
+    };
+    let home_body = &home.spec().root.slots["body"].0;
+    assert_eq!(
+        home_body[0].properties.get("title"),
+        Some(&Property::Text("Start here".into()))
+    );
+    let Some(Property::List(guides)) = home_body[0].properties.get("sources") else {
+        panic!("guide references")
+    };
+    assert_eq!(guides.len(), 1);
+    assert!(matches!(&guides[0], Property::Resource(r) if r.id.as_str() == "local:guide"));
+    assert_eq!(
+        home_body[1].properties.get("title"),
+        Some(&Property::Text("From the notebook".into()))
+    );
     let SiteRoute::Composed { assembly, .. } = &site.routes()["notes.html"] else {
         panic!("notes")
     };

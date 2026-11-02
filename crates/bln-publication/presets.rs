@@ -204,6 +204,11 @@ impl NotebookConfig {
             order: ResourceOrder::IdAsc,
             ..Default::default()
         })?;
+        let guides = authored
+            .iter()
+            .filter(|entry| entry.descriptor().kind.as_str() == "guide")
+            .map(ResourceEntry::reference)
+            .collect::<Vec<_>>();
         // Bound expansion before constructing repeated card trees. Assemblies
         // subsequently enforce exact cumulative nodes, properties and routes.
         let nodes = authored
@@ -211,7 +216,8 @@ impl NotebookConfig {
             .saturating_mul(2)
             .saturating_add(reading.len().saturating_mul(2))
             .saturating_add(self.pages.len().saturating_mul(2))
-            .saturating_add(16);
+            .saturating_add(16)
+            .saturating_add(usize::from(!guides.is_empty()));
         if nodes > limits.occurrences {
             return Err(Diagnostic::new(
                 Code::ResourceLimit,
@@ -224,6 +230,15 @@ impl NotebookConfig {
             result.record_selection(selected, limits)?;
         }
         let mut home = vec![];
+        if !guides.is_empty() {
+            home.push(
+                RelatedWork {
+                    sources: guides.clone(),
+                    title: Some("Start here".into()),
+                }
+                .into_call(),
+            );
+        }
         if !authored.is_empty() {
             home.push(section("From the notebook", featured(&authored)));
         }
@@ -242,11 +257,6 @@ impl NotebookConfig {
             "index.html",
             publication("home", &self.home_title, home)?,
         );
-        let guides = authored
-            .iter()
-            .filter(|entry| entry.descriptor().kind.as_str() == "guide")
-            .map(ResourceEntry::reference)
-            .collect::<Vec<_>>();
         let mut notes = vec![];
         if !guides.is_empty() {
             notes.push(
