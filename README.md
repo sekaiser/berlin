@@ -254,8 +254,8 @@ No npm installation is required. Node.js runs the JavaScript regression tests.
 
 ## Further reading
 
+- [Documentation index](docs/README.md)
 - [Unified publications](docs/unified-publications.md) and [breaking migration](docs/unified-publications-migration.md).
-
 - [Architecture and design boundaries](ARCHITECTURE.md)
 - [Local publishing projects](docs/local-publishing.md)
 - [Code listings and Org references](docs/code-listings.md)

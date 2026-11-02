@@ -11,6 +11,11 @@ _site/
 .berlin/
 /local/
 
+# Local development plans, agent handoffs, run logs, and review evidence.
+/.agent-work/
+# Retired internal-work directory; public documentation belongs in docs/.
+/docs/implementation/
+
 # Local publishing project: never include personal content or presentation.
 /data/
 /content/
