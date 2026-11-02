@@ -485,6 +485,16 @@ fn rss_uses_only_included_document_pages_and_is_opt_in() {
     assert!(
         html_escape::decode_html_entities(&html).contains("https://example.test/portfolio/rss.xml")
     );
+    for route in ["notes/a.html", "notes/c.html"] {
+        let disabled = String::from_utf8_lossy(&before.files[route]);
+        assert!(!disabled.contains("study-subscribe"));
+        let article = String::from_utf8_lossy(&result.files[route]);
+        assert!(article.contains("Follow new notes via RSS"));
+        assert!(html_escape::decode_html_entities(&article).contains(
+            "class=\"study-subscribe\" href=\"https://example.test/portfolio/rss.xml\" type=\"application/rss+xml\""
+        ));
+    }
+    assert!(!html.contains("Follow new notes via RSS"));
     let again = renderer
         .render_site(&assembly, &ComponentRegistry::builtins(), &site, &options)
         .unwrap();

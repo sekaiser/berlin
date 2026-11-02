@@ -46,7 +46,10 @@
     {% if page_backlinks | length > 0 %}{% include "partials/backlinks.tera" %}{% endif %}
     {% block article_continuation %}{% endblock article_continuation %}
     {% if page_comments %}{% include "partials/comments.tera" %}{% endif %}
-    <a class="study-return" href="{{config_site_url}}{{ notebook_index_path | default(value='/notes.html') }}">Return to the notebook</a>
+    <div class="study-follow">
+      {% if rss_url is defined and rss_url %}<a class="study-subscribe" href="{{rss_url}}" type="application/rss+xml">Follow new notes via RSS</a>{% endif %}
+      <a class="study-return" href="{{config_site_url}}{{ notebook_index_path | default(value='/notes.html') }}">Return to the notebook</a>
+    </div>
   </footer>
 </article>
 {% endblock content %}

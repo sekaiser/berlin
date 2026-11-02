@@ -17,7 +17,9 @@ pipeline site {
 RSS is disabled by default. When enabled, Berlin writes `rss.xml` at the website
 root. The notebook theme adds an RSS subscription icon to the footer and an
 alternate-feed link in each page's HTML head, so feed readers can discover it
-from the website URL. A site hosted below `/notebook/` uses
+from the website URL. Article pages also offer a quiet “Follow new notes via RSS”
+text link beside “Return to the notebook.” These links appear only when RSS is
+enabled. A site hosted below `/notebook/` uses
 `https://example.com/notebook/rss.xml`. Custom themes can use the optional
 `rss_url` template context value for the same links.
 

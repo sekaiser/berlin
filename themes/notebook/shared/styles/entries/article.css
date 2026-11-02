@@ -35,3 +35,14 @@
 .document-reference:target { background: #f3e3c9; outline: 2px solid #b77d59; outline-offset: 3px; }
 .article-backlinks :focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 @media (max-width: 600px) { .backlink-source { padding-inline-start: 14px; } }
+
+.study-follow {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 28px;
+  margin-top: 24px; font: .82rem/1.7 var(--font-interface);
+}
+.study-follow a { display: inline-block; white-space: nowrap; }
+.study-follow .study-return { margin-top: 0; }
+@media (max-width: 600px) {
+  .study-follow { row-gap: 0; }
+  .study-subscribe { padding-block: 12px; }
+}

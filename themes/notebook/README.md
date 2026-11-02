@@ -25,7 +25,8 @@ A separate website repository can also keep a pinned copy at `themes/notebook`.
 Berlin neither downloads nor silently updates it.
 
 Set `rss: true` in the multipage website's `html_config` to generate `rss.xml`.
-The theme then adds feed discovery metadata and a matching footer icon.
+The theme then adds feed discovery metadata, a matching footer icon, and a
+“Follow new notes via RSS” text link at the end of article pages.
 See [RSS subscriptions](../../docs/rss.md) for entry scope, stable IDs and dates.
 
 ## Composed publications
