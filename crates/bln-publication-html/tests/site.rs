@@ -324,6 +324,104 @@ fn f10_one_page_site_does_not_invent_routes_or_navigation_to_originals() {
     assert!(!html.contains("href=\"https://example.test/feed.html\""));
     assert!(!html.contains("href=\"https://example.test/about.html\""));
 }
+
+#[test]
+fn article_sharing_uses_authored_previews_and_preserves_source_asset_destinations() {
+    for (source, expected, media_type) in [
+        (
+            "/attachments/preview.webp",
+            "https://source.test/notebook/attachments/preview.webp",
+            "image/webp",
+        ),
+        (
+            "../attachments/preview.png",
+            "https://source.test/notebook/attachments/preview.png",
+            "image/png",
+        ),
+        (
+            "https://images.test/Preview.JPEG?size=768&theme=warm#image",
+            "https://images.test/Preview.JPEG?size=768&theme=warm#image",
+            "image/jpeg",
+        ),
+        (
+            "https://images.test/preview.gif",
+            "https://images.test/preview.gif",
+            "image/gif",
+        ),
+        ("/attachments/preview.svg", "", ""),
+    ] {
+        let mut article = doc("preview");
+        article.metadata.preview = Some(Preview {
+            source: source.into(),
+            alt: "A diagram with \"quotes\" & <labels>".into(),
+            width: 768.try_into().unwrap(),
+            height: 512.try_into().unwrap(),
+        });
+        let catalog = PublicationCatalog::new(
+            DocumentCollection::new(vec![article, doc("plain")]),
+            PublicationOptions {
+                source_site_url: Some("https://source.test/notebook".parse().unwrap()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let mut spec = SiteSpec::new(PublicationId("previews".into()), "Previews");
+        spec.add_page(
+            "home",
+            "index.html",
+            PublicationSpec::new(
+                PublicationMetadata {
+                    id: PublicationId("home".into()),
+                    title: "Home".into(),
+                    description: None,
+                },
+                view! {Portfolio(){Introduction(text:"Preview fixture")}},
+            )
+            .unwrap(),
+        );
+        spec.add_document_pages(query(&["local:preview", "local:plain"]), "notes");
+        let assembly =
+            SiteAssembly::resolve(&spec, catalog, &ComponentRegistry::builtins()).unwrap();
+        let site = PublicationSite {
+            url: "https://destination.test/portfolio".into(),
+            title: Some("Notebook".into()),
+            author: Some("Author".into()),
+        };
+        let rendered = PublicationHtmlRenderer::new(templates(), HtmlBindings::builtins())
+            .unwrap()
+            .render_site(
+                &assembly,
+                &ComponentRegistry::builtins(),
+                &site,
+                &SiteHtmlOptions::default(),
+            )
+            .unwrap();
+        let article = String::from_utf8(rendered.files["notes/preview.html"].clone()).unwrap();
+        let decoded = html_escape::decode_html_entities(&article);
+        assert!(decoded.contains("href=\"https://destination.test/portfolio/notes/preview.html\""));
+        if expected.is_empty() {
+            assert!(!article.contains("property=\"og:image\""));
+            assert!(article.contains("name=\"twitter:card\" content=\"summary\""));
+        } else {
+            for (key, value) in [
+                ("og:image", expected),
+                ("og:image:type", media_type),
+                ("og:image:width", "768"),
+                ("og:image:height", "512"),
+            ] {
+                assert!(decoded.contains(&format!("property=\"{key}\" content=\"{value}\"")));
+            }
+            assert!(article.contains("A diagram with &quot;quotes&quot; &amp; &lt;labels&gt;"));
+            assert!(article.contains("name=\"twitter:card\" content=\"summary_large_image\""));
+            assert!(decoded.contains(&format!("name=\"twitter:image\" content=\"{expected}\"")));
+            assert_eq!(article.matches("property=\"og:image\"").count(), 1);
+        }
+        let plain = String::from_utf8(rendered.files["notes/plain.html"].clone()).unwrap();
+        assert!(!plain.contains("property=\"og:image\""));
+        assert!(plain.contains("name=\"twitter:card\" content=\"summary\""));
+    }
+}
+
 #[test]
 fn comments_require_explicit_configuration_and_profiles_are_not_unsafe_links() {
     let (assembly, site, options) = fixture();

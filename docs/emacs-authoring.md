@@ -88,6 +88,14 @@ The site pipeline must publish the exported `static/attachments` directory to
 the notebook theme shows the declared preview on the homepage, notes index and
 tag pages. Articles without previews remain text-only.
 
+On article pages, the HTML renderer also exposes `page_preview` to Tera: its
+absolute `url`, authored `alt`, `width` and `height`. The URL is resolved against
+the original article and source-site mount, just like artwork in resource cards.
+The notebook theme uses PNG, JPEG, WebP and GIF previews in Open Graph and Twitter
+Card metadata, including dimensions and alternative text. SVG previews remain
+available in the website's cards; sharing metadata keeps the theme's fallback
+image, if one is configured. No image is generated or converted automatically.
+
 Markdown authors can supply the equivalent typed front matter directly (and
 must arrange publication of the referenced asset):
 

@@ -113,7 +113,13 @@ optional title, observation and continuation blocks. The `notebook_summary` and
 `notebook_preview` renders optional article metadata (`source`, `alt`, `width`,
 `height`); it does not select artwork by article title or route. Entries without
 previews remain text-led. Site-root image URLs are rebased to the configured site
-URL, including repository-hosted sites. See [Org preview authoring](../../docs/emacs-authoring.md#article-previews).
+URL, including repository-hosted sites. Article templates also receive
+`page_preview` with the resolved `url`, `alt`, `width` and `height`. The shared
+`partials/sharing-image.tera` uses authored raster previews for sharing metadata;
+a project metadata template can set `sharing_image`, `sharing_image_type`,
+`sharing_image_width`, `sharing_image_height` and `sharing_image_alt` before
+including it to supply a fallback. SVG previews stay in the website's cards.
+See [Org preview authoring](../../docs/emacs-authoring.md#article-previews).
 
 The `notebook_entry::entry` macro accepts `preview_side="right"` for a trailing
 preview. Its default, `"auto"`, uses `notebook_entry_layout::preview_side(target)`;

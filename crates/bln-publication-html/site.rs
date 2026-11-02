@@ -255,6 +255,24 @@ impl PublicationHtmlRenderer {
                         .map(mount_url)
                         .transpose()?
                         .unwrap_or_else(|| mount.clone());
+                    let preview = doc
+                        .metadata
+                        .preview
+                        .as_ref()
+                        .map(|preview| {
+                            Ok(json!({
+                                "url": resolve_source_url(
+                                    &preview.source,
+                                    &original,
+                                    Some(&source_mount),
+                                )?.as_str(),
+                                "alt": preview.alt,
+                                "width": preview.width,
+                                "height": preview.height,
+                            }))
+                        })
+                        .transpose()?;
+                    context.insert("page_preview", &preview);
                     walk_blocks(&doc.blocks, &mut |block| {
                         if let Block::Figure(figure) = block {
                             fragments.destinations.insert(

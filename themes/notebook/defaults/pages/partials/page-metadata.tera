@@ -20,4 +20,5 @@
 <meta property="og:description" content="{{sharing_description | striptags | truncate(length=180)}}">
 <meta property="og:type" content="{% if page_id %}article{% else %}website{% endif %}">
 {% if config_site_url %}<link rel="canonical" href="{{config_site_url}}{{page_path}}"><meta property="og:url" content="{{config_site_url}}{{page_path}}">{% endif %}
+{% include "partials/sharing-image.tera" %}
 {% if page_published %}<meta property="article:published_time" content="{{page_published}}">{% endif %}
