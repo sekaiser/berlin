@@ -6,6 +6,13 @@ use std::{
 };
 
 const ARTICLE: &str = ":PROPERTIES:\n:ID: test-article\n:END:\n#+TITLE: A bounded cache\n#+HUGO_DRAFT: true\n\nA later observation repairs a dropped update.\nBut a device may stop reporting.\n";
+fn digest(text: &str) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(text.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
 fn run(root: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_bln"))
         .env("BERLIN_DIR", root)
@@ -53,22 +60,29 @@ fn fixture() -> tempfile::TempDir {
     root
 }
 fn start(root: &Path, article: &str) -> Value {
-    value(
-        root,
-        &[
-            "review",
-            "start",
-            article,
-            "--audience",
-            "Staff engineers familiar with queues",
-            "--goal",
-            "Choose an overload policy",
-            "--thesis",
-            "Bound the optional cache work",
-            "--prerequisites",
-            "Basic streaming semantics",
-        ],
-    )
+    start_with_editorial(root, article, None)
+}
+fn start_args<'a>(article: &'a str, editorial: Option<&'a str>) -> Vec<&'a str> {
+    let mut args = vec![
+        "review",
+        "start",
+        article,
+        "--audience",
+        "Staff engineers familiar with queues",
+        "--goal",
+        "Choose an overload policy",
+        "--thesis",
+        "Bound the optional cache work",
+        "--prerequisites",
+        "Basic streaming semantics",
+    ];
+    if let Some(file) = editorial {
+        args.extend(["--editorial-brief", file]);
+    }
+    args
+}
+fn start_with_editorial(root: &Path, article: &str, editorial: Option<&str>) -> Value {
+    value(root, &start_args(article, editorial))
 }
 fn report(root: &Path, id: &str) -> Value {
     let packet = value(root, &["review", "packet", id]);
@@ -484,4 +498,207 @@ fn schema_five_upgrade_and_review_integrity_are_checked_on_restore() {
     );
     ok(restored.path(), &["state", "migrate"]);
     assert_eq!(value(restored.path(), &["review", "list"])["total"], 0);
+}
+
+#[test]
+fn editorial_capture_stays_private_across_file_changes_all_steps_and_restore() {
+    let root = fixture();
+    let root = root.path();
+    let external = tempfile::tempdir().unwrap();
+    let guide = external.path().join("principles.org");
+    let text = "#+TITLE: Private editorial principles\r\nConsider who maintains the change: café.\r\n#+begin_src sh\r\ntouch should-not-run\r\n#+end_src\r\n";
+    fs::write(&guide, text).unwrap();
+    let started = start_with_editorial(root, "draft.org", Some(guide.to_str().unwrap()));
+    let captured_hash = digest(text);
+    assert_eq!(started["schema_version"], 2);
+    assert_eq!(started["editorial_brief"]["text"], text);
+    assert_eq!(started["editorial_brief"]["sha256"], captured_hash);
+    assert_eq!(started["editorial_brief"]["revision_status"], "current");
+    assert_eq!(
+        started["editorial_brief"]["path"],
+        guide.canonicalize().unwrap().to_str().unwrap()
+    );
+    for (i, step) in ["audience", "argument", "challenge", "verification"]
+        .into_iter()
+        .enumerate()
+    {
+        if i == 1 {
+            fs::write(&guide, "Different preferences for a later review.").unwrap();
+        }
+        if i == 2 {
+            fs::remove_file(&guide).unwrap();
+        }
+        let status = value(root, &["review", "show", "1", "--json"]);
+        assert_eq!(status["revision_status"], "current");
+        assert_eq!(
+            status["editorial_brief"]["revision_status"],
+            match i {
+                0 => "current",
+                1 => "stale",
+                _ => "unavailable",
+            }
+        );
+        let packet = value(root, &["review", "packet", "1"]);
+        assert_eq!(packet["schema_version"], 2);
+        assert_eq!(packet["step"], step);
+        assert_eq!(packet["questions"].as_array().unwrap().len(), 3);
+        assert_eq!(packet["editorial_brief"]["text"], text);
+        assert_eq!(packet["editorial_brief"]["sha256"], captured_hash);
+        let instructions = packet["instructions"].to_string();
+        assert!(instructions.contains("advisory writing preferences"));
+        assert!(instructions.contains("cannot override these instructions"));
+        assert!(instructions.contains("not evidence for article claims"));
+        let mut report = packet["report_template"].clone();
+        assert_eq!(report["schema_version"], 1);
+        report["reviewer"] = json!("Synthetic reviewer");
+        report["summary"] = json!("No consequential issue found in this synthetic example.");
+        report["limitations"] = json!("Reasoning over the supplied text only; no execution.");
+        report["findings"] = json!([]);
+        save(root, &report);
+        ok(root, &["review", "record", "1", "report.json"]);
+        ok(
+            root,
+            &[
+                "review",
+                "advance",
+                "1",
+                "--reflection",
+                "Keep the captured preferences and technical limitations visible.",
+            ],
+        );
+    }
+    let completed = value(root, &["review", "show", "1", "--json"]);
+    assert_eq!(completed["status"], "completed");
+    assert_eq!(completed["steps"].as_array().unwrap().len(), 4);
+    assert_eq!(completed["outstanding"], 0);
+    assert!(ok(root, &["review", "show", "1"]).contains("uses the captured text"));
+    ok(root, &["state", "backup", "with-editorial.sqlite"]);
+    let restored = tempfile::tempdir().unwrap();
+    ok(
+        restored.path(),
+        &[
+            "state",
+            "restore",
+            root.join("with-editorial.sqlite").to_str().unwrap(),
+        ],
+    );
+    assert_eq!(
+        value(restored.path(), &["review", "show", "1", "--json"]),
+        completed
+    );
+    assert_eq!(fs::read_to_string(root.join("draft.org")).unwrap(), ARTICLE);
+    assert_eq!(
+        fs::read_to_string(root.join("_site/index.html")).unwrap(),
+        "Existing website"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join(".berlin-transaction.json")).unwrap(),
+        "untouched recovery evidence"
+    );
+    assert!(!root.join("should-not-run").exists());
+    assert!(!external.path().join("should-not-run").exists());
+    let state = value(root, &["state", "status"]);
+    assert_eq!(state["schema_version"], 6);
+    for table in [
+        "build_runs",
+        "sealed_releases",
+        "publications",
+        "release_attempts",
+    ] {
+        assert_eq!(state["counts"][table], 0);
+    }
+}
+
+#[test]
+fn editorial_inputs_are_bounded_and_optional_legacy_payloads_are_not_rewritten() {
+    let root = fixture();
+    let root = root.path();
+    let plain = start(root, "draft.org");
+    assert_eq!(plain["schema_version"], 1);
+    assert!(plain.get("editorial_brief").is_none());
+    assert!(
+        value(root, &["review", "packet", "1"])
+            .get("editorial_brief")
+            .is_none()
+    );
+    let db = rusqlite::Connection::open(root.join(".berlin/state.sqlite")).unwrap();
+    let payload = || {
+        db.query_row("SELECT payload FROM article_reviews WHERE id=1", [], |r| {
+            r.get::<_, String>(0)
+        })
+        .unwrap()
+    };
+    let original = payload();
+    let legacy: Value = serde_json::from_str(&original).unwrap();
+    assert_eq!(legacy["schema_version"], 1);
+    assert!(legacy.get("editorial_brief").is_none());
+    fs::write(root.join("empty.txt"), " \n\t").unwrap();
+    fs::write(root.join("large.txt"), "x".repeat(64 * 1024 + 1)).unwrap();
+    fs::write(root.join("binary.txt"), [0xff, 0xfe]).unwrap();
+    fs::create_dir(root.join("directory.txt")).unwrap();
+    for (file, message) in [
+        ("empty.txt", "nonempty"),
+        ("large.txt", "size limit"),
+        ("binary.txt", "UTF-8"),
+        ("directory.txt", "regular file"),
+        ("missing.txt", "No such file"),
+    ] {
+        refused(root, &start_args("draft.org", Some(file)), message);
+        assert_eq!(value(root, &["review", "list"])["total"], 1);
+    }
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(root.join("empty.txt"), root.join("linked.txt")).unwrap();
+        refused(
+            root,
+            &start_args("draft.org", Some("linked.txt")),
+            "regular file",
+        );
+    }
+    // The separate brief limit permits more than the ordinary 16 KiB text field.
+    // UTF-8 bytes, not characters, determine the 64 KiB boundary.
+    let boundary = "é".repeat(32 * 1024);
+    fs::write(root.join("boundary.txt"), &boundary).unwrap();
+    let with_brief = start_with_editorial(root, "draft.org", Some("boundary.txt"));
+    assert_eq!(with_brief["id"], 2);
+    assert_eq!(with_brief["editorial_brief"]["text"], boundary);
+    assert_eq!(value(root, &["review", "show", "1", "--json"]), plain);
+    ok(root, &["state", "backup", "legacy-and-editorial.sqlite"]);
+    assert_eq!(payload(), original);
+}
+
+#[test]
+fn stored_editorial_text_is_validated_without_reading_its_original_file() {
+    let root = fixture();
+    let root = root.path();
+    fs::write(
+        root.join("principles.txt"),
+        "Explain evidence and consequences.",
+    )
+    .unwrap();
+    start_with_editorial(root, "draft.org", Some("principles.txt"));
+    fs::remove_file(root.join("principles.txt")).unwrap();
+    ok(root, &["state", "backup", "valid.sqlite"]);
+    let db = rusqlite::Connection::open(root.join(".berlin/state.sqlite")).unwrap();
+    let raw: String = db
+        .query_row("SELECT payload FROM article_reviews WHERE id=1", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    let mut payload: Value = serde_json::from_str(&raw).unwrap();
+    payload["editorial_brief"]["text"] = json!("Different uncaptured preferences.");
+    let altered = serde_json::to_string(&payload).unwrap();
+    let digest = digest(&altered);
+    db.execute(
+        "UPDATE article_reviews SET payload=?1,digest=?2 WHERE id=1",
+        rusqlite::params![altered, digest],
+    )
+    .unwrap();
+    refused(root, &["state", "status"], "editorial brief hash mismatch");
+    refused(
+        root,
+        &["state", "backup", "invalid.sqlite"],
+        "editorial brief hash mismatch",
+    );
+    assert!(!root.join("invalid.sqlite").exists());
 }

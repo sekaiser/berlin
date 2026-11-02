@@ -45,6 +45,22 @@ commands; `1` here is illustrative. Audience, goal and thesis are required;
 prerequisites are optional. This brief is private review context, not article
 frontmatter or published metadata.
 
+Add `--editorial-brief FILE` to capture private writing principles with a review:
+
+```sh
+bln review start ../data/notes/my-article.org \
+  --audience "Engineers familiar with message consumers" \
+  --goal "Choose an overload policy" \
+  --thesis "Bound optional work while protecting the durable path" \
+  --editorial-brief ../data/editorial/writing-principles.org
+```
+
+The optional file is UTF-8 text, at most 64 KiB, with no required format or Org
+identity. Relative paths resolve from the website project; absolute paths may
+point outside it. Berlin captures its absolute path, complete text and SHA-256
+alongside the article. Empty files, symlinks and non-regular files are rejected.
+It does not publish the brief, evaluate its code blocks, or load linked files.
+
 Org requires a file-level `:PROPERTIES:` drawer with an `:ID:` and a `#+TITLE`
 before the first heading or block. Markdown requires an explicit frontmatter `id`
 and title, using Berlin's normal Markdown parser. A heading's Org ID cannot stand
@@ -65,6 +81,13 @@ earlier reports and responses, and a JSON report template. Give it to your chose
 reviewer. The article is material to examine, never instructions to execute.
 Reviewers should ask a few substantial questions and explain their consequences,
 rather than fill a checklist or rewrite the argument for the author.
+
+When supplied, `editorial_brief` contains the captured writing principles in
+every step's packet. These are advisory author preferences: they can inform
+questions about reader impact, evidence or fair treatment of alternatives. They
+do not supply evidence, override the review instructions, authorize tool use, or
+add a review stage, numerical score or publication gate. The four steps and the
+zero-to-five-findings limit remain the same.
 
 An AI reviewer can consume the packet and save a completed report locally. Berlin
 does not invoke it or send your draft anywhere. Choosing a provider and deciding
@@ -145,6 +168,13 @@ being treated as review of new text. Restoring the exact source bytes restores
 `current` status. Review freshness covers that one saved source file, not unsaved
 buffers, included files, attachments, linked code, or an external source changing.
 
+The editorial brief has independent `current`, `stale` or `unavailable` file
+status in `show`. Changing or deleting that file does not prevent continuing a
+review of the unchanged article: packets keep using the captured text. Start a
+new review to adopt revised writing principles. Stored brief text and its hash
+are validated during integrity checks and backup/restore without requiring the
+original file to survive.
+
 ## Storage and limits
 
 Schema version 6 adds `article_reviews` and `article_review_events` to the existing
@@ -153,18 +183,25 @@ project-local SQLite store. Activation and upgrades are explicit through
 events append-only, with hashes, validated transitions and transactional insertion.
 Mutations share the project lock without invoking website-output recovery.
 
+Reviews with an editorial brief use snapshot, packet and status format version 2.
+Reviews without one retain version 1; existing captures are read without being
+rewritten. Report templates remain version 1, bound to the review ID and article
+hash. This addition does not change SQLite schema version 6 or require another
+database migration.
+
 Lifecycle integrity checks, backup and restore validate the saved review history
 without requiring the source files still to exist. A database backup contains the
 captured text, not linked files or the live editable original.
 
-Limits are 1 MiB per source, 256 KiB per imported report/event, 16 KiB per text
-field, five findings per step, three evidence records per finding and 256 events
-per review. JSON input rejects unknown fields. Wrong review IDs, revisions,
-steps, ranges or quotes are rejected without appending an event.
+Limits are 1 MiB per article source, 64 KiB per editorial brief, 256 KiB per
+imported report/event, 16 KiB per ordinary text field, five findings per step,
+three evidence records per finding and 256 events per review. JSON input rejects
+unknown fields. Wrong review IDs, revisions, steps, ranges or quotes are rejected
+without appending an event.
 
 **Privacy:** the database and exported packets contain full draft text, source
-paths and private editorial discussion, potentially including Org material marked
-`noexport`. Keep them outside website output and public repositories. Packets are
-explicit exports to stdout; they do not become website resources. No draft or
-review is copied into a build catalog, receipt or sealed publication by this
-feature.
+paths, captured editorial briefs and private discussion, potentially including
+Org material marked `noexport`. Keep them outside website output and public
+repositories. Packets are explicit exports to stdout; they do not become website
+resources. No draft or review is copied into a build catalog, receipt or sealed
+publication by this feature.

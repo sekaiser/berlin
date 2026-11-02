@@ -2,7 +2,7 @@ use crate::{
     args::review::Action,
     project::Project,
     tasks::{
-        review::{self, Brief, Disposition, Event, Response, Session, Snapshot},
+        review::{self, Brief, Disposition, EditorialBrief, Event, Response, Session, Snapshot},
         state::Store,
     },
 };
@@ -38,10 +38,14 @@ fn execute(action: Action, project: &Project) -> Result<(), Error> {
             goal,
             thesis,
             prerequisites,
+            editorial_brief,
         } => {
             let snapshot = Snapshot::capture(&project.root().join(article))?;
+            let editorial_brief = editorial_brief
+                .map(|path| EditorialBrief::capture(&project.root().join(path)))
+                .transpose()?;
             let id = store.start_review(Session {
-                schema_version: 1,
+                schema_version: if editorial_brief.is_some() { 2 } else { 1 },
                 snapshot,
                 brief: Brief {
                     audience,
@@ -49,6 +53,7 @@ fn execute(action: Action, project: &Project) -> Result<(), Error> {
                     thesis,
                     prerequisites,
                 },
+                editorial_brief,
             })?;
             store.review(id)?
         }

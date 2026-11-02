@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::{fs::File, io::Read};
 
 pub(crate) const SOURCE_LIMIT: u64 = 1024 * 1024;
+pub(crate) const EDITORIAL_LIMIT: u64 = 64 * 1024;
 pub(crate) fn read_text(path: &Path, limit: u64) -> Result<String, Error> {
     release::ensure_file(path)?;
     let mut value = String::new();
@@ -59,11 +60,7 @@ impl Snapshot {
         Ok(())
     }
     pub(crate) fn revision_status(&self) -> &'static str {
-        match read_text(&self.path, SOURCE_LIMIT) {
-            Ok(current) if release::digest(current.as_bytes()) == self.sha256 => "current",
-            Ok(_) => "stale",
-            Err(_) => "unavailable",
-        }
+        revision_status(&self.path, SOURCE_LIMIT, &self.sha256)
     }
     pub(crate) fn require_current(&self) -> Result<(), Error> {
         ensure!(
@@ -73,6 +70,55 @@ impl Snapshot {
         Ok(())
     }
 }
+
+/// Captured author preferences, not parsed as authoring syntax or executed.
+/// Packets expose the captured text; website rendering does not consume it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct EditorialBrief {
+    pub path: PathBuf,
+    pub sha256: String,
+    pub text: String,
+}
+impl EditorialBrief {
+    pub(crate) fn capture(path: &Path) -> Result<Self, Error> {
+        release::ensure_file(path)?;
+        let path = path.canonicalize()?;
+        let text = read_text(&path, EDITORIAL_LIMIT)?;
+        let brief = Self {
+            path,
+            sha256: release::digest(text.as_bytes()),
+            text,
+        };
+        brief.validate()?;
+        Ok(brief)
+    }
+    pub(crate) fn validate(&self) -> Result<(), Error> {
+        ensure!(
+            self.path.is_absolute()
+                && !self.text.trim().is_empty()
+                && self.text.len() as u64 <= EDITORIAL_LIMIT,
+            "editorial brief must have an absolute path and nonempty text of at most 64 KiB"
+        );
+        ensure!(
+            release::digest(self.text.as_bytes()) == self.sha256,
+            "editorial brief hash mismatch"
+        );
+        Ok(())
+    }
+    pub(crate) fn revision_status(&self) -> &'static str {
+        revision_status(&self.path, EDITORIAL_LIMIT, &self.sha256)
+    }
+}
+
+fn revision_status(path: &Path, limit: u64, sha256: &str) -> &'static str {
+    match read_text(path, limit) {
+        Ok(current) if release::digest(current.as_bytes()) == sha256 => "current",
+        Ok(_) => "stale",
+        Err(_) => "unavailable",
+    }
+}
+
 fn identity(path: &Path, source: &str) -> Result<(String, String), Error> {
     let (id, title) = match path.extension().and_then(|e| e.to_str()) {
         Some("org") => org_identity(source)?,

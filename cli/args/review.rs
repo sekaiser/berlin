@@ -9,6 +9,7 @@ pub enum Action {
         goal: String,
         thesis: String,
         prerequisites: String,
+        editorial_brief: Option<PathBuf>,
     },
     Show {
         id: i64,
@@ -62,7 +63,10 @@ pub(super) fn command() -> Command {
             .about("Capture an Org/Markdown draft and its intended audience; requires SQLite")
             .arg(Arg::new("article").required(true).help("Saved Org/Markdown source; relative to the project or an absolute path").value_parser(clap::value_parser!(PathBuf)))
             .arg(required("audience")).arg(required("goal")).arg(required("thesis"))
-            .arg(Arg::new("prerequisites").long("prerequisites").help("Knowledge you expect the reader to bring").default_value("Not specified; examine the assumed knowledge.")))
+            .arg(Arg::new("prerequisites").long("prerequisites").help("Knowledge you expect the reader to bring").default_value("Not specified; examine the assumed knowledge."))
+            .arg(Arg::new("editorial-brief").long("editorial-brief").value_name("FILE")
+                .help("Capture optional private writing principles with this review; UTF-8 text, at most 64 KiB")
+                .value_parser(clap::value_parser!(PathBuf))))
         .subcommand(Command::new("show").about("Show the current step, findings, responses and revision status")
             .arg(id()).arg(Arg::new("json").long("json").action(ArgAction::SetTrue)))
         .subcommand(Command::new("list").about("List local reviews, newest first")
@@ -90,6 +94,7 @@ pub(super) fn parse(a: &ArgMatches) -> Action {
             goal: text("goal"),
             thesis: text("thesis"),
             prerequisites: text("prerequisites"),
+            editorial_brief: a.get_one::<PathBuf>("editorial-brief").cloned(),
         },
         "show" => Action::Show {
             id: review_id(),

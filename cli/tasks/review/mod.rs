@@ -7,8 +7,8 @@ use anyhow::{Error, bail, ensure};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub(crate) use source::Snapshot;
 pub(crate) use source::read_text;
+pub(crate) use source::{EditorialBrief, Snapshot};
 pub(crate) const RECORD_LIMIT: usize = 256 * 1024;
 pub(crate) const EVENT_LIMIT: usize = 256;
 
@@ -97,13 +97,16 @@ pub(crate) struct Session {
     pub schema_version: u8,
     pub snapshot: Snapshot,
     pub brief: Brief,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub editorial_brief: Option<EditorialBrief>,
 }
 impl Session {
     pub(crate) fn validate(&self) -> Result<(), Error> {
-        ensure!(
-            self.schema_version == 1,
-            "unsupported article review version"
-        );
+        match (self.schema_version, &self.editorial_brief) {
+            (1, None) => {}
+            (2, Some(brief)) => brief.validate()?,
+            _ => bail!("unsupported article review version or editorial brief layout"),
+        }
         self.snapshot.validate()?;
         self.brief.validate()
     }
