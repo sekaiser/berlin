@@ -27,6 +27,7 @@ fn run_local<F: std::future::Future>(future: F) -> F::Output {
 
 fn run_subcommand(flags: Flags) -> Result<(), Error> {
     match flags.subcommand.clone() {
+        BerlinSubcommand::Review(action) => tools::review::run(action, flags.pipeline_files),
         BerlinSubcommand::State(action) => tools::state::run(action, flags.pipeline_files),
         BerlinSubcommand::RenderDiagram(options) => tools::diagram::run(options),
         BerlinSubcommand::Announcement(action) => {

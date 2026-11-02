@@ -96,6 +96,12 @@ Schema version 5 adds completed release-preparation attempts. Their captured
 inputs, catalogs and diagnostics link successful pipeline executions to the exact
 sealed manifest. Existing releases acquire no invented build provenance.
 
+Schema version 6 adds immutable article-review source snapshots and append-only
+reviewer/author dialogue. Unlike build catalog observations, these private review
+records contain full draft text. The four-step [article review](article-review.md)
+does not invoke an AI provider, verify reviewer assertions or grant publishing
+approval. Backup and restore include this history; keep the database private.
+
 The store uses bundled SQLite, WAL, foreign-key enforcement, FULL synchronization
 and a bounded busy timeout. Publication transactions end before network requests.
 The existing prepared/unknown/uploaded/live reconciliation protocol remains in

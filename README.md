@@ -44,6 +44,7 @@ Current capabilities include:
 - LinkedIn draft text and manifests, with character-limit diagnostics; [release announcements](docs/announcement-workflow.md) with exact-text approvals and local records of user-reported posts.
 - Local build receipts recording input/output hashes, provenance, and diagnostics.
 - [Project-local SQLite lifecycle history](docs/lifecycle-state.md) for build attempts, sealed article revisions, and recorded publications.
+- [Local article reviews](docs/article-review.md): a staged dialogue about audience fit, reasoning, technical objections and evidence, bound to the saved draft revision.
 - [Dependency-checked build caching](docs/build-caching.md) for CSS and supported LaTeX papers.
 - Staged output replacement with recovery support, plus a local preview server.
 - [Sealed website releases and explicit GitHub Pages publishing](docs/website-releases.md), with optional native production URL/asset preparation, file and document revision comparisons, and recoverable publication records.

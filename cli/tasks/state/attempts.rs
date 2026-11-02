@@ -223,7 +223,7 @@ mod tests {
         migrate(&p).unwrap();
         let db = Store::open(root.path()).unwrap();
         db.connection
-            .execute_batch("DROP TABLE release_attempts; PRAGMA user_version=4;")
+            .execute_batch("DROP TABLE article_review_events; DROP TABLE article_reviews; DROP TABLE release_attempts; PRAGMA user_version=4;")
             .unwrap();
         let file = root.path().join("schema-four.sqlite");
         backup(&p, &file).unwrap();

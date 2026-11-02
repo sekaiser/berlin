@@ -15,8 +15,9 @@ pub(crate) mod attempts;
 pub(crate) mod builds;
 pub(crate) mod documents;
 pub(crate) mod metrics;
+mod reviews;
 
-const VERSION: i64 = 5;
+const VERSION: i64 = 6;
 const APPLICATION: i64 = 0x424c4e31;
 const LIMIT: usize = 128 * 1024;
 
@@ -130,7 +131,10 @@ impl Store {
         if version < 4 {
             metrics::schema(&tx)?;
         }
-        attempts::schema(&tx)?;
+        if version < 5 {
+            attempts::schema(&tx)?;
+        }
+        reviews::schema(&tx)?;
         tx.pragma_update(None, "user_version", VERSION)?;
         tx.commit()?;
         Ok(())
@@ -270,6 +274,9 @@ impl Store {
         }
         if version >= 5 {
             self.validate_attempts()?;
+        }
+        if version >= 6 {
+            self.validate_reviews()?;
         }
         tx.commit()?;
         Ok(())
@@ -412,6 +419,9 @@ pub(crate) fn status(project: &Project) -> Result<serde_json::Value, Error> {
     }
     if version >= 5 {
         tables.push("release_attempts");
+    }
+    if version >= 6 {
+        tables.extend(["article_reviews", "article_review_events"]);
     }
     for table in tables {
         let count: i64 =

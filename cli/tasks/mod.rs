@@ -27,6 +27,7 @@ pub(crate) mod publication;
 pub(crate) mod receipt;
 pub(crate) mod release;
 mod resources;
+pub(crate) mod review;
 mod run;
 pub(crate) mod state;
 pub(crate) mod theme;

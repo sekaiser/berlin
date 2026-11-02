@@ -84,6 +84,7 @@ pub struct PublicationFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BerlinSubcommand {
+    Review(super::review::Action),
     State(super::state::Action),
     RenderDiagram(super::diagram::Options),
     Announcement(super::announcement::Action),
@@ -138,6 +139,7 @@ fn clap_root() -> Command {
         .subcommand(check_subcommand())
         .subcommand(serve_subcommand())
         .subcommand(super::state::command())
+        .subcommand(super::review::command())
         .subcommand(super::announcement::command())
         .subcommand(super::diagram::command())
         .subcommand(
@@ -332,6 +334,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
     };
 
     let subcommand = match matches.subcommand().expect("subcommand is required") {
+        ("review", args) => BerlinSubcommand::Review(super::review::parse(args)),
         ("render-diagram", args) => BerlinSubcommand::RenderDiagram(super::diagram::parse(args)),
         ("state", args) => BerlinSubcommand::State(super::state::parse(args)),
         ("announcement", args) => BerlinSubcommand::Announcement(super::announcement::parse(args)),
