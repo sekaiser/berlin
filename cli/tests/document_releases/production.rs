@@ -103,7 +103,7 @@ fn production_revisions_export_review_drafts_without_sources_or_publication() {
         .unwrap();
         let before = production_release(root.path());
         let baseline = manifest(root.path(), &before);
-        assert_eq!(baseline["schema_version"], 2);
+        assert_eq!(baseline["schema_version"], 3);
         assert_eq!(
             baseline["documents"]["entries"].as_array().unwrap().len(),
             1

@@ -207,7 +207,7 @@ pub(crate) fn export(
     Ok(output)
 }
 
-fn export_directory(project: &Project, output: &Path) -> Result<PathBuf, Error> {
+pub(crate) fn export_directory(project: &Project, output: &Path) -> Result<PathBuf, Error> {
     let output = project.root().join(output);
     let name = output
         .file_name()

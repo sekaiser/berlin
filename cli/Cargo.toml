@@ -13,6 +13,8 @@ path = "main.rs"
 doc = false
 
 [dependencies]
+getrandom = "0.4.3"
+base64 = "0.22.1"
 rusqlite = { version = "0.40.2", features = ["bundled", "backup"] }
 berlin_publication.workspace = true
 berlin_publication_html.workspace = true

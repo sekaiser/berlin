@@ -347,6 +347,7 @@ mod tests {
             id: "1".repeat(64),
             directory: root.path().to_owned(),
             manifest: Manifest {
+                articles: None,
                 schema_version: 1,
                 berlin_version: "test".into(),
                 pipeline: "site".into(),

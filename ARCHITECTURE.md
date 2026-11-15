@@ -262,8 +262,12 @@ Native releases also bind a versioned inventory of the selected renderer's publi
 mapped documents. Stable IDs connect revisions across title and route changes;
 separate content and metadata hashes exclude provenance and presentation. The
 inventory contains no document bodies or source paths and is not published as a
-site asset. Native manifests use schema 2; schema-1 bundles and their IDs remain
-readable. Imported directories carry no document inventory.
+site asset. Native manifests use schema 3; schema-1/2 bundles and their IDs remain
+readable. Imported directories carry no document inventory. Schema 3 additionally
+binds a private `articles.json` capture of the public documents' summaries, static
+Markdown editions, tags and release-owned teaser metadata. It is produced from
+the same in-memory assembly, without rereading authoring files. The capture stays
+outside `site/` and never enters a GitHub Pages upload.
 
 `build --production` and `release --production` finalize the staged website only
 after all its output operations complete. This built-in offline step rewrites
@@ -301,6 +305,23 @@ without source files or release bundles. No social API or live check is performe
 a reported post is not verified delivery. See the
 [announcement workflow](docs/announcement-workflow.md) for the evidence and
 duplicate-detection boundaries.
+
+`announcement prepare` uses the verified edition capture from one native release
+to export editable LinkedIn/X announcements, a DEV Markdown request, and copied
+teaser media. Approvals bind channel, account, article revision, exact request
+bytes and teaser identity. Ordinary builds and approvals remain offline.
+`announcement deliver` can create a DEV draft after matching the approval and
+authenticated DEV username, or publish a LinkedIn announcement after matching its
+OAuth member and optional company-Page binding. Company connections check the
+member's permission for the selected Page at setup and again before delivery;
+the approval binds both identities, and the Page owns uploaded media and authors
+its posts. LinkedIn uploads verified teaser bytes and commits intent
+before posting. API acknowledgement, API read-back and user reports are distinct
+evidence; outcomes and publication records commit together. Uncertain attempts
+block blind retries. DEV reconciliation verifies an unpublished draft through GET.
+X and Substack retain manual exports. Credentials reach curl through stdin,
+never argv or SQLite; LinkedIn tokens live in private connection files.
+See [channel publishing](docs/channel-publishing.md) for limits and recovery.
 
 The GitHub Pages adapter publishes only to a dedicated `gh-pages` branch and
 requires matching, pre-existing Pages configuration. Intent and outcomes are

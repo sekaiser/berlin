@@ -14,7 +14,8 @@ pub(super) struct Page {
     pub redirect: Option<String>,
     canonical: Option<String>,
     refresh: Option<String>,
-    noindex: bool,
+    pub(super) noindex: bool,
+    utility: bool,
 }
 
 impl Page {
@@ -59,6 +60,12 @@ impl Page {
             "meta" => {
                 let content = attribute(element, "content");
                 match attribute(element, "name").as_deref() {
+                    Some("berlin-page-role") => {
+                        if self.utility || content.as_deref() != Some("utility") {
+                            bail!("Invalid or duplicate page role");
+                        }
+                        self.utility = true;
+                    }
                     Some("berlin-redirect") => {
                         if self.redirect.is_some() {
                             bail!("Duplicate redirect marker");
@@ -93,6 +100,9 @@ impl Page {
 impl ProductionSite<'_> {
     pub(super) fn validate_pages(&self) -> Result<(), Error> {
         for (name, page) in &self.pages {
+            if page.utility && (!page.noindex || page.redirect.is_some() || name == "index.html") {
+                bail!("Utility pages must be explicit noindex pages without redirects");
+            }
             if let Some(target) = &page.redirect {
                 if !generated_page_path(name)
                     || !generated_page_path(target)
@@ -112,7 +122,7 @@ impl ProductionSite<'_> {
                 if self.page_url(name)?.join(refresh)? != self.page_url(target)? {
                     bail!("Wrong redirect destination in {name}");
                 }
-            } else if page.noindex || page.refresh.is_some() {
+            } else if (page.noindex && !page.utility) || page.refresh.is_some() {
                 bail!("Preview-only markup or unmarked redirect in {name}");
             }
             let canonical = page

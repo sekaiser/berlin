@@ -8,6 +8,8 @@ use std::{
 
 #[path = "document_releases/announcements.rs"]
 mod announcements;
+#[path = "document_releases/channel_exports.rs"]
+mod channel_exports;
 #[path = "document_releases/lifecycle.rs"]
 mod lifecycle;
 #[path = "document_releases/manual_announcements.rs"]
@@ -117,7 +119,7 @@ fn distinguishes_content_metadata_and_presentation_changes_in_real_releases() {
     let root = fixture();
     let first = release(root.path());
     let inventory = manifest(root.path(), &first);
-    assert_eq!(inventory["schema_version"], 2);
+    assert_eq!(inventory["schema_version"], 3);
     assert_eq!(inventory["documents"]["fingerprint_version"], 1);
     let entry = &inventory["documents"]["entries"][0];
     assert_eq!(entry["id"], "note");

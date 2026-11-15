@@ -37,6 +37,8 @@
 - [Build caching](build-caching.md)
 - [Website releases](website-releases.md)
 - [Release announcements](announcement-workflow.md)
+- [Channel exports and DEV draft delivery](channel-publishing.md)
+- [LinkedIn authorization and publishing](linkedin-publishing.md)
 - [Lifecycle storage](lifecycle-state.md)
 - [Metrics storage](metrics.md)
 

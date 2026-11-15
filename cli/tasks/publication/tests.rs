@@ -84,6 +84,7 @@ fn fixture(root: &Path) -> (WebsiteRelease, FakeRemote) {
             id: "a".repeat(64),
             directory: root.join("release"),
             manifest: Manifest {
+                articles: None,
                 schema_version: 1,
                 berlin_version: "test".into(),
                 pipeline: "site".into(),

@@ -30,6 +30,9 @@ pub(crate) struct Manifest {
     // Omission preserves the canonical serialization and IDs of schema-1 releases.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub documents: Option<DocumentInventory>,
+    /// Private captured public editions; never part of the uploaded site tree.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub articles: Option<ReleaseFile>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -76,8 +79,21 @@ pub(super) fn seal(
         }
         berlin_publication::ComposedArtifact::Single(_) => None,
     };
+    let articles = match composed {
+        berlin_publication::ComposedArtifact::Site(site) => {
+            let url = node
+                .operation
+                .website_config()
+                .and_then(|c| c.url.as_ref())
+                .context("missing website URL")?;
+            Some(super::announcement::packages::capture(site, url, &source)?)
+        }
+        _ => None,
+    };
     let limits = Some(composed.catalog().limits());
-    seal_output(project, pipeline, node, &source, documents, limits)
+    seal_output(
+        project, pipeline, node, &source, documents, articles, limits,
+    )
 }
 
 /// Import externally prepared bytes. The selected pipeline declares identity and
@@ -98,7 +114,7 @@ pub(crate) fn from_directory(
     ensure_directory(&source)?;
     let source = source.canonicalize()?;
     // Imported bytes have no verified relationship to the current authoring inputs.
-    seal_output(project, pipeline, node, &source, None, None)
+    seal_output(project, pipeline, node, &source, None, None, None)
 }
 
 pub(super) fn website_output(plan: &PipelinePlan) -> Result<&PipelineNode, Error> {
@@ -133,6 +149,7 @@ fn seal_output(
     node: &PipelineNode,
     source: &Path,
     documents: Option<DocumentInventory>,
+    articles: Option<Vec<u8>>,
     publication_limits: Option<&berlin_publication::PublicationLimits>,
 ) -> Result<WebsiteRelease, Error> {
     let config = node
@@ -192,8 +209,27 @@ fn seal_output(
     }
     let files = inventory(&site)?;
     validate_site(&site, &files)?;
+    let articles = articles
+        .map(|bytes| -> Result<ReleaseFile, Error> {
+            let file = ReleaseFile {
+                path: "articles.json".into(),
+                bytes: bytes.len() as u64,
+                sha256: digest(&bytes),
+            };
+            let mut output = File::create(temporary.path().join(&file.path))?;
+            output.write_all(&bytes)?;
+            output.sync_all()?;
+            Ok(file)
+        })
+        .transpose()?;
     let manifest = Manifest {
-        schema_version: if documents.is_some() { 2 } else { 1 },
+        schema_version: if articles.is_some() {
+            3
+        } else if documents.is_some() {
+            2
+        } else {
+            1
+        },
         berlin_version: crate::version::berlin().to_string(),
         pipeline: pipeline.into(),
         website_node: node.id.as_str().into(),
@@ -201,6 +237,7 @@ fn seal_output(
         destination,
         files,
         documents,
+        articles,
     };
     validate_document_inventory(&manifest)?;
     let id = digest(&serde_json::to_vec(&manifest)?);
@@ -254,11 +291,36 @@ pub(crate) fn open(project: &Project, id: &str) -> Result<WebsiteRelease, Error>
         bail!("release files changed; refusing to publish unreviewed bytes");
     }
     validate_site(&site, &files)?;
+    if let Some(file) = &manifest.articles {
+        read_verified_file(&directory, file, super::announcement::packages::LIMIT)?;
+    }
     Ok(WebsiteRelease {
         id: id.into(),
         manifest,
         directory,
     })
+}
+
+/// Verify the bytes actually consumed, including when a previously opened bundle
+/// is read again. A metadata check alone cannot bind a later filesystem read.
+pub(crate) fn read_verified_file(
+    root: &Path,
+    file: &ReleaseFile,
+    limit: usize,
+) -> Result<Vec<u8>, Error> {
+    if file.bytes > limit as u64 {
+        bail!("sealed file exceeds its size limit");
+    }
+    let path = root.join(&file.path);
+    ensure_file(&path)?;
+    let mut bytes = Vec::new();
+    File::open(path)?
+        .take(file.bytes + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 != file.bytes || digest(&bytes) != file.sha256 {
+        bail!("sealed file bytes changed: {}", file.path);
+    }
+    Ok(bytes)
 }
 
 pub(super) fn validate_manifest(manifest: &Manifest, id: &str) -> Result<(), Error> {
@@ -273,9 +335,20 @@ pub(super) fn validate_manifest(manifest: &Manifest, id: &str) -> Result<(), Err
 }
 
 fn validate_document_inventory(manifest: &Manifest) -> Result<(), Error> {
-    match (manifest.schema_version, &manifest.documents) {
-        (1, None) => Ok(()),
-        (2, Some(documents)) => documents.validate(&manifest.files),
+    match (
+        manifest.schema_version,
+        &manifest.documents,
+        &manifest.articles,
+    ) {
+        (1, None, None) => Ok(()),
+        (2, Some(documents), None) => documents.validate(&manifest.files),
+        (3, Some(documents), Some(file))
+            if file.path == "articles.json"
+                && file.bytes <= super::announcement::packages::LIMIT as u64 =>
+        {
+            validate_id(&file.sha256)?;
+            documents.validate(&manifest.files)
+        }
         _ => bail!("unsupported release schema or missing document inventory"),
     }
 }
@@ -476,7 +549,7 @@ fn sync_tree(path: &Path) -> Result<(), Error> {
     sync_directory(path)
 }
 
-fn sync_directory(path: &Path) -> Result<(), Error> {
+pub(crate) fn sync_directory(path: &Path) -> Result<(), Error> {
     File::open(path)?.sync_all()?;
     Ok(())
 }
@@ -497,4 +570,25 @@ pub(crate) fn digest(bytes: &[u8]) -> String {
 }
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+#[cfg(test)]
+mod captured_bytes_tests {
+    use super::*;
+
+    #[test]
+    fn a_later_read_rechecks_the_consumed_bytes_even_when_size_is_unchanged() {
+        let root = tempfile::tempdir().unwrap();
+        let original = br#"{"title":"Approved"}"#;
+        let file = ReleaseFile {
+            path: "articles.json".into(),
+            bytes: original.len() as u64,
+            sha256: digest(original),
+        };
+        fs::write(root.path().join(&file.path), original).unwrap();
+        let captured = read_verified_file(root.path(), &file, 1024).unwrap();
+        fs::write(root.path().join(&file.path), br#"{"title":"Tampered"}"#).unwrap();
+        assert!(read_verified_file(root.path(), &file, 1024).is_err());
+        assert_eq!(captured, original);
+    }
 }

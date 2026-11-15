@@ -1,5 +1,9 @@
 # Review and track manual announcements
 
+For single-release summaries, teaser images, LinkedIn/X exports and explicit DEV
+draft delivery, use [channel packages](channel-publishing.md). The release-pair
+LinkedIn workflow below remains available with its existing approval identities.
+
 For projects migrated with `bln state migrate`, SQLite owns publication and
 approval records. JSON storage paths below describe unmigrated projects; see
 [lifecycle state and backup/restore](lifecycle-state.md).

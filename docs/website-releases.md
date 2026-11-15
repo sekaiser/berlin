@@ -43,6 +43,7 @@ The result is stored in:
 ```text
 .berlin/releases/<release-id>/
   manifest.json
+  articles.json    # Native releases: captured public static editions; not uploaded
   site/
 ```
 
@@ -54,6 +55,11 @@ including that inventory when present. Files are copied, not hard-linked to muta
 build output. Identical results reuse the same ID; altered files cannot be used
 under the old ID. This detects modification; it is not a cryptographic signature
 or a guarantee against someone who controls the machine.
+
+New native releases use manifest schema 3 and also bind the private `articles.json`
+capture by size and SHA-256. [Channel preparation](channel-publishing.md) uses this
+capture without rereading authoring files. Existing schema 1/2 releases keep their
+identities and remain publishable; they cannot supply these captured editions.
 
 Berlin requires a nonempty `index.html`, rejects symlinks/special files and Git
 control paths, and checks for common preview-only HTML references. It adds
@@ -221,7 +227,7 @@ entries include before/after revisions and independent `content_changed`,
 `metadata_changed`, and `route_changed` flags. No full prose or source paths are
 stored in the inventory. It is sealed local state, not an extra public site asset.
 
-Native releases use manifest schema 2 with fingerprint version 1. Schema-1
+Native releases use manifest schema 3 with document fingerprint version 1. Schema-1/2
 releases remain readable under their original IDs, with no rewrite or migration;
 prepared-directory imports still use schema 1. When either inventory is absent,
 `documents.status` is `"unavailable"`, with `before_available` and `after_available`

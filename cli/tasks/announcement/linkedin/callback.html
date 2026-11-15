@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow">
+<meta name="berlin-page-role" content="utility">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-@@SCRIPT_SHA@@'; style-src 'sha256-@@STYLE_SHA@@'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<link rel="canonical" href="@@CANONICAL@@">
+<title>LinkedIn authorization · Berlin</title>
+<style>
+html{color-scheme:light;background:#e7ece5;color:#253c32;font-family:system-ui,sans-serif}
+body{max-width:36rem;margin:12vh auto;padding:2.5rem;background:#fff9ed;line-height:1.65}
+h1{font-family:Georgia,serif;font-size:2rem;line-height:1.2}
+button{background:#304b3c;color:#fff9ed;border:0;border-radius:.3rem;font:inherit;padding:.7rem 1.1rem;cursor:pointer}
+button:disabled{opacity:.45;cursor:default}button:focus-visible{outline:3px solid #ad6246;outline-offset:4px}
+small{display:block;margin-top:1.5rem} @media(max-width:40rem){body{margin:1rem;padding:1.5rem}}
+</style>
+</head>
+<body>
+<small>BERLIN · LINKEDIN AUTHORIZATION</small>
+<h1>Return the authorization response to Berlin</h1>
+<p id="status">This page makes no network calls. JavaScript is needed to save the response locally.</p>
+<button id="save" type="button" disabled>Save authorization response</button>
+<p>Use the downloaded file with Berlin’s <code>announcement linkedin auth-finish</code> command. Keep the file on your computer and delete it after authorization. Do not share it in chat or commit it to Git.</p>
+<small>No access token or client secret is sent to this page. The temporary response is held in this tab and cleared from the address bar.</small>
+<script>
+"use strict";
+const callback = window.location.href;
+const params = new URL(callback).searchParams;
+window.history.replaceState(null, "", window.location.pathname);
+const save = document.getElementById("save");
+const status = document.getElementById("status");
+if (params.has("error")) {
+  status.textContent = "LinkedIn authorization was declined. Start again from Berlin when you are ready.";
+} else if (params.get("code") && params.get("state")) {
+  status.textContent = "Save the response, then return to your terminal. Berlin will validate it before exchanging the temporary code.";
+  save.disabled = false;
+  save.addEventListener("click", () => {
+    const file = new Blob([callback], {type: "text/plain;charset=utf-8"});
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "linkedin-callback.txt";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+} else {
+  status.textContent = "No authorization response is present. Start authorization from Berlin first.";
+}
+</script>
+</body>
+</html>

@@ -1,16 +1,39 @@
-//! Manual announcement workflow arguments, separate from website deployment.
+//! Channel preparation, approval and explicit DEV draft delivery arguments.
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use std::path::PathBuf;
+mod linkedin;
+pub use linkedin::LinkedInAction;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Source {
     pub directory: PathBuf,
     pub document: String,
     pub account: String,
+    pub channel: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Action {
+    LinkedIn(LinkedInAction),
+    Deliveries {
+        review: Option<String>,
+    },
+    Prepare {
+        release: String,
+        document: String,
+        output: PathBuf,
+        updated: bool,
+    },
+    Deliver {
+        source: Source,
+        confirm: String,
+        token_env: Option<String>,
+    },
+    Reconcile {
+        review: String,
+        draft: u64,
+        token_env: String,
+    },
     Review {
         source: Source,
         approve: Option<String>,
@@ -31,8 +54,20 @@ pub enum Action {
 
 pub(super) fn command() -> Command {
     Command::new("announcement")
-        .about("Review and track manually published LinkedIn announcements; no network")
+        .about("Prepare and review channel exports; explicitly deliver approved publications")
         .subcommand_required(true)
+        .subcommand(linkedin::command())
+        .subcommand(Command::new("deliveries").about("Inspect local delivery attempts; no network").arg(Arg::new("review").long("review")))
+        .subcommand(Command::new("prepare").about("Export summaries, teaser media, LinkedIn/X text and a DEV draft from a sealed release; no network")
+            .arg(Arg::new("release").required(true)).arg(Arg::new("document").long("document").required(true))
+            .arg(Arg::new("output").long("output").required(true).value_parser(clap::value_parser!(PathBuf)))
+            .arg(Arg::new("updated").long("updated").action(ArgAction::SetTrue)))
+        .subcommand(source_args(Command::new("deliver").about("Explicitly publish an approved LinkedIn announcement or create a DEV draft"))
+            .arg(Arg::new("confirm").long("confirm").required(true))
+            .arg(Arg::new("token-env").long("token-env")))
+        .subcommand(Command::new("reconcile").about("Verify a DEV draft after an uncertain delivery; never creates a post")
+            .arg(Arg::new("review").required(true)).arg(Arg::new("draft").long("draft").required(true).value_parser(clap::value_parser!(u64).range(1..)))
+            .arg(Arg::new("token-env").long("token-env").default_value("DEVTO_API_KEY")))
         .subcommand(source_args(Command::new("review")
             .about("Show the current text and review ID; optionally approve those exact bytes"))
             .arg(Arg::new("approve").long("approve").value_name("REVIEW_ID"))
@@ -51,6 +86,12 @@ pub(super) fn command() -> Command {
 
 fn source_args(command: Command) -> Command {
     command
+        .arg(
+            Arg::new("channel")
+                .long("channel")
+                .default_value("linkedin")
+                .value_parser(["linkedin", "x", "devto"]),
+        )
         .arg(directory_arg())
         .arg(
             Arg::new("document")
@@ -63,7 +104,7 @@ fn source_args(command: Command) -> Command {
                 .long("account")
                 .value_name("ACCOUNT")
                 .required(true)
-                .help("Stable local account name, e.g. personal; not authentication"),
+                .help("Local label for manual channels; DEV requires your authenticated username"),
         )
 }
 
@@ -83,11 +124,32 @@ fn source(args: &ArgMatches) -> Source {
         directory: args.get_one::<PathBuf>("directory").unwrap().clone(),
         document: args.get_one::<String>("document").unwrap().clone(),
         account: args.get_one::<String>("account").unwrap().clone(),
+        channel: args.get_one::<String>("channel").unwrap().clone(),
     }
 }
 
 pub(super) fn parse(args: &ArgMatches) -> Action {
     match args.subcommand().expect("required action") {
+        ("linkedin", args) => Action::LinkedIn(linkedin::parse(args)),
+        ("deliveries", args) => Action::Deliveries {
+            review: args.get_one::<String>("review").cloned(),
+        },
+        ("prepare", args) => Action::Prepare {
+            release: args.get_one::<String>("release").unwrap().clone(),
+            document: args.get_one::<String>("document").unwrap().clone(),
+            output: args.get_one::<PathBuf>("output").unwrap().clone(),
+            updated: args.get_flag("updated"),
+        },
+        ("deliver", args) => Action::Deliver {
+            source: source(args),
+            confirm: args.get_one::<String>("confirm").unwrap().clone(),
+            token_env: args.get_one::<String>("token-env").cloned(),
+        },
+        ("reconcile", args) => Action::Reconcile {
+            review: args.get_one::<String>("review").unwrap().clone(),
+            draft: *args.get_one::<u64>("draft").unwrap(),
+            token_env: args.get_one::<String>("token-env").unwrap().clone(),
+        },
         ("review", args) => Action::Review {
             source: source(args),
             approve: args.get_one::<String>("approve").cloned(),
@@ -133,6 +195,7 @@ mod tests {
             directory: "review-dir".into(),
             document: "note".into(),
             account: "personal".into(),
+            channel: "linkedin".into(),
         };
         assert_eq!(
             action(&args).unwrap(),
@@ -189,7 +252,8 @@ mod tests {
                 source: Source {
                     directory: "review-dir".into(),
                     document: "note".into(),
-                    account: "personal".into()
+                    account: "personal".into(),
+                    channel: "linkedin".into()
                 },
                 url: "https://www.linkedin.com/posts/example".into(),
                 confirm: "review-id".into(),

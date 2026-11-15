@@ -44,8 +44,12 @@ pub(crate) fn load_legacy(project: &Project) -> Result<Vec<HistoryEntry>, Error>
         }
         release::ensure_directory(directory)?;
     }
-    let approvals = read_records::<Approval>(&state.join("announcements/approvals"))?;
-    let publications = read_records::<Publication>(&state.join("announcements/reported"))?;
+    let approvals = read_records::<Approval>(
+        &state.join("announcements/approvals"),
+        super::MAX_APPROVAL_BYTES,
+    )?;
+    let publications =
+        read_records::<Publication>(&state.join("announcements/reported"), MAX_RECORD_BYTES)?;
     validate(approvals, publications)
 }
 pub(crate) fn validate(
@@ -63,9 +67,20 @@ pub(crate) fn validate(
         }
         let publication = publications.remove(&id);
         if let Some(publication) = &publication {
-            if publication.schema_version != 1
+            let evidence_valid = match (&publication.evidence, publication.schema_version) {
+                (super::Evidence::UserReported, 1) => true,
+                (super::Evidence::ApiAcknowledged | super::Evidence::ApiVerified, 2) => {
+                    approval.snapshot.channel == super::Channel::LinkedIn
+                        && approval.snapshot.linkedin.is_some()
+                }
+                _ => false,
+            };
+            if !evidence_valid
                 || publication.review_id != id
-                || super::post_url(publication.post_url.as_str())? != publication.post_url
+                || super::channel_post_url(
+                    &approval.snapshot.channel,
+                    publication.post_url.as_str(),
+                )? != publication.post_url
             {
                 bail!("invalid manual publication record");
             }
@@ -101,6 +116,7 @@ pub(super) fn approve(project: &Project, approval: &Approval) -> Result<(), Erro
     write_new(
         &directory.join(format!("{}.json", approval.review_id)),
         approval,
+        super::MAX_APPROVAL_BYTES,
     )
 }
 
@@ -116,13 +132,14 @@ pub(super) fn record(project: &Project, publication: &Publication) -> Result<(),
     write_new(
         &directory.join(format!("{}.json", publication.review_id)),
         publication,
+        MAX_RECORD_BYTES,
     )
 }
 
-fn write_new(path: &Path, record: &impl Serialize) -> Result<(), Error> {
+fn write_new(path: &Path, record: &impl Serialize, limit: usize) -> Result<(), Error> {
     let mut bytes = serde_json::to_vec_pretty(record)?;
     bytes.push(b'\n');
-    if bytes.len() > MAX_RECORD_BYTES {
+    if bytes.len() > limit {
         bail!("announcement record exceeds its size limit");
     }
     let parent = path.parent().context("announcement record has no parent")?;
@@ -136,7 +153,10 @@ fn write_new(path: &Path, record: &impl Serialize) -> Result<(), Error> {
     Ok(())
 }
 
-fn read_records<T: DeserializeOwned>(directory: &Path) -> Result<BTreeMap<String, T>, Error> {
+fn read_records<T: DeserializeOwned>(
+    directory: &Path,
+    limit: usize,
+) -> Result<BTreeMap<String, T>, Error> {
     if !exists(directory)? {
         return Ok(BTreeMap::new());
     }
@@ -159,7 +179,7 @@ fn read_records<T: DeserializeOwned>(directory: &Path) -> Result<BTreeMap<String
             .strip_suffix(".json")
             .context("unexpected file in announcement state")?;
         release::validate_id(id)?;
-        let text = super::review::read_text(&path, MAX_RECORD_BYTES as u64)?;
+        let text = super::review::read_text(&path, limit as u64)?;
         records.insert(
             id.to_owned(),
             serde_json::from_str(&text)
@@ -185,11 +205,11 @@ mod tests {
     fn writes_are_exclusive_and_reject_records_the_reader_cannot_accept() {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("record.json");
-        write_new(&path, &"original").unwrap();
-        assert!(write_new(&path, &"replacement").is_err());
+        write_new(&path, &"original", MAX_RECORD_BYTES).unwrap();
+        assert!(write_new(&path, &"replacement", MAX_RECORD_BYTES).is_err());
         assert_eq!(fs::read_to_string(&path).unwrap(), "\"original\"\n");
         let oversized = root.path().join("oversized.json");
-        assert!(write_new(&oversized, &"x".repeat(MAX_RECORD_BYTES)).is_err());
+        assert!(write_new(&oversized, &"x".repeat(MAX_RECORD_BYTES), MAX_RECORD_BYTES).is_err());
         assert!(!oversized.exists());
         assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
     }

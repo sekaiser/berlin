@@ -7,6 +7,25 @@ foundation for metric observations. Runtime catalogs, output recovery and artifa
 caches retain their existing execution model.
 Source files and sealed release bundles remain files; their identities do not change.
 
+Schema version 7 adds append-only `delivery_events` for explicit DEV draft creation.
+Each event refers to an exact approval and records intent, timestamp, uncertainty
+or outcome, with a remote draft ID/URL for confirmed creation or reconciliation.
+An intent commits before submission; uncertain attempts block blind retries.
+No credential or remote response body is stored. Backups and validation include
+these records. Upgrade with `state migrate` after taking a backup. The larger
+8 MiB approval-record budget supports full article payloads; other lifecycle
+records retain their 128 KiB bound. See [channel publishing](channel-publishing.md).
+
+Schema version 8 extends this contract to LinkedIn submissions. Member, optional
+company Page, API version
+and public audience are bound to approval. Preparation and pre-POST intent precede
+the remote effect; acknowledged/verified API publications and explicit user reports
+remain distinct evidence. Delivery outcomes and publication records commit
+together. API publication records require matching delivery receipts. Existing
+DEV events and approval identities are preserved. OAuth credentials are private
+files outside SQLite; a database restore does not restore account authorization.
+See [LinkedIn publishing](linkedin-publishing.md).
+
 ## Activate a project
 
 With the usual `BERLIN_DIR` selecting your publishing project:

@@ -10,9 +10,11 @@ should be processed, and publish it in more than one place without maintaining a
 separate authoring workflow for every channel.
 
 **Status:** experimental and actively evolving. Today Berlin builds static websites
-and local LinkedIn drafts, and supports explicit sealed website releases to an
-existing GitHub Pages publishing branch. It does not yet publish through LinkedIn,
-X, or Substack APIs, synchronize remote articles, or collect audience metrics.
+and local channel drafts, and supports explicit sealed website releases to an
+existing GitHub Pages publishing branch. Explicit adapters publish approved
+LinkedIn announcements with teaser images and create unpublished DEV article
+drafts. X announcements and Substack editions remain manual exports; remote
+article synchronization and audience-metric imports are deferred.
 
 ## How it works
 
@@ -43,6 +45,8 @@ Current capabilities include:
 - [LaTeX graphics](docs/diagrams.md): shared Org/CLI/pipeline rendering, including TikZ, PGFPlots and LuaLaTeX graph layouts.
 - [Pipeline-driven LaTeX publishing](docs/papers.md), with checked references and citations, notebook HTML and a downloadable PDF.
 - LinkedIn draft text and manifests, with character-limit diagnostics; [release announcements](docs/announcement-workflow.md) with exact-text approvals and local records of user-reported posts.
+- [Channel packages](docs/channel-publishing.md) with summaries, canonical links, teaser media, LinkedIn/X announcements and explicit DEV draft delivery, backed by SQLite delivery history.
+- [LinkedIn API delivery](docs/linkedin-publishing.md) for personal members and company Pages, with explicit author selection, permission checks, teaser upload and recoverable submission records.
 - Local build receipts recording input/output hashes, provenance, and diagnostics.
 - [Project-local SQLite lifecycle history](docs/lifecycle-state.md) for build attempts, sealed article revisions, and recorded publications.
 - [Local article reviews](docs/article-review.md): a staged dialogue about audience fit, reasoning, technical objections and evidence, bound to the saved draft revision.

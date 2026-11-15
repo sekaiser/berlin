@@ -165,7 +165,7 @@ impl ProductionSite<'_> {
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n",
         );
         for (name, page) in &self.pages {
-            if page.redirect.is_none() {
+            if page.redirect.is_none() && !page.noindex {
                 sitemap.push_str(&format!(
                     "  <url><loc>{}</loc></url>\n",
                     xml_escape(self.page_url(name)?.as_str())

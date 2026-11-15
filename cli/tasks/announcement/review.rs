@@ -78,6 +78,9 @@ impl Export {
                     article_url: item.url.clone(),
                     text_sha256: release::digest(text.as_bytes()),
                     text,
+                    image: None,
+                    linkedin: None,
+                    warnings: vec![],
                 };
                 snapshot.validate()?;
                 Ok(snapshot)

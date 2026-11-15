@@ -1,6 +1,6 @@
-//! CLI presentation of reviews and user-reported posts, never platform delivery.
+//! CLI presentation of channel preparation, reviews and explicit draft delivery.
 use crate::{
-    args::announcement::Action,
+    args::announcement::{Action, LinkedInAction},
     tasks::announcement::{self, Review, ReviewState},
 };
 use anyhow::Error;
@@ -9,6 +9,124 @@ use std::path::PathBuf;
 pub fn run(action: Action, files: Vec<PathBuf>) -> Result<(), Error> {
     let project = super::release::sealed_project(files)?;
     match action {
+        Action::LinkedIn(action) => {
+            use announcement::linkedin::{self, connection};
+            let result = match action {
+                LinkedInAction::Status { account } => {
+                    serde_json::json!({"account":account,"member":connection::target(&project,&account)?,"remote_checked":false})
+                }
+                LinkedInAction::Connect {
+                    account,
+                    token_env,
+                    confirm,
+                    version,
+                    organization,
+                } => connection::connect(
+                    &project,
+                    &account,
+                    &token_env,
+                    confirm.as_deref(),
+                    &version,
+                    organization.as_deref(),
+                )?,
+                LinkedInAction::AuthStart {
+                    account,
+                    client_id,
+                    redirect,
+                    version,
+                    organization,
+                } => connection::auth_start(
+                    &project,
+                    &account,
+                    &client_id,
+                    &redirect,
+                    &version,
+                    organization.as_deref(),
+                )?,
+                LinkedInAction::AuthFinish {
+                    account,
+                    callback,
+                    secret_env,
+                } => connection::auth_finish(&project, &account, &callback, &secret_env)?,
+                LinkedInAction::Reconcile {
+                    review,
+                    post,
+                    reported,
+                    token_env,
+                } => serde_json::to_value(linkedin::reconcile(
+                    &project,
+                    &review,
+                    &post,
+                    reported,
+                    token_env.as_deref(),
+                )?)?,
+                LinkedInAction::CallbackPage { url, output } => {
+                    connection::callback_page(&project, &url, &output)?
+                }
+            };
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        Action::Deliveries { review } => {
+            if let Some(id) = &review {
+                crate::tasks::release::validate_id(id)?;
+            }
+            println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &crate::tasks::state::Store::open(project.root())?
+                        .delivery_events(review.as_deref())?
+                )?
+            );
+        }
+        Action::Prepare {
+            release,
+            document,
+            output,
+            updated,
+        } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&announcement::packages::prepare(
+                    &project, &release, &document, &output, updated
+                )?)?
+            );
+        }
+        Action::Deliver {
+            source,
+            confirm,
+            token_env,
+        } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&if source.channel == "linkedin" {
+                    announcement::linkedin::deliver(
+                        &project,
+                        &source,
+                        &confirm,
+                        token_env.as_deref(),
+                    )?
+                } else {
+                    announcement::delivery::deliver(
+                        &project,
+                        &source,
+                        &confirm,
+                        token_env.as_deref().unwrap_or("DEVTO_API_KEY"),
+                    )?
+                })?
+            );
+        }
+        Action::Reconcile {
+            review,
+            draft,
+            token_env,
+        } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&announcement::delivery::reconcile(
+                    &project, &review, draft, &token_env
+                )?)?
+            );
+        }
         Action::Review {
             source,
             approve,
@@ -60,14 +178,16 @@ pub fn run(action: Action, files: Vec<PathBuf>) -> Result<(), Error> {
                 for entry in &status.history {
                     let approval = &entry.approval;
                     println!(
-                        "{} — {:?} / linkedin:{}",
+                        "{} — {:?} / {}:{}",
                         approval.review_id,
                         approval.snapshot.document.id.0,
+                        approval.snapshot.channel(),
                         approval.snapshot.account
                     );
                     match &entry.publication {
                         Some(publication) => println!(
-                            "  Reported published (not verified): {}",
+                            "  {}: {}",
+                            publication.evidence_label(),
                             publication.post_url
                         ),
                         None => println!("  Approved; no publication reported"),
@@ -91,7 +211,8 @@ fn print_review(review: &Review) {
         review.snapshot.document.id.0, review.snapshot.document.title
     );
     println!(
-        "Account: linkedin:{} (local name, not authentication)",
+        "Account: {}:{}",
+        review.snapshot.channel(),
         review.snapshot.account
     );
     println!("Article: {}", review.snapshot.article_url);
@@ -104,6 +225,27 @@ fn print_review(review: &Review) {
         review.snapshot.document.content_sha256
     );
     println!("Text SHA-256: {}", review.snapshot.text_sha256);
+    if let Some(image) = &review.snapshot.image {
+        println!(
+            "Teaser: {}\nAlternative text: {}\nImage SHA-256: {}",
+            image.url, image.alt, image.sha256
+        );
+    }
+    if let Some(target) = &review.snapshot.linkedin {
+        if let Some(organization) = &target.organization {
+            println!(
+                "LinkedIn Page author: {} ({})",
+                organization.name, organization.urn
+            );
+        }
+        println!(
+            "LinkedIn member: {} ({})\nVisibility: {}\nAPI version: {}",
+            target.name, target.member_urn, target.visibility, target.api_version
+        );
+    }
+    for warning in &review.snapshot.warnings {
+        println!("Review note: {warning}");
+    }
     println!(
         "Characters: {} / {} (Berlin default)",
         review.character_count, review.character_limit
@@ -114,6 +256,9 @@ fn print_review(review: &Review) {
             ReviewState::ReviewRequired => "review required",
             ReviewState::Approved => "approved; no publication reported",
             ReviewState::ReportedPublished => "reported published; not remotely verified",
+            ReviewState::SubmissionAccepted =>
+                "LinkedIn accepted submission; live visibility not checked",
+            ReviewState::ApiVerified => "LinkedIn content verified by API",
         }
     );
     if !review.approval_allowed {

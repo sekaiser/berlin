@@ -189,6 +189,30 @@ fn rejects_broken_links_fragments_canonicals_and_preview_references() {
 }
 
 #[test]
+fn explicit_noindex_utility_pages_are_valid_but_never_enter_the_sitemap() {
+    let root = tempfile::tempdir().unwrap();
+    page(root.path(), "index.html", "https://example.com/", "");
+    page(
+        root.path(),
+        "callback.html",
+        "https://example.com/callback.html",
+        "<meta name='robots' content='noindex,nofollow'><meta name='berlin-page-role' content='utility'>",
+    );
+    finish_at(root.path(), "https://example.com").unwrap();
+    let sitemap = fs::read_to_string(root.path().join("sitemap.xml")).unwrap();
+    assert!(!sitemap.contains("callback.html"));
+    assert!(sitemap.contains("https://example.com/"));
+    let root = tempfile::tempdir().unwrap();
+    page(
+        root.path(),
+        "index.html",
+        "https://example.com/",
+        "<meta name='berlin-page-role' content='utility'>",
+    );
+    assert!(finish_at(root.path(), "https://example.com").is_err());
+}
+
+#[test]
 fn rejects_sources_unused_preview_assets_symlinks_and_cyclic_css() {
     for name in [
         "secret.org",

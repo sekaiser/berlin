@@ -13,11 +13,12 @@ use std::{
 
 pub(crate) mod attempts;
 pub(crate) mod builds;
+mod deliveries;
 pub(crate) mod documents;
 pub(crate) mod metrics;
 mod reviews;
 
-const VERSION: i64 = 6;
+const VERSION: i64 = 8;
 const APPLICATION: i64 = 0x424c4e31;
 const LIMIT: usize = 128 * 1024;
 
@@ -134,7 +135,12 @@ impl Store {
         if version < 5 {
             attempts::schema(&tx)?;
         }
-        reviews::schema(&tx)?;
+        if version < 6 {
+            reviews::schema(&tx)?;
+        }
+        if version < 7 {
+            deliveries::schema(&tx)?;
+        }
         tx.pragma_update(None, "user_version", VERSION)?;
         tx.commit()?;
         Ok(())
@@ -168,7 +174,7 @@ impl Store {
         for row in rows {
             let (id, payload, digest) = row?;
             release::validate_id(&id)?;
-            verify(&payload, &digest)?;
+            verify_bounded(&payload, &digest, record_limit(table))?;
             records.insert(id, serde_json::from_str(&payload)?);
         }
         Ok(records)
@@ -180,7 +186,7 @@ impl Store {
         value: &impl Serialize,
     ) -> Result<(), Error> {
         release::validate_id(id)?;
-        let payload = encode(value)?;
+        let payload = encode_bounded(value, record_limit(table))?;
         let sql = match table {
             "approvals" => "INSERT INTO approvals VALUES (?1,?2,?3)",
             "reports" => "INSERT INTO reports VALUES (?1,?2,?3)",
@@ -278,19 +284,35 @@ impl Store {
         if version >= 6 {
             self.validate_reviews()?;
         }
+        if version >= 7 {
+            self.validate_deliveries()?;
+        }
         tx.commit()?;
         Ok(())
     }
 }
 fn encode(value: &impl Serialize) -> Result<String, Error> {
+    encode_bounded(value, LIMIT)
+}
+fn record_limit(table: &str) -> usize {
+    if table == "approvals" {
+        announcement::MAX_APPROVAL_BYTES
+    } else {
+        LIMIT
+    }
+}
+fn encode_bounded(value: &impl Serialize, limit: usize) -> Result<String, Error> {
     let payload = serde_json::to_string(value)?;
-    if payload.len() > LIMIT {
+    if payload.len() > limit {
         bail!("lifecycle record exceeds its size limit");
     }
     Ok(payload)
 }
 fn verify(payload: &str, digest: &str) -> Result<(), Error> {
-    if payload.len() > LIMIT || release::digest(payload.as_bytes()) != digest {
+    verify_bounded(payload, digest, LIMIT)
+}
+fn verify_bounded(payload: &str, digest: &str, limit: usize) -> Result<(), Error> {
+    if payload.len() > limit || release::digest(payload.as_bytes()) != digest {
         bail!("lifecycle record hash/size mismatch");
     }
     Ok(())
@@ -340,7 +362,7 @@ pub(crate) fn migrate(project: &Project) -> Result<(), Error> {
     {
         let tx = db.connection.transaction()?;
         for item in history {
-            let payload = encode(&item.approval)?;
+            let payload = encode_bounded(&item.approval, announcement::MAX_APPROVAL_BYTES)?;
             tx.execute(
                 "INSERT INTO approvals VALUES (?1,?2,?3)",
                 params![
@@ -422,6 +444,9 @@ pub(crate) fn status(project: &Project) -> Result<serde_json::Value, Error> {
     }
     if version >= 6 {
         tables.extend(["article_reviews", "article_review_events"]);
+    }
+    if version >= 7 {
+        tables.push("delivery_events");
     }
     for table in tables {
         let count: i64 =

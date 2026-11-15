@@ -34,7 +34,7 @@ struct Content<'a> {
 }
 
 impl DocumentRevision {
-    fn from_document(document: &Document) -> Result<Self, Error> {
+    pub(crate) fn from_document(document: &Document) -> Result<Self, Error> {
         let content = Content {
             kind: &document.kind,
             blocks: &document.blocks,
