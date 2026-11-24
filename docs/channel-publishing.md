@@ -2,7 +2,7 @@
 
 Berlin prepares a channel package from a sealed website release: an article
 summary, canonical link, teaser image and alternative text, editable LinkedIn/X
-announcements, and a full Markdown edition for DEV. Preparation is local.
+announcements, and full editions for DEV and manual Substack publishing. Preparation is local.
 Explicit delivery can publish a LinkedIn announcement or create an unpublished
 DEV draft. Builds, previews, releases and approvals never post to social platforms.
 See [LinkedIn authorization and delivery](linkedin-publishing.md).
@@ -39,6 +39,7 @@ The package contains:
 | `x.txt` | Editable short announcement; may need shortening before approval |
 | `article.md` | Static full article, with absolute public links and attribution |
 | `devto.json` | DEV request: unpublished article, canonical URL, tags and cover |
+| `substack.json` | Editable local edition with publication, audience and email intent |
 | `teaser.*`, `teaser-alt.txt` | Copy of the release-owned preview and its alt text |
 | `warnings.json` | Adaptations requiring editorial review |
 | `manifest.json` | Sealed document/release identity; leave unchanged |
@@ -70,7 +71,9 @@ bln announcement review .berlin/channels/my-article \
     --document CONTENT_ID --channel linkedin --account personal --approve REVIEW_ID
 ```
 
-Repeat for `--channel x` or `--channel devto`; each has a different review ID.
+Repeat for `--channel x`, `--channel devto` or `--channel substack`; each has a different review ID.
+Substack also needs its formatted preview before approval; see
+[Substack publishing](substack-publishing.md).
 Approvals bind exact text/request bytes, account, source revision, canonical URL,
 teaser URL/alt text and image hash. Changed exports require approval again. Image
 or alt-text edits require a new source release/package. Export destinations are
@@ -141,8 +144,11 @@ and Berlin does not yet synchronize later remote edits or publication status.
 
 ## Substack and other channels
 
-`article.md`, the canonical link and teaser provide a manual starting point for
-Substack's editor. Berlin has no Substack publishing adapter. Substack's documented
+Substack has a first-class [manual edition workflow](substack-publishing.md):
+edit `substack.json`, generate a copyable `substack.html` with `announcement preview`,
+approve it, then record the manually published post URL. Destination, audience,
+email intent and rendered body are included in the approval. There is no remote
+Substack publishing adapter. Substack's documented
 [AI assistant connection](https://support.substack.com/hc/en-us/articles/50834026608916-How-to-connect-Substack-to-your-AI-Assistant)
 is read-only; it does not establish a supported write API. No browser automation
 or private publishing endpoints are used.

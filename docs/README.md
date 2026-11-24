@@ -39,6 +39,7 @@
 - [Release announcements](announcement-workflow.md)
 - [Channel exports and DEV draft delivery](channel-publishing.md)
 - [LinkedIn authorization and publishing](linkedin-publishing.md)
+- [Substack editions and manual publishing](substack-publishing.md)
 - [Lifecycle storage](lifecycle-state.md)
 - [Metrics storage](metrics.md)
 

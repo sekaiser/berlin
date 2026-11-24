@@ -94,6 +94,7 @@ fn fixture(image: bool) -> (tempfile::TempDir, Project, Snapshot) {
             organization: None,
         }),
         warnings: vec![],
+        substack: None,
     };
     super::super::store::approve(
         &project,

@@ -9,6 +9,12 @@ use std::path::PathBuf;
 pub fn run(action: Action, files: Vec<PathBuf>) -> Result<(), Error> {
     let project = super::release::sealed_project(files)?;
     match action {
+        Action::Preview { source } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&announcement::substack::preview(&project, &source)?)?
+            );
+        }
         Action::LinkedIn(action) => {
             use announcement::linkedin::{self, connection};
             let result = match action {
@@ -96,6 +102,11 @@ pub fn run(action: Action, files: Vec<PathBuf>) -> Result<(), Error> {
             confirm,
             token_env,
         } => {
+            if source.channel == "substack" {
+                anyhow::bail!(
+                    "Substack delivery is manual: use 'announcement preview', publish in Substack, then 'announcement record'"
+                );
+            }
             println!(
                 "{}",
                 serde_json::to_string_pretty(&if source.channel == "linkedin" {
@@ -241,6 +252,19 @@ fn print_review(review: &Review) {
         println!(
             "LinkedIn member: {} ({})\nVisibility: {}\nAPI version: {}",
             target.name, target.member_urn, target.visibility, target.api_version
+        );
+    }
+    if review.snapshot.channel() == "substack" {
+        let draft: announcement::substack::Draft =
+            serde_json::from_str(&review.snapshot.text).expect("validated Substack edition");
+        println!(
+            "Substack publication: {}\nAudience: {:?}\nSend email: {} (manual setting)",
+            draft
+                .publication_url
+                .as_ref()
+                .map_or("not set", |url| url.as_str()),
+            draft.audience,
+            draft.send_email
         );
     }
     for warning in &review.snapshot.warnings {

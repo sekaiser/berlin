@@ -15,6 +15,9 @@ pub struct Source {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Action {
     LinkedIn(LinkedInAction),
+    Preview {
+        source: Source,
+    },
     Deliveries {
         review: Option<String>,
     },
@@ -57,8 +60,11 @@ pub(super) fn command() -> Command {
         .about("Prepare and review channel exports; explicitly deliver approved publications")
         .subcommand_required(true)
         .subcommand(linkedin::command())
+        .subcommand(source_args(Command::new("preview")
+            .about("Write a formatted Substack edition for manual copy/paste; no remote writes"))
+            .mut_arg("channel", |arg| arg.default_value("substack").value_parser(["substack"])))
         .subcommand(Command::new("deliveries").about("Inspect local delivery attempts; no network").arg(Arg::new("review").long("review")))
-        .subcommand(Command::new("prepare").about("Export summaries, teaser media, LinkedIn/X text and a DEV draft from a sealed release; no network")
+        .subcommand(Command::new("prepare").about("Export LinkedIn/X announcements and DEV/Substack editions from a sealed release; no network")
             .arg(Arg::new("release").required(true)).arg(Arg::new("document").long("document").required(true))
             .arg(Arg::new("output").long("output").required(true).value_parser(clap::value_parser!(PathBuf)))
             .arg(Arg::new("updated").long("updated").action(ArgAction::SetTrue)))
@@ -90,7 +96,7 @@ fn source_args(command: Command) -> Command {
             Arg::new("channel")
                 .long("channel")
                 .default_value("linkedin")
-                .value_parser(["linkedin", "x", "devto"]),
+                .value_parser(["linkedin", "x", "devto", "substack"]),
         )
         .arg(directory_arg())
         .arg(
@@ -131,6 +137,9 @@ fn source(args: &ArgMatches) -> Source {
 pub(super) fn parse(args: &ArgMatches) -> Action {
     match args.subcommand().expect("required action") {
         ("linkedin", args) => Action::LinkedIn(linkedin::parse(args)),
+        ("preview", args) => Action::Preview {
+            source: source(args),
+        },
         ("deliveries", args) => Action::Deliveries {
             review: args.get_one::<String>("review").cloned(),
         },

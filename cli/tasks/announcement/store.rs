@@ -77,10 +77,10 @@ pub(crate) fn validate(
             };
             if !evidence_valid
                 || publication.review_id != id
-                || super::channel_post_url(
-                    &approval.snapshot.channel,
-                    publication.post_url.as_str(),
-                )? != publication.post_url
+                || approval
+                    .snapshot
+                    .publication_url(publication.post_url.as_str())?
+                    != publication.post_url
             {
                 bail!("invalid manual publication record");
             }

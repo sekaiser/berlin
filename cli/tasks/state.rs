@@ -18,7 +18,7 @@ pub(crate) mod documents;
 pub(crate) mod metrics;
 mod reviews;
 
-const VERSION: i64 = 8;
+const VERSION: i64 = 9;
 const APPLICATION: i64 = 0x424c4e31;
 const LIMIT: usize = 128 * 1024;
 

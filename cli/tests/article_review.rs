@@ -235,7 +235,7 @@ fn complete_dialogue_preserves_deferrals_history_and_backup_without_publishing()
         0
     );
     let status = value(root, &["state", "status"]);
-    assert_eq!(status["schema_version"], 8);
+    assert_eq!(status["schema_version"], 9);
     assert_eq!(status["counts"]["article_reviews"], 1);
     assert_eq!(status["counts"]["article_review_events"], 13);
     for table in [
@@ -598,7 +598,7 @@ fn editorial_capture_stays_private_across_file_changes_all_steps_and_restore() {
     assert!(!root.join("should-not-run").exists());
     assert!(!external.path().join("should-not-run").exists());
     let state = value(root, &["state", "status"]);
-    assert_eq!(state["schema_version"], 8);
+    assert_eq!(state["schema_version"], 9);
     for table in [
         "build_runs",
         "sealed_releases",

@@ -252,6 +252,8 @@ pub(crate) fn prepare(
     )?;
     if let Some(markdown) = &article.markdown {
         fs::write(directory.join("article.md"), markdown)?;
+        let substack = super::substack::prepare(article, &url)?;
+        fs::write(directory.join("substack.json"), substack)?;
         let mut seen_tags = std::collections::BTreeSet::new();
         let tags = article
             .tags
@@ -307,7 +309,7 @@ pub(crate) fn prepare(
     fs::rename(directory, &output)?;
     release::sync_directory(output.parent().unwrap())?;
     Ok(
-        serde_json::json!({"directory":output,"release":id,"document":document,"warnings":article.warnings,"channels":if article.markdown.is_some() {vec!["linkedin","x","devto"]} else {vec!["linkedin","x"]},"remote_io":false}),
+        serde_json::json!({"directory":output,"release":id,"document":document,"warnings":article.warnings,"channels":if article.markdown.is_some() {vec!["linkedin","x","devto","substack"]} else {vec!["linkedin","x"]},"remote_io":false}),
     )
 }
 
@@ -338,6 +340,7 @@ pub(super) fn snapshot(
             Channel::LinkedIn => "linkedin.txt",
             Channel::X => "x.txt",
             Channel::DevTo => "devto.json",
+            Channel::Substack => "substack.json",
         }),
         2 * 1024 * 1024,
     )?;
@@ -355,6 +358,18 @@ pub(super) fn snapshot(
     }
     let linkedin = if channel == Channel::LinkedIn {
         super::linkedin::connection::target(project, account)?
+    } else {
+        None
+    };
+    let mut warnings = article.warnings.clone();
+    let substack = if channel == Channel::Substack {
+        let original =
+            release::announcements::document_url(&sealed.manifest.url, &article.document.path)?;
+        let (body, adaptations) = super::substack::render(&text, &original)?;
+        warnings.extend(adaptations);
+        warnings.sort();
+        warnings.dedup();
+        Some(body)
     } else {
         None
     };
@@ -377,7 +392,8 @@ pub(super) fn snapshot(
         text,
         image: article.image.clone(),
         linkedin,
-        warnings: article.warnings.clone(),
+        substack,
+        warnings,
     };
     snapshot.validate()?;
     Ok(snapshot)

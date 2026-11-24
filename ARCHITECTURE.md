@@ -319,7 +319,9 @@ its posts. LinkedIn uploads verified teaser bytes and commits intent
 before posting. API acknowledgement, API read-back and user reports are distinct
 evidence; outcomes and publication records commit together. Uncertain attempts
 block blind retries. DEV reconciliation verifies an unpublished draft through GET.
-X and Substack retain manual exports. Credentials reach curl through stdin,
+X retains manual exports. Substack has a local edition and formatted HTML preview;
+approvals bind its rendered body, destination, audience and email intent, while
+publication remains a manual user report. Credentials reach curl through stdin,
 never argv or SQLite; LinkedIn tokens live in private connection files.
 See [channel publishing](docs/channel-publishing.md) for limits and recovery.
 

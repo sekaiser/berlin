@@ -80,6 +80,7 @@ impl Export {
                     text,
                     image: None,
                     linkedin: None,
+                    substack: None,
                     warnings: vec![],
                 };
                 snapshot.validate()?;

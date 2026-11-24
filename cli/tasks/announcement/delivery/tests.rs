@@ -50,6 +50,7 @@ fn fixture() -> (tempfile::TempDir, Project, Snapshot) {
         image: None,
         linkedin: None,
         warnings: vec![],
+        substack: None,
     };
     snapshot.validate().unwrap();
     super::super::store::approve(
@@ -376,6 +377,6 @@ fn schema_seven_upgrade_keeps_existing_dev_approvals_and_backup_readable() {
     assert!(db.delivery_events(None).unwrap().is_empty());
     assert_eq!(
         crate::tasks::state::status(&project).unwrap()["schema_version"],
-        8
+        9
     );
 }

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="berlin-substack-preview" content="1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' https:; style-src 'sha256-{{ style_sha }}'; script-src 'sha256-{{ script_sha }}'; base-uri 'none'; form-action 'none'">
+<title>{{ draft.title }} — Substack edition</title>
+<style>
+:root{color-scheme:light;color:#233a32;background:#e8ede8;font:17px/1.65 system-ui,sans-serif}*{box-sizing:border-box}body{margin:0;padding:2rem 1rem}main{max-width:850px;margin:auto;background:#fffaf0;padding:clamp(1.25rem,5vw,3.5rem)}h1,h2,h3{font-family:Georgia,serif;line-height:1.2}h1{font-size:clamp(2rem,5vw,3rem)}h2{margin-top:2rem}a{color:#92543d}button{font:inherit;color:inherit;background:transparent;border:1px solid;padding:.5rem .85rem;cursor:pointer}button:focus-visible,a:focus-visible{outline:3px solid #92543d;outline-offset:3px}header{border-bottom:1px solid #bfc9bf;padding-bottom:1.5rem;margin-bottom:2rem}header p{margin:.5rem 0}.small{font-size:.85rem;overflow-wrap:anywhere}.subtitle{font-size:1.15rem}.warnings{font-size:.85rem;padding-left:1.2rem}#article-body img,.cover{max-width:100%;height:auto}pre{overflow:auto;background:#eee9df;padding:1rem;font-size:.85rem}table{border-collapse:collapse;display:block;overflow:auto}td,th{border:1px solid #bfc9bf;padding:.5rem}blockquote{margin-left:0;border-left:3px solid #bfc9bf;padding-left:1rem}.cover{max-height:220px;object-fit:contain}#copy-status{min-height:1.6em}
+</style>
+</head>
+<body><main>
+<header>
+<p class="small">Berlin · manual Substack edition</p>
+<h1>{{ draft.title }}</h1>
+<p class="subtitle">{{ draft.subtitle }}</p>
+<p class="small">Publication: {% if draft.publication_url %}{{ draft.publication_url }}{% else %}Set publication_url in substack.json before approval.{% endif %}<br>Audience: {{ draft.audience }} · Send email: {% if draft.send_email %}yes{% else %}no (web only){% endif %}</p>
+{% if image %}<p><a href="{{ image.url }}">Cover image</a></p><img class="cover" src="{{ image.url }}" alt="{{ image.alt }}"><p class="small">Cover alt text: {{ image.alt }}</p>{% endif %}
+<p>Enter the title and subtitle separately in Substack. Copy the formatted body below, inspect the pasted result, and upload the cover. Select the audience and email delivery yourself in Substack.</p>
+<button id="copy-article" type="button">Copy formatted body</button>
+<p id="copy-status" role="status" aria-live="polite"></p>
+<details><summary>Edition checks and adaptations</summary><ul class="warnings">{% for warning in warnings %}<li>{{ warning }}</li>{% endfor %}</ul></details>
+<p class="small">Review ID: <code>{{ review_id }}</code></p>
+</header>
+<article id="article-body">{{ body | safe }}</article>
+</main>
+<script>
+const body = document.getElementById('article-body');
+const status = document.getElementById('copy-status');
+document.getElementById('copy-article').addEventListener('click', async () => {
+  try {
+    if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') throw new Error('Clipboard unavailable');
+    await navigator.clipboard.write([new ClipboardItem({
+      'text/html': new Blob([body.innerHTML], {type:'text/html'}),
+      'text/plain': new Blob([body.innerText], {type:'text/plain'})
+    })]);
+    status.textContent = 'Body copied. Paste it into Substack and check the formatting and images.';
+  } catch {
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(body);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    try {
+      if (!document.execCommand('copy')) throw new Error('Copy unavailable');
+      selection.removeAllRanges();
+      status.textContent = 'Body copied. Paste it into Substack and check the formatting and images.';
+    } catch {
+      status.textContent = 'The body is selected. Copy it using your browser, then paste it into Substack.';
+    }
+  }
+});
+</script>
+</body></html>

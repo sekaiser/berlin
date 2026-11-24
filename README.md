@@ -13,7 +13,7 @@ separate authoring workflow for every channel.
 and local channel drafts, and supports explicit sealed website releases to an
 existing GitHub Pages publishing branch. Explicit adapters publish approved
 LinkedIn announcements with teaser images and create unpublished DEV article
-drafts. X announcements and Substack editions remain manual exports; remote
+drafts. X announcements and reviewed Substack editions use manual delivery; remote
 article synchronization and audience-metric imports are deferred.
 
 ## How it works
@@ -47,6 +47,7 @@ Current capabilities include:
 - LinkedIn draft text and manifests, with character-limit diagnostics; [release announcements](docs/announcement-workflow.md) with exact-text approvals and local records of user-reported posts.
 - [Channel packages](docs/channel-publishing.md) with summaries, canonical links, teaser media, LinkedIn/X announcements and explicit DEV draft delivery, backed by SQLite delivery history.
 - [LinkedIn API delivery](docs/linkedin-publishing.md) for personal members and company Pages, with explicit author selection, permission checks, teaser upload and recoverable submission records.
+- [Substack editions](docs/substack-publishing.md) with a copyable HTML preview, explicit audience/email intent, and manual publication tracking.
 - Local build receipts recording input/output hashes, provenance, and diagnostics.
 - [Project-local SQLite lifecycle history](docs/lifecycle-state.md) for build attempts, sealed article revisions, and recorded publications.
 - [Local article reviews](docs/article-review.md): a staged dialogue about audience fit, reasoning, technical objections and evidence, bound to the saved draft revision.

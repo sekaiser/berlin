@@ -26,6 +26,12 @@ DEV events and approval identities are preserved. OAuth credentials are private
 files outside SQLite; a database restore does not restore account authorization.
 See [LinkedIn publishing](linkedin-publishing.md).
 
+Schema version 9 adds manually delivered Substack editions. Exact draft JSON and
+rendered body HTML are bound to approval together with the publication origin,
+audience and email intent. Reports retain `user_reported` evidence and do not
+claim email delivery. Existing approval payloads and IDs are unchanged; no new
+SQL tables are needed. See [Substack publishing](substack-publishing.md).
+
 ## Activate a project
 
 With the usual `BERLIN_DIR` selecting your publishing project:

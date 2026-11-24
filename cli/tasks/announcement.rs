@@ -5,6 +5,7 @@ mod markdown;
 pub(crate) mod packages;
 mod review;
 pub(crate) mod store;
+pub(crate) mod substack;
 
 use super::release::{self, documents::DocumentRevision};
 use crate::{args::announcement::Source, project::Project};
@@ -28,6 +29,7 @@ pub(crate) enum Channel {
     LinkedIn,
     X,
     DevTo,
+    Substack,
 }
 impl Channel {
     pub(crate) fn parse(value: &str) -> Result<Self, Error> {
@@ -35,6 +37,7 @@ impl Channel {
             "linkedin" => Ok(Self::LinkedIn),
             "x" => Ok(Self::X),
             "devto" => Ok(Self::DevTo),
+            "substack" => Ok(Self::Substack),
             _ => bail!("unknown distribution channel"),
         }
     }
@@ -62,6 +65,8 @@ pub(crate) struct Snapshot {
     pub image: Option<packages::Image>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub linkedin: Option<linkedin::Target>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub substack: Option<substack::Body>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
 }
@@ -72,6 +77,7 @@ impl Snapshot {
             Channel::LinkedIn => "linkedin",
             Channel::X => "x",
             Channel::DevTo => "devto",
+            Channel::Substack => "substack",
         }
     }
     fn id(&self) -> Result<String, Error> {
@@ -79,6 +85,13 @@ impl Snapshot {
     }
 
     fn validate(&self) -> Result<(), Error> {
+        match (&self.substack, &self.channel) {
+            (Some(body), Channel::Substack) if self.schema_version == 2 => {
+                substack::validate(self, body)?;
+            }
+            (None, Channel::Substack) | (Some(_), _) => bail!("invalid Substack edition binding"),
+            _ => {}
+        }
         if let Some(target) = &self.linkedin {
             if self.schema_version != 2 || self.channel != Channel::LinkedIn {
                 bail!("LinkedIn identity binding requires a channel-package snapshot");
@@ -111,7 +124,7 @@ impl Snapshot {
         release::validate_url(&self.website_url)?;
         self.website_destination.validate().map_err(Error::msg)?;
         if self.text.len()
-            > if self.channel == Channel::DevTo {
+            > if matches!(self.channel, Channel::DevTo | Channel::Substack) {
                 2 * 1024 * 1024
             } else {
                 64 * 1024
@@ -214,13 +227,16 @@ impl Snapshot {
     }
 
     fn approval_allowed(&self) -> bool {
-        !self.text.trim().is_empty() && self.character_count() <= self.character_limit()
+        !self.text.trim().is_empty()
+            && self.character_count() <= self.character_limit()
+            && (self.channel != Channel::Substack || substack::has_destination(&self.text))
     }
     fn character_limit(&self) -> usize {
         match self.channel {
             Channel::LinkedIn => LINKEDIN_POST_CHARACTER_LIMIT,
             Channel::X => 280,
             Channel::DevTo => 2 * 1024 * 1024,
+            Channel::Substack => substack::INPUT_LIMIT,
         }
     }
     fn character_count(&self) -> usize {
@@ -253,6 +269,13 @@ impl Snapshot {
             && self.document.id == other.document.id
             && self.fingerprint_version == other.fingerprint_version
             && self.document.content_sha256 == other.document.content_sha256
+    }
+    pub(super) fn publication_url(&self, value: &str) -> Result<Url, Error> {
+        let url = channel_post_url(&self.channel, value)?;
+        if self.channel == Channel::Substack {
+            substack::check_publication(&self.text, &url)?;
+        }
+        Ok(url)
     }
 }
 
@@ -395,7 +418,13 @@ pub(crate) fn review(
             );
         }
         if !snapshot.approval_allowed() {
+            if snapshot.channel == Channel::Substack && !substack::has_destination(&snapshot.text) {
+                bail!("set publication_url in substack.json before approving this edition");
+            }
             bail!("cannot approve empty text or text beyond Berlin's default character limit");
+        }
+        if snapshot.channel == Channel::Substack {
+            substack::check_preview(project, source, &snapshot)?;
         }
         let _lock = store::lock(project)?;
         let history = store::load(project)?;
@@ -463,7 +492,10 @@ pub(crate) fn record(
             "confirmation does not match the current text/account/revision; review and approve it again"
         );
     }
-    let post_url = channel_post_url(&snapshot.channel, url)?;
+    let post_url = snapshot.publication_url(url)?;
+    if snapshot.channel == Channel::Substack {
+        substack::check_preview(project, source, &snapshot)?;
+    }
     // Inspect before creating a lock/state directory so unapproved requests are read-only.
     require_approval(&store::load(project)?, confirm)?;
     let _lock = store::lock(project)?;
@@ -539,13 +571,19 @@ pub(crate) fn status(
             }
             let account = account.context("package status requires an account")?;
             let mut result = vec![];
-            for channel in [Channel::LinkedIn, Channel::X, Channel::DevTo] {
-                if channel == Channel::DevTo
-                    && !project
-                        .root()
-                        .join(directory)
-                        .join("devto.json")
-                        .try_exists()?
+            for channel in [
+                Channel::LinkedIn,
+                Channel::X,
+                Channel::DevTo,
+                Channel::Substack,
+            ] {
+                let optional = match channel {
+                    Channel::DevTo => Some("devto.json"),
+                    Channel::Substack => Some("substack.json"),
+                    _ => None,
+                };
+                if let Some(file) = optional
+                    && !project.root().join(directory).join(file).try_exists()?
                 {
                     continue;
                 }
@@ -592,23 +630,31 @@ fn channel_post_url(channel: &Channel, value: &str) -> Result<Url, Error> {
                 Some("x.com" | "www.x.com" | "twitter.com" | "www.twitter.com")
             ),
             Channel::DevTo => false,
+            Channel::Substack => {
+                url.host_str().is_some()
+                    && url
+                        .path()
+                        .trim_end_matches('/')
+                        .strip_prefix("/p/")
+                        .is_some_and(|slug| !slug.is_empty() && !slug.contains('/'))
+            }
         }
         || url.path().trim_matches('/').is_empty()
     {
         bail!(
             "use an HTTPS {} publication URL without credentials or a port",
-            if *channel == Channel::X {
-                "x.com"
-            } else {
-                "linkedin.com"
+            match channel {
+                Channel::X => "x.com",
+                Channel::Substack => "Substack /p/slug",
+                _ => "linkedin.com",
             }
         );
     }
-    url.set_host(Some(if *channel == Channel::X {
-        "x.com"
-    } else {
-        "www.linkedin.com"
-    }))?;
+    match channel {
+        Channel::X => url.set_host(Some("x.com"))?,
+        Channel::LinkedIn => url.set_host(Some("www.linkedin.com"))?,
+        _ => {}
+    }
     url.set_query(None);
     url.set_fragment(None);
     if url.path().ends_with('/') {

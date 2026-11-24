@@ -10,6 +10,7 @@ node --test support/web/code-controls.test.cjs
 node --test support/web/search.test.cjs
 node --test support/web/redirect.test.cjs
 node --test support/web/linkedin-callback.test.cjs
+node --test support/web/substack-preview.test.cjs
 node --test cli/tools/serve/live.test.cjs
 cargo build --quiet --bin bln
 support/check-publications
